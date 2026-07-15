@@ -9,13 +9,20 @@ gravity_old = (
     "    const/16 v9, 0x33\n\n"
     "    iput v9, v5, Landroid/widget/FrameLayout$LayoutParams;->gravity:I"
 )
+gravity_alt = (
+    "    const/16 v9, 0x11\n\n"
+    "    iput v9, v5, Landroid/widget/FrameLayout$LayoutParams;->gravity:I"
+)
 gravity_new = (
     "    const/16 v9, 0x0\n\n"
     "    iput v9, v5, Landroid/widget/FrameLayout$LayoutParams;->gravity:I"
 )
-if gravity_old not in text:
-    sys.exit("bubble gravity block not found")
-text = text.replace(gravity_old, gravity_new, 1)
+if gravity_old in text:
+    text = text.replace(gravity_old, gravity_new, 1)
+elif gravity_alt in text:
+    text = text.replace(gravity_alt, gravity_new, 1)
+elif gravity_new not in text:
+    print("bubble gravity block not found — skipping")
 
 touchable = (
     "    invoke-virtual {v10, v5}, Landroid/view/View;->setLayoutParams(Landroid/view/ViewGroup$LayoutParams;)V\n\n"

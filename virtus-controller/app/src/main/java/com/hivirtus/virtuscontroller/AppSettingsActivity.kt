@@ -56,7 +56,7 @@ class AppSettingsActivity : AppCompatActivity() {
         binding.btnRefreshId.setOnClickListener {
             binding.androidIdInput.setText(IdentityConfig.randomId())
         }
-        binding.btnSaveId.setOnClickListener { saveIdentity() }
+        binding.btnSaveId.setOnClickListener { injectIdentity() }
         binding.btnResetData.setOnClickListener { resetData() }
         binding.btnCreateBackup.setOnClickListener { createBackup() }
 
@@ -88,28 +88,31 @@ class AppSettingsActivity : AppCompatActivity() {
         }
     }
 
-    private fun saveIdentity() {
+    private fun injectIdentity() {
         val id = binding.androidIdInput.text.toString().trim().lowercase()
         if (id.length != 16 || !id.all { it in "0123456789abcdef" }) {
             toast("Android ID must be 16 hex characters")
             return
         }
-        val cfg = IdentityConfig(
-            packageName = packageName,
-            androidId = id,
-            signatureSpoofEnabled = false,
-            signatureSha256 = ""
-        )
-        lifecycleScope.launch {
-            val r = withContext(Dispatchers.IO) { IdentityConfig.save(cfg) }
-            if (r.ok && (r.stdout.contains("ok") || r.stdout.length >= 16)) {
-                val saved = r.stdout.lines().lastOrNull { it.length == 16 } ?: id
-                binding.androidIdInput.setText(saved)
-                toast(getString(R.string.saved_ok))
-            } else {
-                toast("Save failed: ${r.message.ifBlank { "chmod/path error — reflash module ZIP" }}")
+        AlertDialog.Builder(this)
+            .setTitle(R.string.inject_id)
+            .setMessage(getString(R.string.inject_id_hint) + "\n\n$appLabel")
+            .setPositiveButton(R.string.inject_id) { _, _ ->
+                lifecycleScope.launch {
+                    toast(getString(R.string.injecting))
+                    val cfg = IdentityConfig(packageName, id, false, "")
+                    val r = withContext(Dispatchers.IO) { IdentityConfig.inject(cfg) }
+                    if (r.ok && (r.stdout.contains("ok") || r.stdout.contains(id))) {
+                        val saved = r.stdout.lines().lastOrNull { it.length == 16 } ?: id
+                        binding.androidIdInput.setText(saved)
+                        toast(getString(R.string.inject_ok))
+                    } else {
+                        toast("Inject failed: ${r.message.ifBlank { "root/module error" }}")
+                    }
+                }
             }
-        }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     private fun resetData() {
@@ -130,24 +133,29 @@ class AppSettingsActivity : AppCompatActivity() {
         val note = binding.backupNoteInput.text.toString().trim()
         lifecycleScope.launch {
             val check = withContext(Dispatchers.IO) { BackupManager.checkData(packageName) }
-            if (!check.ok || check.stdout.startsWith("not_installed")) {
-                toast("App not installed: $packageName")
-                return@launch
+            val status = check.stdout.lines().firstOrNull()?.trim().orEmpty()
+            when {
+                status.startsWith("not_installed") ->
+                    toast("App not installed: $packageName\nWebUI se sahi package select karo.")
+                status.startsWith("no_data") ->
+                    toast("Pehle app ek baar kholo (login/setup), phir backup banao")
+                !check.ok && status.isBlank() ->
+                    toast("Check failed: ${check.message}")
+                else -> Unit
             }
-            if (check.stdout.startsWith("no_data")) {
-                toast("Pehle app ek baar kholo (login/setup), phir backup banao")
-                return@launch
-            }
-            toast("Creating backup...")
+            if (!status.startsWith("ok")) return@launch
+
+            toast("Creating backup (app open nahi hogi)...")
             val id = binding.androidIdInput.text.toString().trim().lowercase()
-            if (id.length == 16) {
-                withContext(Dispatchers.IO) {
-                    IdentityConfig.save(IdentityConfig(packageName, id, false, ""))
-                }
+            val androidId = if (id.length == 16) id else ""
+            val r = withContext(Dispatchers.IO) {
+                BackupManager.create(packageName, note, androidId)
             }
-            val r = withContext(Dispatchers.IO) { BackupManager.create(packageName, note) }
             if (r.ok && r.stdout.isNotBlank()) {
-                val fc = r.stdout.lines().lastOrNull()?.split('|')?.getOrNull(6)?.toIntOrNull() ?: 0
+                val backupId = r.stdout.lines().last { it.isNotBlank() }
+                val entries = withContext(Dispatchers.IO) { BackupManager.list(packageName) }
+                val entry = entries.firstOrNull { it.id == backupId }
+                val fc = entry?.fileCount ?: 0
                 if (fc < 5) {
                     toast("Warning: only $fc data files — login in app first, then recreate backup")
                 } else {
@@ -156,7 +164,7 @@ class AppSettingsActivity : AppCompatActivity() {
                 binding.backupNoteInput.text?.clear()
                 loadBackups()
             } else {
-                toast("Failed: ${r.message}")
+                toast("Failed: ${r.message.ifBlank { r.stderr }}")
             }
         }
     }

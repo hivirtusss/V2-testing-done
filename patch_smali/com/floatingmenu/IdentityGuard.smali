@@ -65,18 +65,11 @@
 
     move-result v0
 
-    sget-boolean v1, Lcom/floatingmenu/IdentityGuard;->sLoaded:Z
+    sput-object p0, Lcom/floatingmenu/IdentityGuard;->sPackage:Ljava/lang/String;
 
-    if-eqz v1, :cond_load
-
-    if-eqz v0, :cond_ret
-
-    :cond_load
     const/4 v0, 0x1
 
     sput-boolean v0, Lcom/floatingmenu/IdentityGuard;->sLoaded:Z
-
-    sput-object p0, Lcom/floatingmenu/IdentityGuard;->sPackage:Ljava/lang/String;
 
     const-string v1, ""
 

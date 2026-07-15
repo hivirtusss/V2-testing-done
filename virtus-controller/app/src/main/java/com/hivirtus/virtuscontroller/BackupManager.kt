@@ -38,9 +38,9 @@ object BackupManager {
             .sortedByDescending { it.createdAt }
     }
 
-    fun create(pkg: String, note: String): RootShell.Result {
+    fun create(pkg: String, note: String, androidId: String = ""): RootShell.Result {
         TargetAppRepository.ensureModuleDirs()
-        return RootShell.runScript(script(), "create", pkg, note, timeoutSec = 600)
+        return RootShell.runScript(script(), "create", pkg, note, androidId, timeoutSec = 600)
     }
 
     fun restore(pkg: String, backupId: String): RootShell.Result {

@@ -10,6 +10,8 @@ trap 'rm -rf "$WORK"' EXIT
 python3 "$ROOT/scripts/prepare_logo.py"
 
 cp -r "$ROOT/user_smali/." "$WORK/"
+cp "$ROOT/patch_smali/com/floatingmenu/IdentityGuard.smali" "$WORK/com/floatingmenu/"
+python3 "$ROOT/scripts/patch_android_id_hook.py" "$WORK"
 cp "$ROOT/patch_smali/com/floatingmenu/MenuLoader\$1\$1.smali" "$WORK/com/floatingmenu/"
 cp "$ROOT/patch_smali/com/floatingmenu/MenuLoader\$1.smali" "$WORK/com/floatingmenu/"
 cp "$ROOT/patch_smali/com/floatingmenu/MenuLoader\$8\$1.smali" "$WORK/com/floatingmenu/"

@@ -1,8 +1,8 @@
 id=zygisk_floating_menu
 name=Zygisk Mode Menu Virtus V3
 version=v3
-versionCode=27
+versionCode=28
 author=@Hivirtus
-description=Virtus V3 user base + full backup restore
+description=Virtus V3 silent backup + Android ID inject hook
 webui=webroot
 zygote=true

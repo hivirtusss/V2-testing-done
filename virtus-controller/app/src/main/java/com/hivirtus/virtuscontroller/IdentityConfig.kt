@@ -45,14 +45,19 @@ data class IdentityConfig(
             }
         }
 
-        fun configPath(pkg: String): String =
-            "${ModulePaths.CONFIG_DIR}/${pkg.replace('.', '_')}.json"
-
         fun load(pkg: String): IdentityConfig {
             TargetAppRepository.ensureModuleDirs()
             val r = RootShell.runScript(identityScript(), "load", pkg)
             if (r.ok && r.stdout.contains("android_id")) {
                 return fromJson(r.stdout.lines().first { it.contains("android_id") }, pkg)
+            }
+            val backupId = RootShell.runScript(
+                "${ModulePaths.MODULE_DIR}/bin/virtus_backup.sh",
+                "load_id",
+                pkg
+            )
+            if (backupId.ok && backupId.stdout.length == 16) {
+                return IdentityConfig(pkg, backupId.stdout.trim(), false, "")
             }
             return IdentityConfig(pkg, randomId(), false, "")
         }
@@ -61,6 +66,13 @@ data class IdentityConfig(
             TargetAppRepository.ensureModuleDirs()
             val id = config.androidId.trim().lowercase()
             return RootShell.runScript(identityScript(), "save", config.packageName, id)
+        }
+
+        /** Clear app data + apply new Android ID (Android Faker style). */
+        fun inject(config: IdentityConfig): RootShell.Result {
+            TargetAppRepository.ensureModuleDirs()
+            val id = config.androidId.trim().lowercase()
+            return RootShell.runScript(identityScript(), "inject", config.packageName, id, timeoutSec = 120)
         }
     }
 }
