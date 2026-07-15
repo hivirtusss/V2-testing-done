@@ -1,43 +1,77 @@
-# Zygisk Mode Menu Virtus V3
+# Virtus V3 — Zygisk Floating Menu + Controller
 
-Magisk / KernelSU / SukiSU Zygisk module for per-app hook selection.
+**Author:** [@Hivirtus](https://github.com/hivirtusss)
 
-## Install (safe build v13+)
+KernelSU / SukiSU / Magisk Zygisk module with per-app bubble menu, plus a controller APK for identity spoof and MT Manager–compatible backups.
 
-1. If you previously installed a broken build (v10/v11 or patched dex), **remove it first**:
-   ```bash
-   adb shell "su -c 'rm -rf /data/adb/modules/zygisk_floating_menu'"
-   ```
-   Reboot, or flash `virtus_emergency_uninstall.zip` from recovery.
+## Download
 
-2. Install `zygisk_floating_menu_hivirtus_selection.zip` from the [release](https://github.com/hivirtusss/V2-testing-done/releases/tag/virtus-v3-hivirtus-selection).
+| File | Description |
+|------|-------------|
+| [zygisk_floating_menu_hivirtus_selection.zip](releases/zygisk_floating_menu_hivirtus_selection.zip) | Module ZIP (v34) — injects bubble in WebUI-selected apps |
+| [virtus_controller_v1.1.apk](releases/virtus_controller_v1.1.apk) | Controller APK — Device ID, backup, MT export |
+| [virtus_emergency_uninstall.zip](releases/virtus_emergency_uninstall.zip) | Emergency uninstall if module breaks boot |
 
-3. Reboot. Open the module page → **Action** → pick apps in the red WebUI → Save → Reboot.
+## Install
 
-## What Action does
+1. Flash **module ZIP** in KernelSU / SukiSU / Magisk (Zygisk enabled).
+2. Install **Virtus Controller APK**.
+3. Reboot → open module **Action** → pick apps in WebUI → **Save** → reboot again.
+4. Open Virtus Controller for Device ID, backups, and MT Manager export.
 
-Opens the module WebUI (app picker). It does **not** run `app_process` or dump package lists to a terminal.
+## How APK + ZIP work together
 
-## Safe dex policy
+| Component | Role |
+|-----------|------|
+| **ZIP module** | Zygisk inject → red bubble menu in selected apps |
+| **Controller APK** | Device ID config, unlimited backup, MT Manager export |
+| **Shared path** | `/data/adb/modules/zygisk_floating_menu/` |
 
-`classes.dex` must stay ~240KB (original Zygisk injection size). Only minimal in-place smali patches are applied:
-
-- License gate removed
-- SystemUI license overlay disabled
-- Title: **Zygisk Mode Menu Virtus V3**
-- Red bubble theme + **V** fallback logo
-
-Do **not** ship full recompiled dex with extra classes (~278KB+) — that crashes all apps via zygote.
-
-Rebuild dex:
-
-```bash
-./scripts/build_safe_dex.sh extracted/classes.dex
-cd extracted && zip -r ../zygisk_floating_menu_hivirtus_selection.zip .
-```
+APK writes `virtus_config/<package>.json` and backups → module reads on next app inject via `IdentityGuard`.
 
 ## Module info
 
 - **id:** `zygisk_floating_menu`
 - **name:** Zygisk Mode Menu Virtus V3
-- **description:** Zygisk Mode Virtus V3
+- **versionCode:** 34
+
+## Repository layout
+
+```
+extracted/          # Shippable module (flash this folder as ZIP)
+virtus-controller/  # Controller APK source (Kotlin)
+patch_smali/        # Dex patches (MenuLoader, IdentityGuard, etc.)
+user_smali/         # Base smali (90 classes, size-safe)
+scripts/            # build_safe_dex.sh, build_release_zip.sh
+releases/           # Pre-built ZIP + APK downloads
+```
+
+## Build module ZIP
+
+```bash
+./scripts/build_safe_dex.sh extracted/classes.dex
+./scripts/build_release_zip.sh
+```
+
+**Important:** `classes.dex` must stay ~240KB. Do not ship full recompiled dex (~278KB+) — it breaks Zygisk injection.
+
+## Build Controller APK
+
+```bash
+export ANDROID_HOME=/path/to/android-sdk
+cd virtus-controller && ./gradlew assembleRelease
+```
+
+## Emergency uninstall
+
+If a bad build causes bootloop:
+
+```bash
+adb shell "su -c 'rm -rf /data/adb/modules/zygisk_floating_menu'"
+```
+
+Or flash `virtus_emergency_uninstall.zip` from recovery.
+
+## License
+
+For personal / rooted device use. Module based on user's original `zygisk_floating_menu` upload (v23), extended with backup, identity config, and controller APK.

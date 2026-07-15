@@ -3,3 +3,24 @@ virtus-controller/app/build/
 virtus-controller/gradle-8.2/
 virtus-controller/gradle.zip
 virtus-controller/*.jks
+
+# Local build / decompile artifacts (not shipped)
+android-sdk/
+jadx/
+jadx.zip
+decompiled/
+decompiled_full/
+drive_decompile/
+build_smali/
+smali_out/
+user_base/
+user_zip/
+user_file/
+*.idsig
+baksmali.jar
+smali.jar
+downloaded_file.bin
+user_module.zip
+zygisk_floating_menu_action_button.zip
+zygisk_floating_menu_no_wildcard.zip
+virtus_controller_v1.apk
