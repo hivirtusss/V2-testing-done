@@ -7,10 +7,10 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; background: transparent; }
-    body { font-family: sans-serif; color: #eee; display: flex; align-items: flex-end; justify-content: center; }
+    body { font-family: sans-serif; color: #fff; display: flex; align-items: flex-end; justify-content: center; }
     .sheet {
-      width: 100%; max-height: 50vh; background: #0d0d10;
-      border-radius: 14px 14px 0 0; border-top: 2px solid #c41e3a;
+      width: 100%; max-height: 55vh; background: #0a0a0c;
+      border-radius: 14px 14px 0 0; border-top: 2px solid #ff0033;
       display: flex; flex-direction: column; overflow: hidden;
     }
     .head { padding: 12px 14px 8px; border-bottom: 1px solid #3a1018; flex-shrink: 0; }
@@ -18,22 +18,28 @@
     .sub { color: #888; font-size: 11px; margin-top: 4px; }
     .search {
       width: 100%; margin-top: 8px; padding: 10px 12px;
-      border-radius: 8px; border: 1px solid #5a1a28; background: #1a0a0e; color: #fff; font-size: 14px;
+      border-radius: 8px; border: 1px solid #660000; background: #1a080c; color: #fff; font-size: 14px;
     }
     .list-wrap { flex: 1; overflow-y: auto; padding: 8px 10px; }
     .row {
       display: flex; align-items: center; gap: 10px; padding: 10px; margin-bottom: 6px;
-      border-radius: 10px; background: #161018; border: 2px solid transparent;
+      border-radius: 10px; background: #140810; border: 2px solid transparent;
     }
-    .row.selected { border-color: #ff0033; background: rgba(255,0,51,0.15); }
-    .row img { width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0; }
+    .row.selected { border-color: #ff0033; background: rgba(255,0,51,0.18); }
+    .icon {
+      width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0;
+      background: #2a0810; display: flex; align-items: center; justify-content: center;
+      font-weight: 700; color: #ff0033; font-size: 16px; overflow: hidden;
+    }
+    .icon img { width: 40px; height: 40px; border-radius: 10px; }
     .row .info { flex: 1; min-width: 0; }
     .row .name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .row .pkg { font-size: 10px; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .row .pkg { font-size: 10px; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
     .dot { width: 18px; height: 18px; border-radius: 50%; border: 2px solid #666; flex-shrink: 0; }
     .row.selected .dot { background: #ff0033; border-color: #ff0033; }
     .bar { padding: 10px 14px 14px; border-top: 1px solid #3a1018; flex-shrink: 0; }
     .btn { width: 100%; padding: 12px; border: none; border-radius: 10px; background: #ff0033; color: #fff; font-size: 15px; font-weight: 700; }
+    .btn2 { margin-top: 6px; background: #2a0810; border: 1px solid #660000; font-size: 12px; padding: 8px; }
     .count { text-align: center; font-size: 11px; color: #aaa; margin-bottom: 6px; }
     .status { text-align: center; padding: 20px; color: #888; font-size: 13px; }
     .err { color: #f55; }
@@ -53,20 +59,22 @@
     <div class="bar">
       <div class="count" id="count">0 selected</div>
       <button class="btn" id="save">Save</button>
+      <button class="btn btn2" id="refresh">Refresh app list</button>
     </div>
   </div>
   <script>
-    const TARGET = '/data/adb/modules/zygisk_floating_menu/target_packages.txt';
+    const MOD = '/data/adb/modules/zygisk_floating_menu';
+    const TARGET = MOD + '/target_packages.txt';
+    const PKGFILE = MOD + '/pkglist.txt';
     const BLOCKED = new Set([
       'android', 'me.weishu.kernelsu', 'com.vvb2060.kernelsu', 'com.rifsxd.ksunext',
       'me.rifsxds.ksunext', 'com.sukisu.ultra', 'com.topjohnwu.magisk', 'me.bmax.apatch',
       'io.github.mmrl', 'com.dergoogler.mmrl', 'com.dergoogler.mmrl.wx',
       'com.android.systemui', 'com.android.vending', 'com.google.android.gms',
-      'com.android.settings', 'com.google.android.gsf'
+      'com.android.settings', 'com.google.android.gsf', 'com.android.shell'
     ]);
     let selected = new Set();
     let allApps = [];
-    let rootApi = null;
 
     function apis() {
       const out = [];
@@ -79,159 +87,130 @@
     }
 
     function api() {
-      if (!rootApi) {
-        const list = apis();
-        rootApi = list.length ? list[0] : null;
-      }
-      return rootApi;
+      const list = apis();
+      return list.length ? list[0] : null;
     }
 
-    function iconPrefix() {
-      if (typeof ksu !== 'undefined') return 'ksu://icon/';
-      if (typeof sukisu !== 'undefined') return 'ksu://icon/';
-      if (typeof apatch !== 'undefined') return 'apatch://icon/';
-      if (typeof magisk !== 'undefined') return 'magisk://icon/';
-      if (typeof mmrl !== 'undefined') return 'mmrl://icon/';
-      return 'ksu://icon/';
+    function iconUrl(pkg) {
+      if (typeof ksu !== 'undefined') return 'ksu://icon/' + pkg;
+      if (typeof sukisu !== 'undefined') return 'ksu://icon/' + pkg;
+      if (typeof apatch !== 'undefined') return 'apatch://icon/' + pkg;
+      if (typeof magisk !== 'undefined') return 'magisk://icon/' + pkg;
+      if (typeof mmrl !== 'undefined') return 'mmrl://icon/' + pkg;
+      return 'ksu://icon/' + pkg;
     }
 
-    function stdoutOf(out) {
+    function normExecOut(out) {
       if (out == null) return '';
       if (typeof out === 'string') {
         try {
           const j = JSON.parse(out);
           if (j && j.stdout != null) return String(j.stdout);
-          if (Array.isArray(j)) return out;
         } catch (e) {}
         return out;
       }
       if (out.stdout != null) return String(out.stdout);
-      if (out.errno === 0 && out.stdout != null) return String(out.stdout);
       return String(out);
     }
 
     async function execCmd(cmd) {
       const a = api();
-      if (!a || !a.exec) throw new Error('Open from SukiSU module WebUI button');
+      if (!a || !a.exec) throw new Error('Open from SukiSU → Modules → WebUI button');
       let r = a.exec(cmd);
       if (r && typeof r.then === 'function') r = await r;
       if (typeof r === 'string') {
         try { r = JSON.parse(r); } catch (e) {}
       }
-      return stdoutOf(r);
+      return normExecOut(r);
     }
 
     function execSync(cmd) {
       const a = api();
-      if (!a || !a.exec) throw new Error('Open from SukiSU module WebUI button');
-      return stdoutOf(a.exec(cmd));
+      if (!a || !a.exec) throw new Error('Open from SukiSU → Modules → WebUI button');
+      let r = a.exec(cmd);
+      if (typeof r === 'string') {
+        try { r = JSON.parse(r); } catch (e) {}
+      }
+      return normExecOut(r);
     }
 
     function toast(m) {
       try { const a = api(); if (a && a.toast) { a.toast(m); return; } } catch (e) {}
     }
 
-    function pkgName(p) {
-      if (!p) return '';
-      if (typeof p === 'string') return p.trim();
-      return String(p.packageName || p.package || p.pkg || p.name || '').trim();
-    }
-
-    function labelOf(p, fallback) {
-      if (typeof p === 'object' && p) {
-        return String(p.appLabel || p.label || p.applicationLabel || fallback || pkgName(p)).trim();
-      }
-      return fallback || pkgName(p);
-    }
-
-    function parseAny(raw) {
-      if (raw == null) return [];
-      if (Array.isArray(raw)) {
-        return raw.map(x => pkgName(x)).filter(Boolean);
-      }
-      if (typeof raw === 'object') {
-        if (raw.packageName || raw.package || raw.pkg) return [pkgName(raw)];
-        if (raw.data && Array.isArray(raw.data)) return parseAny(raw.data);
-        if (raw.packages && Array.isArray(raw.packages)) return parseAny(raw.packages);
-        if (raw.list && Array.isArray(raw.list)) return parseAny(raw.list);
-        return Object.values(raw).map(pkgName).filter(Boolean);
-      }
-      if (typeof raw === 'string') {
-        const s = raw.trim();
-        if (!s) return [];
-        if (s.charAt(0) === '[' || s.charAt(0) === '{') {
-          try { return parseAny(JSON.parse(s)); } catch (e) {}
-        }
-        return s.split('\n').map(l => l.replace(/^package:/, '').trim()).filter(Boolean);
-      }
-      return [];
+    function parseLines(text) {
+      return (text || '').split('\n').map(l => l.replace(/^package:/, '').trim()).filter(Boolean);
     }
 
     function okPkg(p) {
-      if (!p || BLOCKED.has(p)) return false;
-      if (p === '*') return false;
-      if (p.startsWith('com.android.') && p !== 'com.android.chrome') return false;
-      return true;
+      if (!p || p === '*' || BLOCKED.has(p)) return false;
+      return /^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z0-9_]+)+$/.test(p);
     }
 
     function uniq(arr) {
       return [...new Set(arr.filter(okPkg))];
     }
 
-    async function callListAsync(fn) {
-      try {
-        let raw = fn();
-        if (raw && typeof raw.then === 'function') raw = await raw;
-        if (typeof raw === 'string') {
-          try { raw = JSON.parse(raw); } catch (e) {}
-        }
-        return uniq(parseAny(raw));
-      } catch (e) {
-        return [];
-      }
+    async function fromCacheFile() {
+      let out = '';
+      try { out = await execCmd('cat "' + PKGFILE + '" 2>/dev/null'); } catch (e) {}
+      return uniq(parseLines(out));
     }
 
-    async function listFromShell() {
+    async function fromShell() {
       const cmds = [
         'pm list packages -3',
         'pm list packages -3 -u',
         'cmd package list packages --user 0 -3',
-        'pm list packages -e -3'
+        'pm list packages -e -3',
+        'pm list packages | grep -E "^package:com\\."'
       ];
       let best = [];
       for (const cmd of cmds) {
         let out = '';
         try { out = await execCmd(cmd + ' 2>/dev/null'); } catch (e) {}
-        const pkgs = uniq(parseAny(out));
+        const pkgs = uniq(parseLines(out));
         if (pkgs.length > best.length) best = pkgs;
-        if (best.length >= 5) break;
       }
       return best;
     }
 
-    async function listFromApi() {
+    async function fromApi() {
       let merged = [];
       for (const a of apis()) {
-        if (a.listPackages) {
-          for (const t of ['user', 'all']) {
-            const pkgs = await callListAsync(() => a.listPackages(t));
-            merged = uniq([...merged, ...pkgs]);
-          }
-        }
-        for (const fn of ['listUserPackages', 'listUserApps', 'listApps', 'listAllPackages']) {
-          if (!a[fn]) continue;
-          const pkgs = await callListAsync(() => a[fn]());
-          merged = uniq([...merged, ...pkgs]);
+        if (!a.listPackages) continue;
+        for (const t of ['user', 'all']) {
+          try {
+            let r = a.listPackages(t);
+            if (r && typeof r.then === 'function') r = await r;
+            if (typeof r === 'string') {
+              try { r = JSON.parse(r); } catch (e) {}
+            }
+            if (Array.isArray(r)) merged = uniq([...merged, ...r]);
+          } catch (e) {}
         }
       }
       return merged;
     }
 
+    async function refreshCache() {
+      const cmds = [
+        'pm list packages -3 2>/dev/null',
+        'pm list packages -3 -u 2>/dev/null',
+        'cmd package list packages --user 0 -3 2>/dev/null'
+      ].join('; ');
+      try {
+        await execCmd('mkdir -p "' + MOD + '"');
+        await execCmd('(' + cmds + ') | sed "s/^package://g" | sort -u | grep -v "^\\s*$" > "' + PKGFILE + '"');
+      } catch (e) {}
+    }
+
     async function listPackages() {
-      // Shell pm list is most reliable on SukiSU (API often returns 1 wrong app)
-      let pkgs = await listFromShell();
-      const apiPkgs = await listFromApi();
-      pkgs = uniq([...pkgs, ...apiPkgs]);
+      await refreshCache();
+      let pkgs = await fromCacheFile();
+      const shellPkgs = await fromShell();
+      const apiPkgs = await fromApi();
+      pkgs = uniq([...pkgs, ...shellPkgs, ...apiPkgs]);
       return pkgs;
     }
 
@@ -239,8 +218,8 @@
       const map = {};
       const a = api();
       if (a && a.getPackagesInfo) {
-        for (let i = 0; i < pkgs.length; i += 80) {
-          const batch = pkgs.slice(i, i + 80);
+        for (let i = 0; i < pkgs.length; i += 60) {
+          const batch = pkgs.slice(i, i + 60);
           try {
             let info = null;
             try { info = a.getPackagesInfo(JSON.stringify(batch)); } catch (e1) {
@@ -251,14 +230,14 @@
             }
             if (Array.isArray(info)) {
               info.forEach(p => {
-                const n = pkgName(p);
-                if (n) map[n] = labelOf(p, n);
+                const n = p.packageName || p.package || p.pkg;
+                if (n) map[n] = p.appLabel || p.label || n;
               });
             }
           } catch (e) {}
         }
       }
-      pkgs.forEach(p => { if (!map[p]) map[p] = p; });
+      pkgs.forEach(p => { if (!map[p]) map[p] = p.split('.').pop() || p; });
       return map;
     }
 
@@ -266,10 +245,7 @@
       try {
         const t = execSync('cat "' + TARGET + '" 2>/dev/null || true');
         selected.clear();
-        (t || '').split('\n').forEach(l => {
-          l = l.trim();
-          if (l && l !== '*' && okPkg(l)) selected.add(l);
-        });
+        parseLines(t).forEach(p => { if (okPkg(p)) selected.add(p); });
       } catch (e) {}
     }
 
@@ -277,23 +253,29 @@
       const q = document.getElementById('search').value.toLowerCase();
       const list = document.getElementById('list');
       list.innerHTML = '';
-      allApps.filter(a => !q || a.label.toLowerCase().includes(q) || a.pkg.includes(q)).forEach(app => {
+      allApps.filter(a => !q || a.label.toLowerCase().includes(q) || a.pkg.toLowerCase().includes(q)).forEach(app => {
         const row = document.createElement('div');
         row.className = 'row' + (selected.has(app.pkg) ? ' selected' : '');
         row.onclick = () => {
           if (selected.has(app.pkg)) selected.delete(app.pkg); else selected.add(app.pkg);
-          document.getElementById('count').textContent = selected.size + ' selected';
+          document.getElementById('count').textContent = selected.size + ' selected · ' + allApps.length + ' apps';
           render();
         };
+        const icon = document.createElement('div');
+        icon.className = 'icon';
         const img = document.createElement('img');
-        img.src = iconPrefix() + encodeURIComponent(app.pkg);
-        img.onerror = () => { img.style.visibility = 'hidden'; };
+        img.src = iconUrl(app.pkg);
+        img.onerror = () => {
+          img.remove();
+          icon.textContent = (app.label || app.pkg).charAt(0).toUpperCase();
+        };
+        icon.appendChild(img);
         const info = document.createElement('div');
         info.className = 'info';
         info.innerHTML = '<div class="name">' + app.label + '</div><div class="pkg">' + app.pkg + '</div>';
         const dot = document.createElement('div');
         dot.className = 'dot';
-        row.appendChild(img);
+        row.appendChild(icon);
         row.appendChild(info);
         row.appendChild(dot);
         list.appendChild(row);
@@ -302,17 +284,16 @@
     }
 
     function save() {
-      const lines = [...selected].filter(p => okPkg(p) && p !== '*');
-      execSync('mkdir -p /data/adb/modules/zygisk_floating_menu');
+      const lines = [...selected].filter(okPkg);
+      execSync('mkdir -p "' + MOD + '"');
       if (!lines.length) {
         execSync(': > "' + TARGET + '"');
       } else {
         execSync("cat > '" + TARGET + "' << 'EOF'\n" + lines.join('\n') + "\nEOF");
       }
       execSync('chmod 644 "' + TARGET + '"');
-      execSync('grep -vx "\\*" "' + TARGET + '" > "' + TARGET + '.tmp" 2>/dev/null && mv "' + TARGET + '.tmp" "' + TARGET + '" || true');
-      toast('Saved. Reboot phone.');
-      document.getElementById('count').textContent = lines.length + ' saved — reboot';
+      toast('Saved ' + lines.length + ' apps. Reboot now.');
+      document.getElementById('count').textContent = lines.length + ' saved — reboot phone';
     }
 
     async function boot() {
@@ -320,6 +301,7 @@
         const a = api();
         if (a && a.fullScreen) a.fullScreen(false);
         loadSelected();
+        document.getElementById('status').textContent = 'Loading all apps...';
         const pkgs = await listPackages();
         const labels = getLabels(pkgs);
         allApps = pkgs.map(p => ({ pkg: p, label: labels[p] || p }));
@@ -327,7 +309,7 @@
         document.getElementById('count').textContent = selected.size + ' selected · ' + allApps.length + ' apps';
         if (!allApps.length) {
           document.getElementById('status').className = 'status err';
-          document.getElementById('status').textContent = 'No apps found — grant root to WebUI';
+          document.getElementById('status').textContent = 'No apps found — tap Refresh';
         } else {
           render();
         }
@@ -339,6 +321,7 @@
 
     document.getElementById('search').oninput = render;
     document.getElementById('save').onclick = save;
+    document.getElementById('refresh').onclick = boot;
     boot();
   </script>
 </body>
