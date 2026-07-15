@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# Virtus backup v4 — silent backup, Device ID stored in backup folder only
+# Virtus backup v5 — fixed dataDir detect + sdcard fallback
 MODDIR="/data/adb/modules/zygisk_floating_menu"
 BACKUP_ROOT="$MODDIR/backups"
 CONFIG_DIR="$MODDIR/virtus_config"
@@ -19,31 +19,49 @@ pkg_installed() {
 }
 
 read_data_dir() {
-  dumpsys package "$PKG" 2>/dev/null | while IFS= read -r line; do
-    case "$line" in
-      *dataDir=*)
-        D="${line#*dataDir=}"
-        D="${D%% *}"
-        [ -n "$D" ] && [ -d "$D" ] && echo "$D" && exit 0
-        ;;
-    esac
+  dumpsys package "$PKG" 2>/dev/null | grep -m1 'dataDir=' | sed 's/.*dataDir=//; s/ .*//; s/\r//'
+}
+
+resolve_data_dir() {
+  if ! pkg_installed; then
+    return 1
+  fi
+  D="$(read_data_dir)"
+  if [ -n "$D" ] && [ -d "$D" ]; then
+    echo "$D"
+    return 0
+  fi
+  for b in /data/user/0 /data/user/10 /data/user/999 /data/user_de/0 /data/data; do
+    if [ -d "$b/$PKG" ]; then
+      echo "$b/$PKG"
+      return 0
+    fi
   done
+  for udir in /data/user/*/"$PKG" /data/user_de/*/"$PKG"; do
+    if [ -d "$udir" ]; then
+      echo "$udir"
+      return 0
+    fi
+  done
+  FOUND="$(find /data/user /data/user_de -maxdepth 2 -type d -name "$PKG" 2>/dev/null | head -1)"
+  if [ -n "$FOUND" ] && [ -d "$FOUND" ]; then
+    echo "$FOUND"
+    return 0
+  fi
+  if [ -n "$D" ]; then
+    mkdir -p "$D" 2>/dev/null
+    fix_owner "$D" 2>/dev/null
+    [ -d "$D" ] && echo "$D" && return 0
+  fi
+  D="/data/user/0/$PKG"
+  mkdir -p "$D" 2>/dev/null
+  fix_owner "$D" 2>/dev/null
+  [ -d "$D" ] && echo "$D" && return 0
+  return 1
 }
 
 find_app_data() {
-  if ! pkg_installed; then
-    log "not installed: $PKG"
-    return 1
-  fi
-  D="$(read_data_dir | head -1)"
-  if [ -n "$D" ] && [ -d "$D" ]; then echo "$D"; return 0; fi
-  for b in /data/user/0 /data/user/10 /data/user/999 /data/user_de/0 /data/data; do
-    [ -d "$b/$PKG" ] && echo "$b/$PKG" && return 0
-  done
-  for udir in /data/user/*/"$PKG" /data/user_de/*/"$PKG"; do
-    [ -d "$udir" ] && echo "$udir" && return 0
-  done
-  find /data/user /data/user_de -maxdepth 2 -type d -name "$PKG" 2>/dev/null | head -1
+  resolve_data_dir
 }
 
 count_files() { find "$1" -type f 2>/dev/null | wc -l; }
@@ -163,24 +181,37 @@ restore_data_tree() {
 cmd_create() {
   NOTE="$ARG3"
   AID="$ARG4"
-  SRC="$(find_app_data | head -1)"
-  if [ -z "$SRC" ] || [ ! -d "$SRC" ]; then
-    log "data dir not found — open target app, login, force-stop, then backup"
-    exit 1
-  fi
-  FC="$(count_files "$SRC")"
   SD="$(sdcard_app_dir)"
   SDFC=0
   [ -n "$SD" ] && SDFC="$(count_files "$SD")"
+  SRC="$(find_app_data 2>/dev/null | head -1)"
+  if [ -z "$SRC" ] || [ ! -d "$SRC" ]; then
+    if [ "$SDFC" -lt 1 ]; then
+      log "data dir not found — open target app, login, force-stop, then backup"
+      exit 1
+    fi
+    SRC=""
+    FC=0
+  else
+    FC="$(count_files "$SRC")"
+  fi
   if [ "$FC" -lt 1 ] && [ "$SDFC" -lt 1 ]; then
-    log "app data empty ($SRC) — login, then force-stop app before backup"
+    log "app data empty — open app, login, force-stop, then backup"
     exit 1
+  fi
+  if [ "$FC" -lt 1 ] && [ "$SDFC" -gt 0 ]; then
+    log "using sdcard data ($SDFC files)"
+    SRC=""
   fi
   mkdir -p "$BACKUP_ROOT/$PKG" "$CONFIG_DIR"
   ID="$(date +%Y%m%d_%H%M%S)_$$"
   DEST="$BACKUP_ROOT/$PKG/$ID"
   mkdir -p "$DEST"
-  backup_data_tree "$SRC" "$DEST" || { log "backup data failed"; rm -rf "$DEST"; exit 1; }
+  if [ -n "$SRC" ]; then
+    backup_data_tree "$SRC" "$DEST" || { log "backup data failed"; rm -rf "$DEST"; exit 1; }
+  else
+    mkdir -p "$DEST/data"
+  fi
   SD="$(sdcard_app_dir)" && backup_sdcard "$SD" "$DEST"
   copy_apk "$DEST"
   save_identity_to_backup "$DEST" "$AID"
