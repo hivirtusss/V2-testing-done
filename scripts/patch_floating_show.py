@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Gate FloatingMenu.show to selected/target packages only."""
+"""Gate FloatingMenu.show to WebUI selected apps via sIsTargetPackage flag."""
 import sys
 
 path = sys.argv[1]
@@ -30,15 +30,9 @@ show_new = """.method public static show(Landroid/app/Activity;)V
     return-void
 
     :cond_0
-    invoke-virtual {p0}, Landroid/content/Context;->getPackageName()Ljava/lang/String;
+    sget-boolean v0, Lcom/floatingmenu/MenuLoader;->sIsTargetPackage:Z
 
-    move-result-object v0
-
-    invoke-static {v0}, Lcom/floatingmenu/TargetPackageGuard;->isPackageSelected(Ljava/lang/String;)Z
-
-    move-result v0
-
-    if-nez v0, :cond_1
+    if-eqz v0, :cond_1
 
     return-void
 

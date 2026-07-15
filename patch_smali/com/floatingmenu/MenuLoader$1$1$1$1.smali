@@ -351,23 +351,14 @@
     invoke-interface {v0}, Landroid/content/SharedPreferences$Editor;->apply()V
 
     :cond_126
+    sget-boolean v0, Lcom/floatingmenu/MenuLoader;->sIsTargetPackage:Z
+
+    if-eqz v0, :cond_147
+
     iget-object v0, p0, Lcom/floatingmenu/MenuLoader$1$1$1$1;->this$2:Lcom/floatingmenu/MenuLoader$1$1$1;
 
     iget-object v0, v0, Lcom/floatingmenu/MenuLoader$1$1$1;->val$activity:Landroid/app/Activity;
 
-    invoke-virtual {v0}, Landroid/content/Context;->getPackageName()Ljava/lang/String;
-
-    move-result-object v1
-
-    invoke-static {v1}, Lcom/floatingmenu/TargetPackageGuard;->isPackageSelected(Ljava/lang/String;)Z
-
-    move-result v1
-
-    if-nez v1, :cond_show_lic
-
-    goto :goto_147
-
-    :cond_show_lic
     invoke-static {v0}, Lcom/floatingmenu/FloatingMenu;->show(Landroid/app/Activity;)V
 
     goto :goto_147

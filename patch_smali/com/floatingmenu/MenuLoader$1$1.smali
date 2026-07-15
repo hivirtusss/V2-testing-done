@@ -189,22 +189,13 @@
 
     move-result-object v0
 
-    invoke-virtual {p1}, Landroid/content/Context;->getPackageName()Ljava/lang/String;
+    sget-boolean v1, Lcom/floatingmenu/MenuLoader;->sIsTargetPackage:Z
 
-    move-result-object v1
+    if-eqz v1, :cond_50
 
-    invoke-static {v1}, Lcom/floatingmenu/TargetPackageGuard;->isPackageSelected(Ljava/lang/String;)Z
-
-    move-result v1
-
-    if-nez v1, :cond_show
-
-    goto :goto_48
-
-    :cond_show
     invoke-static {p1}, Lcom/floatingmenu/FloatingMenu;->show(Landroid/app/Activity;)V
 
-    :goto_48
+    :cond_50
     new-instance v1, Ljava/lang/Thread;
 
     new-instance v2, Lcom/floatingmenu/MenuLoader$1$1$1;

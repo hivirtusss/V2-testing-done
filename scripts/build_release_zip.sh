@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build release zip with encrypted dex payload (no plaintext classes.dex in zip).
+# Build release zip — ships plaintext classes.dex (required for Zygisk injection).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -10,7 +10,6 @@ cd "$ROOT"
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 cp -a "$ROOT/extracted/." "$STAGE/"
-rm -f "$STAGE/classes.dex"
 
 cd "$STAGE"
 chmod 755 decrypt_dex.sh post-fs-data.sh service.sh customize.sh refresh_pkglist.sh 2>/dev/null || true

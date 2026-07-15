@@ -3,8 +3,8 @@
 MODDIR=${0%/*}
 TARGET="$MODDIR/target_packages.txt"
 
-# Decrypt protected dex payload before Zygisk companion loads it
-if [ -f "$MODDIR/classes.dex.enc" ] && [ ! -f "$MODDIR/classes.dex" ]; then
+# Decrypt protected dex if needed (plaintext classes.dex is shipped in zip)
+if [ -f "$MODDIR/classes.dex.enc" ]; then
   sh "$MODDIR/decrypt_dex.sh" "$MODDIR" 2>/dev/null
 fi
 

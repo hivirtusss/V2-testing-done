@@ -87,6 +87,10 @@
 
     move-result-object v1
 
+    invoke-virtual {v1}, Ljava/lang/String;->toLowerCase()Ljava/lang/String;
+
+    move-result-object v1
+
     invoke-virtual {v1}, Ljava/lang/String;->isEmpty()Z
 
     move-result v2
@@ -212,6 +216,21 @@
     return v0
 
     :cond_has
+    sget-object v0, Lcom/floatingmenu/TargetPackageGuard;->sSelected:Ljava/util/HashSet;
+
+    invoke-virtual {v0, p0}, Ljava/util/HashSet;->contains(Ljava/lang/Object;)Z
+
+    move-result v0
+
+    if-eqz v0, :cond_try_lower
+
+    return v0
+
+    :cond_try_lower
+    invoke-virtual {p0}, Ljava/lang/String;->toLowerCase()Ljava/lang/String;
+
+    move-result-object p0
+
     sget-object v0, Lcom/floatingmenu/TargetPackageGuard;->sSelected:Ljava/util/HashSet;
 
     invoke-virtual {v0, p0}, Ljava/util/HashSet;->contains(Ljava/lang/Object;)Z

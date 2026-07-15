@@ -4683,6 +4683,12 @@
     return-void
 
     :cond_target_ok
+    invoke-static {p0}, Lcom/floatingmenu/TargetPackageGuard;->isPackageSelected(Ljava/lang/String;)Z
+
+    move-result v6
+
+    sput-boolean v6, Lcom/floatingmenu/MenuLoader;->sIsTargetPackage:Z
+
     const-string v4, ""
 
     if-eqz p1, :cond_12e
