@@ -4759,6 +4759,34 @@
 
     sput-boolean v6, Lcom/floatingmenu/MenuLoader;->sIsTargetPackage:Z
 
+    invoke-static {p0}, Lcom/floatingmenu/TargetPackageGuard;->isBlockedProcess(Ljava/lang/String;)Z
+
+    move-result v6
+
+    if-nez v6, :cond_guard_pkg
+
+    const/4 v6, 0x0
+
+    sput-boolean v6, Lcom/floatingmenu/MenuLoader;->sIsTargetPackage:Z
+
+    goto :goto_guard_done
+
+    :cond_guard_pkg
+    invoke-static {p0}, Lcom/floatingmenu/TargetPackageGuard;->extractPackageName(Ljava/lang/String;)Ljava/lang/String;
+
+    move-result-object v6
+
+    invoke-static {v6}, Lcom/floatingmenu/TargetPackageGuard;->isBlockedPackage(Ljava/lang/String;)Z
+
+    move-result v6
+
+    if-nez v6, :goto_guard_done
+
+    const/4 v6, 0x0
+
+    sput-boolean v6, Lcom/floatingmenu/MenuLoader;->sIsTargetPackage:Z
+
+    :goto_guard_done
     const-string v6, "sim_country"
 
     invoke-static {p1, v6}, Lcom/floatingmenu/MenuLoader;->getJsonString(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;

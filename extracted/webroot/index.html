@@ -7,34 +7,21 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; background: transparent; }
-    body {
-      font-family: sans-serif;
-      color: #eee;
-      display: flex;
-      align-items: flex-end;
-      justify-content: center;
-    }
+    body { font-family: sans-serif; color: #eee; display: flex; align-items: flex-end; justify-content: center; }
     .sheet {
-      width: 100%;
-      max-height: 50vh;
-      background: #141418;
-      border-radius: 14px 14px 0 0;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
+      width: 100%; max-height: 50vh; background: #141418;
+      border-radius: 14px 14px 0 0; display: flex; flex-direction: column; overflow: hidden;
     }
     .head { padding: 12px 14px 8px; border-bottom: 1px solid #2a2a30; flex-shrink: 0; }
     .title { color: #c41e3a; font-size: 16px; font-weight: 700; }
     .search {
       width: 100%; margin-top: 8px; padding: 10px 12px;
-      border-radius: 8px; border: 1px solid #333; background: #1c1c22;
-      color: #fff; font-size: 14px;
+      border-radius: 8px; border: 1px solid #333; background: #1c1c22; color: #fff; font-size: 14px;
     }
     .list-wrap { flex: 1; overflow-y: auto; padding: 8px 10px; }
     .row {
-      display: flex; align-items: center; gap: 10px;
-      padding: 10px; margin-bottom: 6px; border-radius: 10px;
-      background: #1c1c22; border: 2px solid transparent;
+      display: flex; align-items: center; gap: 10px; padding: 10px; margin-bottom: 6px;
+      border-radius: 10px; background: #1c1c22; border: 2px solid transparent;
     }
     .row.selected { border-color: #c41e3a; background: rgba(196,30,58,0.2); }
     .row img { width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0; }
@@ -96,29 +83,62 @@
       return 'ksu://icon/';
     }
 
-    function exec(cmd) {
-      const a = api();
-      if (!a || !a.exec) throw new Error('Open from root manager module page');
-      const out = a.exec(cmd);
+    function stdoutOf(out) {
+      if (out == null) return '';
       if (typeof out === 'string') {
         try {
-          const parsed = JSON.parse(out);
-          if (parsed && parsed.stdout != null) return parsed.stdout;
+          const j = JSON.parse(out);
+          if (j && j.stdout != null) return String(j.stdout);
         } catch (e) {}
         return out;
       }
-      return (out && out.stdout != null) ? out.stdout : '';
+      if (out.stdout != null) return String(out.stdout);
+      return String(out);
+    }
+
+    function execSync(cmd) {
+      const a = api();
+      if (!a || !a.exec) throw new Error('Open from root manager module page');
+      return stdoutOf(a.exec(cmd));
+    }
+
+    function execAsync(cmd) {
+      return new Promise((resolve) => {
+        const a = api();
+        if (!a || !a.exec) { resolve(''); return; }
+        if (a.exec.length >= 2) {
+          window.__virtusExecDone = function(code, stdout) {
+            resolve(stdout || '');
+          };
+          try {
+            a.exec(cmd, '__virtusExecDone');
+            return;
+          } catch (e) {}
+        }
+        resolve(execSync(cmd));
+      });
     }
 
     function toast(m) {
       try { const a = api(); if (a && a.toast) { a.toast(m); return; } } catch (e) {}
     }
 
-    function parsePkgJson(raw) {
-      if (!raw) return [];
-      if (Array.isArray(raw)) return raw;
+    function pkgName(p) {
+      if (!p) return '';
+      if (typeof p === 'string') return p.trim();
+      return String(p.packageName || p.pkg || p.name || '').trim();
+    }
+
+    function parseList(raw) {
+      if (raw == null) return [];
+      if (Array.isArray(raw)) return raw.map(pkgName).filter(Boolean);
       if (typeof raw === 'string') {
-        try { return JSON.parse(raw); } catch (e) { return []; }
+        const s = raw.trim();
+        if (!s) return [];
+        if (s.charAt(0) === '[') {
+          try { return JSON.parse(s).map(pkgName).filter(Boolean); } catch (e) {}
+        }
+        return s.split('\n').map(l => l.replace(/^package:/, '').trim()).filter(Boolean);
       }
       return [];
     }
@@ -126,59 +146,20 @@
     function okPkg(p) {
       if (!p || BLOCKED.has(p)) return false;
       if (p.indexOf('.overlay') >= 0) return false;
-      if (p.indexOf('overlay.') >= 0) return false;
-      if (/\.overlay\./.test(p)) return false;
-      if (p.indexOf('com.android.') === 0) return false;
-      if (p.indexOf('com.google.android.') === 0) return false;
-      if (p.indexOf('com.motorola.') === 0 && p.indexOf('overlay') >= 0) return false;
+      if (/overlay/i.test(p) && /launcher|resource|static/i.test(p)) return false;
       return true;
     }
 
     function uniq(arr) {
-      return [...new Set(arr)];
+      return [...new Set(arr.filter(okPkg))];
     }
 
-    function fromShellList(out) {
-      return (out || '').split('\n')
-        .map(l => l.replace(/^package:/, '').trim())
-        .filter(okPkg);
-    }
-
-    function listPackages() {
-      const a = api();
-      if (a) {
-        try {
-          if (typeof a.listUserPackages === 'function') {
-            const pkgs = parsePkgJson(a.listUserPackages())
-              .map(p => (typeof p === 'string' ? p : (p && p.packageName) || ''))
-              .filter(okPkg);
-            if (pkgs.length) return uniq(pkgs);
-          }
-        } catch (e) {}
-        try {
-          if (typeof a.listPackages === 'function') {
-            let raw = a.listPackages('user');
-            const pkgs = parsePkgJson(raw)
-              .map(p => (typeof p === 'string' ? p : (p && p.packageName) || ''))
-              .filter(okPkg);
-            if (pkgs.length) return uniq(pkgs);
-          }
-        } catch (e) {}
-      }
-
-      let pkgs = fromShellList(exec('pm list packages -3 2>/dev/null'));
-      if (pkgs.length) return uniq(pkgs);
-
-      pkgs = fromShellList(exec('cmd package list packages -3 2>/dev/null'));
-      if (pkgs.length) return uniq(pkgs);
-
-      pkgs = fromShellList(exec('pm list packages -3 -u 2>/dev/null'));
-      if (pkgs.length) return uniq(pkgs);
-
-      pkgs = fromShellList(exec('pm list packages 2>/dev/null')).filter(p => {
-        return p.indexOf('com.android.') !== 0 && p.indexOf('com.google.android.') !== 0;
-      });
-      return uniq(pkgs);
+    function isUserInfo(info) {
+      if (!info || info.error) return false;
+      if (info.isSystem === false || info.isSystem === 0) return true;
+      if (info.isSystem === true || info.isSystem === 1) return false;
+      const p = info.packageName || '';
+      return p.indexOf('com.android.') !== 0 && p.indexOf('com.google.android.') !== 0;
     }
 
     function getLabels(pkgs) {
@@ -192,9 +173,9 @@
             try { info = a.getPackagesInfo(JSON.stringify(batch)); } catch (e1) {
               try { info = a.getPackagesInfo(batch); } catch (e2) {}
             }
-            const arr = parsePkgJson(info);
-            arr.forEach(p => {
-              if (p && p.packageName) map[p.packageName] = p.appLabel || p.label || p.packageName;
+            parseList(info).forEach(p => {
+              const n = pkgName(p);
+              if (n) map[n] = p.appLabel || p.label || n;
             });
           } catch (e) {}
         }
@@ -203,9 +184,71 @@
       return map;
     }
 
+    async function listPackages() {
+      const a = api();
+
+      if (a) {
+        try {
+          if (a.listUserPackages) {
+            const pkgs = uniq(parseList(a.listUserPackages()));
+            if (pkgs.length) return pkgs;
+          }
+        } catch (e) {}
+
+        try {
+          if (a.listPackages) {
+            const pkgs = uniq(parseList(a.listPackages('user')));
+            if (pkgs.length) return pkgs;
+          }
+        } catch (e) {}
+
+        try {
+          if (a.listAllPackages) {
+            const all = uniq(parseList(a.listAllPackages()));
+            if (all.length && a.getPackagesInfo) {
+              const user = [];
+              for (let i = 0; i < all.length; i += 100) {
+                const batch = all.slice(i, i + 100);
+                try {
+                  let info = null;
+                  try { info = a.getPackagesInfo(JSON.stringify(batch)); } catch (e) {
+                    info = a.getPackagesInfo(batch);
+                  }
+                  parseList(info).forEach(p => {
+                    const obj = (typeof p === 'object') ? p : { packageName: p };
+                    const n = pkgName(obj);
+                    if (n && isUserInfo(obj) && okPkg(n)) user.push(n);
+                  });
+                } catch (e) {}
+              }
+              if (user.length) return uniq(user);
+            }
+            if (all.length) {
+              return all.filter(p => p.indexOf('com.android.') !== 0 && p.indexOf('com.google.android.') !== 0);
+            }
+          }
+        } catch (e) {}
+      }
+
+      const cmds = [
+        'pm list packages -3',
+        'cmd package list packages -3',
+        'pm list packages -3 -u',
+        'pm list packages -e',
+        'pm list packages'
+      ];
+      for (const cmd of cmds) {
+        let out = execSync(cmd + ' 2>/dev/null');
+        if (!out || out.length < 3) out = await execAsync(cmd + ' 2>/dev/null');
+        const pkgs = uniq(parseList(out));
+        if (pkgs.length) return pkgs;
+      }
+      return [];
+    }
+
     function loadSelected() {
       try {
-        const t = exec('cat "' + TARGET + '" 2>/dev/null || true');
+        const t = execSync('cat "' + TARGET + '" 2>/dev/null || true');
         selected.clear();
         (t || '').split('\n').forEach(l => {
           l = l.trim();
@@ -244,41 +287,43 @@
 
     function save() {
       const lines = [...selected].filter(p => okPkg(p) && p !== '*');
-      exec('mkdir -p /data/adb/modules/zygisk_floating_menu');
+      execSync('mkdir -p /data/adb/modules/zygisk_floating_menu');
       if (!lines.length) {
-        exec(': > "' + TARGET + '"');
+        execSync(': > "' + TARGET + '"');
       } else {
-        const body = lines.join('\n');
-        exec("cat > '" + TARGET + "' << 'EOF'\n" + body + "\nEOF");
+        execSync("cat > '" + TARGET + "' << 'EOF'\n" + lines.join('\n') + "\nEOF");
       }
-      exec('chmod 644 "' + TARGET + '"');
-      exec('grep -vx "\\*" "' + TARGET + '" > "' + TARGET + '.tmp" 2>/dev/null && mv "' + TARGET + '.tmp" "' + TARGET + '" || true');
+      execSync('chmod 644 "' + TARGET + '"');
+      execSync('grep -vx "\\*" "' + TARGET + '" > "' + TARGET + '.tmp" 2>/dev/null && mv "' + TARGET + '.tmp" "' + TARGET + '" || true');
       toast('Saved. Reboot.');
       document.getElementById('count').textContent = lines.length + ' saved — reboot';
     }
 
-    try {
-      const a = api();
-      if (a && a.fullScreen) a.fullScreen(false);
-      loadSelected();
-      const pkgs = listPackages();
-      const labels = getLabels(pkgs);
-      allApps = pkgs.map(p => ({ pkg: p, label: labels[p] || p }));
-      allApps.sort((x, y) => x.label.localeCompare(y.label));
-      document.getElementById('count').textContent = selected.size + ' selected';
-      if (!allApps.length) {
+    async function boot() {
+      try {
+        const a = api();
+        if (a && a.fullScreen) a.fullScreen(false);
+        loadSelected();
+        const pkgs = await listPackages();
+        const labels = getLabels(pkgs);
+        allApps = pkgs.map(p => ({ pkg: p, label: labels[p] || p }));
+        allApps.sort((x, y) => x.label.localeCompare(y.label));
+        document.getElementById('count').textContent = selected.size + ' selected';
+        if (!allApps.length) {
+          document.getElementById('status').className = 'status err';
+          document.getElementById('status').textContent = 'No apps found';
+        } else {
+          render();
+        }
+      } catch (e) {
         document.getElementById('status').className = 'status err';
-        document.getElementById('status').textContent = 'No apps found';
-      } else {
-        render();
+        document.getElementById('status').textContent = e.message || String(e);
       }
-    } catch (e) {
-      document.getElementById('status').className = 'status err';
-      document.getElementById('status').textContent = e.message || String(e);
     }
 
     document.getElementById('search').oninput = render;
     document.getElementById('save').onclick = save;
+    boot();
   </script>
 </body>
 </html>
