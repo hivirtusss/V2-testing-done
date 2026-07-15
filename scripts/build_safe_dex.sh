@@ -17,6 +17,7 @@ cp "$ROOT/patch_smali/com/floatingmenu/MenuLoader.smali" "$WORK/com/floatingmenu
 FM="$WORK/com/floatingmenu/FloatingMenu\$1.smali"
 sed -i \
   -e 's/"Zygisk Mod Menu By @Hivirtus"/"@Hivirtus | Zygisk Mode Menu Virtus v3"/' \
+  -e 's/"Zygisk Injected. Developed for Android."/"Zygisk Devlope By @Hivirtus"/' \
   -e 's/"System SIM Card Configuration"/"@Hivirtus | System SIM Configuration"/' \
   -e 's/const-string v5, "M"/const-string v5, "V"/' \
   -e 's/const v7, -0x9c990f/const v7, -0x3be1c6/g' \
