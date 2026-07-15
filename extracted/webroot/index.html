@@ -3,242 +3,217 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Virtus v3 — Select Hook Apps</title>
+  <title>Select Apps</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; background: transparent; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #0f0f12;
-      color: #f2f2f2;
-      min-height: 100vh;
-      padding: 16px;
-      padding-bottom: 96px;
+      font-family: sans-serif;
+      color: #eee;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
     }
-    .header { margin-bottom: 12px; }
-    .title { color: #c41e3a; font-size: 20px; font-weight: 700; }
-    .sub { color: #aaa; font-size: 13px; margin-top: 6px; line-height: 1.4; }
-    .warn { color: #ff6b6b; font-size: 12px; margin-top: 8px; }
+    .sheet {
+      width: 100%;
+      max-height: 52vh;
+      background: #141418;
+      border-radius: 14px 14px 0 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .head { padding: 12px 14px 8px; border-bottom: 1px solid #2a2a30; flex-shrink: 0; }
+    .title { color: #c41e3a; font-size: 16px; font-weight: 700; }
     .search {
-      width: 100%; margin: 14px 0; padding: 12px 14px;
-      border-radius: 10px; border: 1px solid #333; background: #1a1a1f;
-      color: #fff; font-size: 15px;
+      width: 100%; margin-top: 8px; padding: 10px 12px;
+      border-radius: 8px; border: 1px solid #333; background: #1c1c22;
+      color: #fff; font-size: 14px;
     }
-    .list { display: flex; flex-direction: column; gap: 8px; }
+    .list-wrap { flex: 1; overflow-y: auto; padding: 8px 10px; }
     .row {
-      display: flex; align-items: center; gap: 12px;
-      padding: 12px; border-radius: 12px; background: #1a1a1f;
-      border: 2px solid transparent; cursor: pointer;
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px; margin-bottom: 6px; border-radius: 10px;
+      background: #1c1c22; border: 2px solid transparent;
     }
-    .row.selected { background: rgba(196,30,58,0.25); border-color: #c41e3a; }
-    .row img { width: 40px; height: 40px; border-radius: 10px; background: #333; }
+    .row.selected { border-color: #c41e3a; background: rgba(196,30,58,0.2); }
+    .row img { width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0; }
     .row .info { flex: 1; min-width: 0; }
-    .row .name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .row .pkg { font-size: 11px; color: #888; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .check { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #666; flex-shrink: 0; }
-    .row.selected .check { background: #c41e3a; border-color: #c41e3a; }
-    .bar {
-      position: fixed; left: 0; right: 0; bottom: 0;
-      padding: 12px 16px 20px; background: #121218; border-top: 1px solid #2a2a30;
-    }
-    .btn {
-      width: 100%; padding: 14px; border: none; border-radius: 12px;
-      background: #c41e3a; color: #fff; font-size: 16px; font-weight: 700;
-    }
-    .btn:active { opacity: 0.85; }
-    .count { text-align: center; color: #c41e3a; font-size: 12px; margin-bottom: 8px; }
-    .loading, .error { text-align: center; padding: 40px 16px; color: #aaa; }
-    .error { color: #ff6b6b; }
+    .row .name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .row .pkg { font-size: 10px; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dot { width: 18px; height: 18px; border-radius: 50%; border: 2px solid #666; flex-shrink: 0; }
+    .row.selected .dot { background: #c41e3a; border-color: #c41e3a; }
+    .bar { padding: 10px 14px 14px; border-top: 1px solid #2a2a30; flex-shrink: 0; }
+    .btn { width: 100%; padding: 12px; border: none; border-radius: 10px; background: #c41e3a; color: #fff; font-size: 15px; font-weight: 700; }
+    .count { text-align: center; font-size: 11px; color: #aaa; margin-bottom: 6px; }
+    .status { text-align: center; padding: 20px; color: #888; font-size: 13px; }
+    .err { color: #f55; }
   </style>
 </head>
 <body>
-  <div class="header">
-    <div class="title">Virtus v3 @Hivirtus</div>
-    <div class="sub">Sirf selected apps hook hongi. Bubble: SYSTEM / MESSAGE / TELEGRAM.</div>
-    <div class="warn">Root manager & system apps auto-blocked hain.</div>
-  </div>
-  <input class="search" id="search" type="search" placeholder="Search apps..." />
-  <div id="status" class="loading">Loading installed apps...</div>
-  <div class="list" id="list"></div>
-  <div class="bar">
-    <div class="count" id="count">0 selected</div>
-    <button class="btn" id="save">Save & Reboot</button>
+  <div class="sheet">
+    <div class="head">
+      <div class="title">Select Hook Apps</div>
+      <input class="search" id="search" type="search" placeholder="Search" />
+    </div>
+    <div class="list-wrap">
+      <div id="status" class="status">Loading...</div>
+      <div id="list"></div>
+    </div>
+    <div class="bar">
+      <div class="count" id="count">0 selected</div>
+      <button class="btn" id="save">Save</button>
+    </div>
   </div>
   <script>
     const TARGET = '/data/adb/modules/zygisk_floating_menu/target_packages.txt';
     const BLOCKED = new Set([
       'android', 'me.weishu.kernelsu', 'com.vvb2060.kernelsu', 'com.rifsxd.ksunext',
-      'me.rifsxds.ksunext', 'com.sukisu.ultra', 'com.topjohnwu.magisk',
-      'me.bmax.apatch', 'io.github.mmrl', 'com.dergoogler.mmrl',
-      'bin.mt.plus', 'bin.mt.plus.canary', 'com.android.systemui',
-      'com.android.settings', 'com.android.launcher3', 'com.miui.home'
+      'me.rifsxds.ksunext', 'com.sukisu.ultra', 'com.topjohnwu.magisk', 'me.bmax.apatch',
+      'io.github.mmrl', 'com.dergoogler.mmrl', 'bin.mt.plus', 'bin.mt.plus.canary',
+      'com.android.systemui', 'com.android.settings', 'com.android.launcher3', 'com.miui.home'
     ]);
     let selected = new Set();
     let allApps = [];
     let rootApi = null;
 
-    function detectRootApi() {
-      if (typeof ksu !== 'undefined') return ksu;
-      if (typeof apatch !== 'undefined') return apatch;
-      if (typeof magisk !== 'undefined') return magisk;
-      if (typeof mmrl !== 'undefined') return mmrl;
-      return null;
-    }
-
-    function toast(msg) {
-      try {
-        rootApi = rootApi || detectRootApi();
-        if (rootApi && rootApi.toast) { rootApi.toast(msg); return; }
-      } catch (e) {}
-      alert(msg);
+    function api() {
+      if (!rootApi) {
+        if (typeof ksu !== 'undefined') rootApi = ksu;
+        else if (typeof apatch !== 'undefined') rootApi = apatch;
+        else if (typeof magisk !== 'undefined') rootApi = magisk;
+        else if (typeof mmrl !== 'undefined') rootApi = mmrl;
+      }
+      return rootApi;
     }
 
     function exec(cmd) {
-      rootApi = rootApi || detectRootApi();
-      if (!rootApi || !rootApi.exec) {
-        throw new Error('Root manager WebUI se open karo — Action ya module name tap karo.');
-      }
-      const out = rootApi.exec(cmd);
-      if (typeof out === 'string') return { stdout: out, errno: 0 };
-      return out || { stdout: '', errno: 0 };
+      const a = api();
+      if (!a || !a.exec) throw new Error('Open from root manager module page');
+      const out = a.exec(cmd);
+      if (typeof out === 'string') return out;
+      return (out && out.stdout) ? out.stdout : '';
     }
 
-    function loadSelected() {
-      try {
-        const { stdout } = exec('cat "' + TARGET + '" 2>/dev/null || true');
-        selected.clear();
-        (stdout || '').split('\n').forEach(line => {
-          line = line.trim();
-          if (line && line !== '*' && !BLOCKED.has(line)) selected.add(line);
-        });
-      } catch (e) { console.log(e); }
+    function toast(m) {
+      try { const a = api(); if (a && a.toast) { a.toast(m); return; } } catch (e) {}
+    }
+
+    function parsePkgJson(raw) {
+      if (!raw) return [];
+      if (Array.isArray(raw)) return raw;
+      if (typeof raw === 'string') {
+        try { return JSON.parse(raw); } catch (e) { return []; }
+      }
+      return [];
+    }
+
+    function okPkg(p) {
+      if (!p || BLOCKED.has(p)) return false;
+      if (p.indexOf('.overlay') >= 0) return false;
+      if (p.indexOf('overlay') >= 0 && p.indexOf('launcher') >= 0) return false;
+      return true;
     }
 
     function listPackages() {
-      rootApi = rootApi || detectRootApi();
-      if (rootApi) {
-        if (rootApi.listAllPackages) {
-          const raw = rootApi.listAllPackages();
-          return typeof raw === 'string' ? JSON.parse(raw) : raw;
-        }
-        if (rootApi.listUserPackages && rootApi.listSystemPackages) {
-          const u = JSON.parse(rootApi.listUserPackages());
-          const s = JSON.parse(rootApi.listSystemPackages());
-          return [...new Set([...u, ...s])];
-        }
-        if (rootApi.listPackages) {
-          const u = rootApi.listPackages('user') || [];
-          const s = rootApi.listPackages('system') || [];
-          return [...new Set([...(u || []), ...(s || [])])];
-        }
-      }
-      const { stdout } = exec('pm list packages -3 2>/dev/null; pm list packages -s 2>/dev/null');
-      const pkgs = [];
-      (stdout || '').split('\n').forEach(line => {
-        if (line.startsWith('package:')) pkgs.push(line.replace('package:', '').trim());
-      });
-      return [...new Set(pkgs)];
+      let out = exec('pm list packages -3 2>/dev/null');
+      let pkgs = (out || '').split('\n').map(l => l.replace(/^package:/, '').trim()).filter(okPkg);
+      if (pkgs.length) return pkgs;
+      out = exec('pm list packages 2>/dev/null');
+      pkgs = (out || '').split('\n').map(l => l.replace(/^package:/, '').trim()).filter(okPkg);
+      return pkgs;
     }
 
     function getLabels(pkgs) {
       const map = {};
-      rootApi = rootApi || detectRootApi();
-      if (rootApi && rootApi.getPackagesInfo) {
-        try {
-          const info = ksu.getPackagesInfo(JSON.stringify(pkgs.slice(0, 500)));
-          const arr = typeof info === 'string' ? JSON.parse(info) : info;
-          arr.forEach(p => { map[p.packageName] = p.label || p.packageName; });
-          return map;
-        } catch (e) {}
+      const a = api();
+      if (a && a.getPackagesInfo) {
+        for (let i = 0; i < pkgs.length; i += 80) {
+          const batch = pkgs.slice(i, i + 80);
+          try {
+            const info = a.getPackagesInfo(JSON.stringify(batch));
+            const arr = parsePkgJson(info);
+            arr.forEach(p => { if (p && p.packageName) map[p.packageName] = p.label || p.packageName; });
+          } catch (e) {}
+        }
       }
-      pkgs.forEach(p => { map[p] = p; });
+      pkgs.forEach(p => { if (!map[p]) map[p] = p; });
       return map;
     }
 
-    function iconUrl(pkg) {
-      rootApi = rootApi || detectRootApi();
-      if (rootApi) return 'ksu://icon/' + encodeURIComponent(pkg);
-      return '';
+    function loadSelected() {
+      try {
+        const t = exec('cat "' + TARGET + '" 2>/dev/null || true');
+        selected.clear();
+        (t || '').split('\n').forEach(l => {
+          l = l.trim();
+          if (l && l !== '*' && okPkg(l)) selected.add(l);
+        });
+      } catch (e) {}
     }
 
     function render() {
       const q = document.getElementById('search').value.toLowerCase();
       const list = document.getElementById('list');
       list.innerHTML = '';
-      const filtered = allApps.filter(a =>
-        !q || a.label.toLowerCase().includes(q) || a.pkg.toLowerCase().includes(q)
-      );
-      filtered.forEach(app => {
+      allApps.filter(a => !q || a.label.toLowerCase().includes(q) || a.pkg.includes(q)).forEach(app => {
         const row = document.createElement('div');
         row.className = 'row' + (selected.has(app.pkg) ? ' selected' : '');
         row.onclick = () => {
-          if (selected.has(app.pkg)) selected.delete(app.pkg);
-          else selected.add(app.pkg);
-          updateCount();
+          if (selected.has(app.pkg)) selected.delete(app.pkg); else selected.add(app.pkg);
+          document.getElementById('count').textContent = selected.size + ' selected';
           render();
         };
         const img = document.createElement('img');
-        img.src = iconUrl(app.pkg);
-        img.alt = '';
-        img.onerror = () => { img.style.display = 'none'; };
+        img.src = 'ksu://icon/' + encodeURIComponent(app.pkg);
+        img.onerror = () => { img.style.visibility = 'hidden'; };
         const info = document.createElement('div');
         info.className = 'info';
-        info.innerHTML = '<div class="name">' + escapeHtml(app.label) + '</div><div class="pkg">' + escapeHtml(app.pkg) + '</div>';
-        const check = document.createElement('div');
-        check.className = 'check';
+        info.innerHTML = '<div class="name">' + app.label + '</div><div class="pkg">' + app.pkg + '</div>';
+        const dot = document.createElement('div');
+        dot.className = 'dot';
         row.appendChild(img);
         row.appendChild(info);
-        row.appendChild(check);
+        row.appendChild(dot);
         list.appendChild(row);
       });
       document.getElementById('status').style.display = 'none';
     }
 
-    function escapeHtml(s) {
-      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    }
-
-    function updateCount() {
-      document.getElementById('count').textContent = selected.size + ' selected — reboot after save';
-    }
-
     function save() {
-      const lines = [...selected].filter(p => !BLOCKED.has(p) && p !== '*');
+      const lines = [...selected].filter(p => okPkg(p) && p !== '*');
       const content = lines.join('\n');
       exec('mkdir -p /data/adb/modules/zygisk_floating_menu');
-      try {
-        const b64 = btoa(unescape(encodeURIComponent(content)));
-        exec('echo ' + b64 + ' | base64 -d > "' + TARGET + '"');
-      } catch (e) {
-        exec(': > "' + TARGET + '"');
-        lines.forEach(line => {
-          exec('echo "' + line.replace(/"/g, '\\"') + '" >> "' + TARGET + '"');
-        });
-      }
+      const b64 = btoa(unescape(encodeURIComponent(content)));
+      exec("echo '" + b64 + "' | base64 -d > '" + TARGET + "'");
       exec('chmod 644 "' + TARGET + '"');
       exec('grep -vx "\\*" "' + TARGET + '" > "' + TARGET + '.tmp" 2>/dev/null && mv "' + TARGET + '.tmp" "' + TARGET + '" || true');
-      toast('Saved ' + lines.length + ' apps. Ab reboot karo.');
+      toast('Saved. Reboot.');
+      document.getElementById('count').textContent = lines.length + ' saved — reboot';
     }
 
-    async function init() {
-      try {
-        rootApi = detectRootApi();
-        if (rootApi && rootApi.fullScreen) rootApi.fullScreen(true);
-        loadSelected();
-        const pkgs = listPackages().filter(p => p && !BLOCKED.has(p));
-        const labels = getLabels(pkgs);
-        allApps = pkgs.map(p => ({ pkg: p, label: labels[p] || p }));
-        allApps.sort((a, b) => a.label.localeCompare(b.label));
-        updateCount();
+    try {
+      const a = api();
+      if (a && a.fullScreen) a.fullScreen(false);
+      loadSelected();
+      const pkgs = listPackages();
+      const labels = getLabels(pkgs);
+      allApps = pkgs.map(p => ({ pkg: p, label: labels[p] || p }));
+      allApps.sort((x, y) => x.label.localeCompare(y.label));
+      document.getElementById('count').textContent = selected.size + ' selected';
+      if (!allApps.length) {
+        document.getElementById('status').className = 'status err';
+        document.getElementById('status').textContent = 'No apps found';
+      } else {
         render();
-      } catch (e) {
-        document.getElementById('status').className = 'error';
-        document.getElementById('status').textContent = e.message || String(e);
       }
+    } catch (e) {
+      document.getElementById('status').className = 'status err';
+      document.getElementById('status').textContent = e.message || String(e);
     }
 
     document.getElementById('search').oninput = render;
     document.getElementById('save').onclick = save;
-    init();
   </script>
 </body>
 </html>

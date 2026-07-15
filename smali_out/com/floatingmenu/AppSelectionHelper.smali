@@ -78,7 +78,7 @@
 
     invoke-direct {v1, p0}, Landroid/widget/TextView;-><init>(Landroid/content/Context;)V
 
-    const-string v2, "@Hivirtus App Selection"
+    const-string v2, "Select Apps"
 
     invoke-virtual {v1, v2}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V
 
@@ -102,7 +102,7 @@
 
     invoke-direct {v1, p0}, Landroid/widget/TextView;-><init>(Landroid/content/Context;)V
 
-    const-string v2, "Sirf selected apps hook hongi (YesPay, Messages, etc.) @Hivirtus"
+    const-string v2, "Tap to select hook apps"
 
     invoke-virtual {v1, v2}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V
 
@@ -113,26 +113,6 @@
     const/4 v2, 0x2
 
     const/high16 v3, 0x41000000    # 8.0f
-
-    invoke-virtual {v1, v2, v3}, Landroid/widget/TextView;->setTextSize(IF)V
-
-    invoke-virtual {v0, v1}, Landroid/view/ViewGroup;->addView(Landroid/view/View;)V
-
-    new-instance v1, Landroid/widget/TextView;
-
-    invoke-direct {v1, p0}, Landroid/widget/TextView;-><init>(Landroid/content/Context;)V
-
-    const-string v2, "(*) wildcard removed — only selected apps will hook @Hivirtus"
-
-    invoke-virtual {v1, v2}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V
-
-    const v2, -0x2cd0d1
-
-    invoke-virtual {v1, v2}, Landroid/widget/TextView;->setTextColor(I)V
-
-    const/4 v2, 0x2
-
-    const/high16 v3, 0x40e00000    # 7.0f
 
     invoke-virtual {v1, v2, v3}, Landroid/widget/TextView;->setTextSize(IF)V
 
@@ -182,7 +162,7 @@
 
     invoke-direct {v1, p0}, Landroid/widget/Button;-><init>(Landroid/content/Context;)V
 
-    const-string v2, "Save Selection @Hivirtus"
+    const-string v2, "Save"
 
     invoke-virtual {v1, v2}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V
 
@@ -225,30 +205,6 @@
     iput v3, v2, Landroid/widget/LinearLayout$LayoutParams;->topMargin:I
 
     invoke-virtual {v0, v1, v2}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
-
-    new-instance v1, Landroid/widget/TextView;
-
-    invoke-direct {v1, p0}, Landroid/widget/TextView;-><init>(Landroid/content/Context;)V
-
-    const-string v2, "Powered by @Hivirtus"
-
-    invoke-virtual {v1, v2}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V
-
-    const v2, -0x2cd0d1
-
-    invoke-virtual {v1, v2}, Landroid/widget/TextView;->setTextColor(I)V
-
-    const/4 v2, 0x2
-
-    const/high16 v3, 0x41000000    # 8.0f
-
-    invoke-virtual {v1, v2, v3}, Landroid/widget/TextView;->setTextSize(IF)V
-
-    const/16 v2, 0x11
-
-    invoke-virtual {v1, v2}, Landroid/widget/TextView;->setGravity(I)V
-
-    invoke-virtual {v0, v1}, Landroid/view/ViewGroup;->addView(Landroid/view/View;)V
 
     new-instance v1, Ljava/lang/Thread;
 
@@ -645,7 +601,7 @@
 
     invoke-virtual {v0, v1}, Ljava/lang/StringBuilder;->append(I)Ljava/lang/StringBuilder;
 
-    const-string v1, " app(s). Reboot required @Hivirtus"
+    const-string v1, " saved. Reboot."
 
     invoke-virtual {v0, v1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
 

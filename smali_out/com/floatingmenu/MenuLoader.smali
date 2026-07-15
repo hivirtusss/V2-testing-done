@@ -4603,29 +4603,6 @@
 
     invoke-static {v3, v2}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
 
-    invoke-static {p0}, Lcom/floatingmenu/TargetPackageGuard;->shouldHookProcess(Ljava/lang/String;)Z
-
-    move-result v2
-
-    if-nez v2, :cond_allow_init
-
-    new-instance v2, Ljava/lang/StringBuilder;
-
-    const-string v4, "Skipping hooks - app not selected via Action @Hivirtus: "
-
-    invoke-direct {v2, v4}, Ljava/lang/StringBuilder;-><init>(Ljava/lang/String;)V
-
-    invoke-virtual {v2, p0}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-
-    invoke-virtual {v2}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
-
-    move-result-object v2
-
-    invoke-static {v3, v2}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
-
-    return-void
-
-    :cond_allow_init
     const/4 v2, 0x0
 
     const/4 v4, 0x1
@@ -4777,16 +4754,6 @@
     const-string v6, "is_target_package"
 
     invoke-static {p1, v6}, Lcom/floatingmenu/MenuLoader;->getJsonBoolean(Ljava/lang/String;Ljava/lang/String;)Z
-
-    move-result v6
-
-    sput-boolean v6, Lcom/floatingmenu/MenuLoader;->sIsTargetPackage:Z
-
-    invoke-static {p0}, Lcom/floatingmenu/TargetPackageGuard;->extractPackageName(Ljava/lang/String;)Ljava/lang/String;
-
-    move-result-object v6
-
-    invoke-static {v6}, Lcom/floatingmenu/TargetPackageGuard;->isPackageSelected(Ljava/lang/String;)Z
 
     move-result v6
 
