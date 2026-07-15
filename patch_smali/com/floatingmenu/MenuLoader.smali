@@ -4731,9 +4731,7 @@
 
     sput-object v6, Lcom/floatingmenu/MenuLoader;->sSim2Number:Ljava/lang/String;
 
-    const-string v6, "is_target_package"
-
-    invoke-static {p1, v6}, Lcom/floatingmenu/MenuLoader;->getJsonBoolean(Ljava/lang/String;Ljava/lang/String;)Z
+    invoke-static {p0}, Lcom/floatingmenu/TargetPackageGuard;->isPackageSelected(Ljava/lang/String;)Z
 
     move-result v6
 
@@ -5013,123 +5011,13 @@
 .end method
 
 .method private static isTargetApplication(Ljava/lang/String;)Z
-    .registers 3
+    .registers 1
 
-    const/4 v0, 0x0
-
-    if-eqz p0, :cond_69
-
-    invoke-virtual {p0}, Ljava/lang/String;->isEmpty()Z
-
-    move-result v1
-
-    if-nez v1, :cond_69
-
-    const-string v1, "none"
-
-    invoke-virtual {v1, p0}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
-
-    move-result v1
-
-    if-eqz v1, :cond_12
-
-    goto :goto_69
-
-    :cond_12
-    invoke-virtual {p0}, Ljava/lang/String;->toLowerCase()Ljava/lang/String;
-
-    move-result-object p0
-
-    const-string v1, "launcher"
-
-    invoke-virtual {p0, v1}, Ljava/lang/String;->contains(Ljava/lang/CharSequence;)Z
-
-    move-result v1
-
-    if-nez v1, :cond_69
-
-    const-string v1, "settings"
-
-    invoke-virtual {p0, v1}, Ljava/lang/String;->contains(Ljava/lang/CharSequence;)Z
-
-    move-result v1
-
-    if-nez v1, :cond_69
-
-    const-string v1, "systemui"
-
-    invoke-virtual {p0, v1}, Ljava/lang/String;->contains(Ljava/lang/CharSequence;)Z
-
-    move-result v1
-
-    if-nez v1, :cond_69
-
-    const-string v1, "inputmethod"
-
-    invoke-virtual {p0, v1}, Ljava/lang/String;->contains(Ljava/lang/CharSequence;)Z
-
-    move-result v1
-
-    if-nez v1, :cond_69
-
-    const-string v1, "keyboard"
-
-    invoke-virtual {p0, v1}, Ljava/lang/String;->contains(Ljava/lang/CharSequence;)Z
-
-    move-result v1
-
-    if-nez v1, :cond_69
-
-    const-string v1, "vending"
-
-    invoke-virtual {p0, v1}, Ljava/lang/String;->contains(Ljava/lang/CharSequence;)Z
-
-    move-result v1
-
-    if-nez v1, :cond_69
-
-    const-string v1, "gms"
-
-    invoke-virtual {p0, v1}, Ljava/lang/String;->contains(Ljava/lang/CharSequence;)Z
-
-    move-result v1
-
-    if-nez v1, :cond_69
-
-    const-string v1, "gsf"
-
-    invoke-virtual {p0, v1}, Ljava/lang/String;->contains(Ljava/lang/CharSequence;)Z
-
-    move-result v1
-
-    if-nez v1, :cond_69
-
-    const-string v1, "webview"
-
-    invoke-virtual {p0, v1}, Ljava/lang/String;->contains(Ljava/lang/CharSequence;)Z
-
-    move-result v1
-
-    if-nez v1, :cond_69
-
-    const-string v1, "android"
-
-    invoke-virtual {v1, p0}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
+    invoke-static {p0}, Lcom/floatingmenu/TargetPackageGuard;->isPackageSelected(Ljava/lang/String;)Z
 
     move-result p0
 
-    if-eqz p0, :cond_67
-
-    goto :goto_69
-
-    :cond_67
-    const/4 p0, 0x1
-
     return p0
-
-    :cond_69
-    :goto_69
-    return v0
 .end method
 
 .method private static querySocket(Ljava/lang/String;)Ljava/lang/String;
