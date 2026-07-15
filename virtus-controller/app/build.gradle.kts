@@ -11,13 +11,23 @@ android {
         applicationId = "com.hivirtus.virtuscontroller"
         minSdk = 26
         targetSdk = 34
-        versionCode = 9
-        versionName = "2.4"
+        versionCode = 10
+        versionName = "2.4.1"
+    }
+
+    signingConfigs {
+        create("release") {
+            storeFile = file("../virtus-release.jks")
+            storePassword = "virtusv3release"
+            keyAlias = "virtus"
+            keyPassword = "virtusv3release"
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
