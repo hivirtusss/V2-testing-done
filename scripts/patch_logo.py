@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Replace bubble logo and fit it on the floating popup."""
+"""Replace bubble logo and center-fit it on the floating bubble."""
 import re
 import sys
 
@@ -16,14 +16,7 @@ text, n = re.subn(
 if n != 1:
     sys.exit(f"logo replace failed ({n})")
 
-text = text.replace(
-    "invoke-virtual {v9, v5}, Landroid/widget/ImageView;->setImageBitmap(Landroid/graphics/Bitmap;)V\n\n"
-    "    sget-object v4, Landroid/widget/ImageView$ScaleType;->FIT_CENTER:Landroid/widget/ImageView$ScaleType;",
-    "invoke-virtual {v9, v5}, Landroid/widget/ImageView;->setImageBitmap(Landroid/graphics/Bitmap;)V\n\n"
-    "    sget-object v4, Landroid/widget/ImageView$ScaleType;->CENTER_CROP:Landroid/widget/ImageView$ScaleType;",
-    1,
-)
-
+# Keep FIT_CENTER so the full logo stays visible and centered like the menu icon.
 text = re.sub(
     r"const/4 v8, 0x2\n\n    const/high16 v7, 0x41000000    # 8\.0f\n\n    :try_start_8b",
     "const/4 v8, 0x2\n\n    const/4 v7, 0x0\n\n    :try_start_8b",
@@ -43,5 +36,21 @@ text = text.replace(
     1,
 )
 
+text = text.replace(
+    "    invoke-virtual {v9, v4, v4, v4, v4}, Landroid/view/View;->setPadding(IIII)V\n\n"
+    "    new-instance v4, Landroid/widget/FrameLayout$LayoutParams;\n\n"
+    "    invoke-direct {v4, v11, v11}, Landroid/widget/FrameLayout$LayoutParams;-><init>(II)V\n\n"
+    "    invoke-virtual {v10, v9, v4}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V\n"
+    "    :try_end_b8",
+    "    invoke-virtual {v9, v4, v4, v4, v4}, Landroid/view/View;->setPadding(IIII)V\n\n"
+    "    new-instance v4, Landroid/widget/FrameLayout$LayoutParams;\n\n"
+    "    invoke-direct {v4, v11, v11}, Landroid/widget/FrameLayout$LayoutParams;-><init>(II)V\n\n"
+    "    const/16 v5, 0x11\n\n"
+    "    iput v5, v4, Landroid/widget/FrameLayout$LayoutParams;->gravity:I\n\n"
+    "    invoke-virtual {v10, v9, v4}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V\n"
+    "    :try_end_b8",
+    1,
+)
+
 open(path, "w").write(text)
-print(f"logo patched ({len(logo)} chars) + bubble fit")
+print(f"logo patched ({len(logo)} chars) + centered bubble fit")
