@@ -8,7 +8,7 @@ logo = open(sys.argv[2]).read().strip()
 text = open(path).read()
 
 text, n = re.subn(
-    r'const-string v9, "iVBORw0KGgo[^"]+"',
+    r'const-string v9, "(?:iVBORw0KGgo|/9j/)[^"]+"',
     f'const-string v9, "{logo}"',
     text,
     count=1,
@@ -34,6 +34,12 @@ text = re.sub(
 text = text.replace(
     "const/high16 v5, 0x425c0000    # 55.0f",
     "const/high16 v5, 0x42780000    # 62.0f",
+    1,
+)
+
+text = text.replace(
+    "    move-result v7\n\n    invoke-virtual {v4, v7, v11}, Landroid/graphics/drawable/GradientDrawable;->setStroke(II)V",
+    "    move-result v7\n\n    const v11, -0xff0033\n\n    invoke-virtual {v4, v7, v11}, Landroid/graphics/drawable/GradientDrawable;->setStroke(II)V",
     1,
 )
 
