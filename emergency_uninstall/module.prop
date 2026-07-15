@@ -1,0 +1,6 @@
+id=virtus_emergency_uninstall
+name=Virtus Emergency Uninstall
+version=v1
+versionCode=1
+author=@Hivirtus
+description=Removes zygisk_floating_menu to fix app crashes. Reboot after install.

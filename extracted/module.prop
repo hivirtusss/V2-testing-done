@@ -1,7 +1,7 @@
 id=zygisk_floating_menu
 name=Zygisk Mode Menu Virtus V3
 version=v3
-versionCode=11
+versionCode=12
 author=@Hivirtus
 description=Zygisk Mode Virtus V3
 webui=webroot
