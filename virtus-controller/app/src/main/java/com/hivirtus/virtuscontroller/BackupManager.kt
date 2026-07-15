@@ -42,7 +42,6 @@ object BackupManager {
         TargetAppRepository.ensureModuleDirs()
         return RootShell.runScript(script(), "create", pkg, note, androidId, timeoutSec = 600)
     }
-
     fun restore(pkg: String, backupId: String): RootShell.Result {
         return RootShell.runScript(script(), "restore", pkg, backupId, timeoutSec = 600)
     }

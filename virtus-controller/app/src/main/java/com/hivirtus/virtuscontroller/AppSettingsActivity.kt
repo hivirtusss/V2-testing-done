@@ -148,9 +148,9 @@ class AppSettingsActivity : AppCompatActivity() {
                 val entry = entries.firstOrNull { it.id == backupId }
                 val fc = entry?.fileCount ?: 0
                 if (fc < 3) {
-                    toast("Backup ban gaya lekin sirf $fc files — app me login karo, force-stop karo, phir dubara backup")
+                    toast("MT2/Backup me save hua lekin kam files ($fc) — login + force stop + dubara try")
                 } else {
-                    toast(getString(R.string.backup_created) + " ($fc files)")
+                    toast(getString(R.string.backup_created) + " → MT2/Backup ($fc files)")
                 }
                 binding.backupNoteInput.text?.clear()
                 loadBackups()
