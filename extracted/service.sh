@@ -12,7 +12,7 @@ else
 fi
 
 # Remove dangerous packages if present
-BLOCKED="me.weishu.kernelsu com.topjohnwu.magisk bin.mt.plus bin.mt.plus.canary me.bmax.apatch com.android.systemui com.android.settings com.android.launcher3 com.miui.home"
+BLOCKED="me.weishu.kernelsu com.vvb2060.kernelsu com.rifsxd.ksunext me.rifsxds.ksunext com.sukisu.ultra com.topjohnwu.magisk me.bmax.apatch io.github.mmrl com.dergoogler.mmrl bin.mt.plus bin.mt.plus.canary com.android.systemui com.android.settings com.android.launcher3 com.miui.home"
 for pkg in $BLOCKED; do
   grep -vx "$pkg" "$TARGET" 2>/dev/null > "$TARGET.tmp" && mv "$TARGET.tmp" "$TARGET"
 done

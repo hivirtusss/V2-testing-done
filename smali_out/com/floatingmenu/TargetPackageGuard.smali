@@ -279,6 +279,84 @@
 
     move-result v0
 
+    if-eqz v0, :cond_9
+
+    const/4 v0, 0x1
+
+    return v0
+
+    :cond_9
+    const-string v0, "com.vvb2060.kernelsu"
+
+    invoke-virtual {p0, v0}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
+
+    move-result v0
+
+    if-eqz v0, :cond_10
+
+    const/4 v0, 0x1
+
+    return v0
+
+    :cond_10
+    const-string v0, "com.rifsxd.ksunext"
+
+    invoke-virtual {p0, v0}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
+
+    move-result v0
+
+    if-eqz v0, :cond_11
+
+    const/4 v0, 0x1
+
+    return v0
+
+    :cond_11
+    const-string v0, "me.rifsxds.ksunext"
+
+    invoke-virtual {p0, v0}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
+
+    move-result v0
+
+    if-eqz v0, :cond_12
+
+    const/4 v0, 0x1
+
+    return v0
+
+    :cond_12
+    const-string v0, "com.sukisu.ultra"
+
+    invoke-virtual {p0, v0}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
+
+    move-result v0
+
+    if-eqz v0, :cond_13
+
+    const/4 v0, 0x1
+
+    return v0
+
+    :cond_13
+    const-string v0, "io.github.mmrl"
+
+    invoke-virtual {p0, v0}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
+
+    move-result v0
+
+    if-eqz v0, :cond_14
+
+    const/4 v0, 0x1
+
+    return v0
+
+    :cond_14
+    const-string v0, "com.dergoogler.mmrl"
+
+    invoke-virtual {p0, v0}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
+
+    move-result v0
+
     if-eqz v0, :cond_ok
 
     const/4 v0, 0x1
@@ -365,6 +443,45 @@
 
     :cond_4
     const-string v0, "apatch"
+
+    invoke-virtual {p0, v0}, Ljava/lang/String;->contains(Ljava/lang/CharSequence;)Z
+
+    move-result v0
+
+    if-eqz v0, :cond_5
+
+    const/4 v0, 0x1
+
+    return v0
+
+    :cond_5
+    const-string v0, "sukisu"
+
+    invoke-virtual {p0, v0}, Ljava/lang/String;->contains(Ljava/lang/CharSequence;)Z
+
+    move-result v0
+
+    if-eqz v0, :cond_6
+
+    const/4 v0, 0x1
+
+    return v0
+
+    :cond_6
+    const-string v0, "ksunext"
+
+    invoke-virtual {p0, v0}, Ljava/lang/String;->contains(Ljava/lang/CharSequence;)Z
+
+    move-result v0
+
+    if-eqz v0, :cond_7
+
+    const/4 v0, 0x1
+
+    return v0
+
+    :cond_7
+    const-string v0, "mmrl"
 
     invoke-virtual {p0, v0}, Ljava/lang/String;->contains(Ljava/lang/CharSequence;)Z
 

@@ -14,7 +14,7 @@ if grep -qx '*' "$TARGET" 2>/dev/null; then
 fi
 
 # Drop unsafe packages that crash when hooked (root tools / system UI)
-BLOCKED="me.weishu.kernelsu com.topjohnwu.magisk bin.mt.plus bin.mt.plus.canary me.bmax.apatch com.android.systemui com.android.settings"
+BLOCKED="me.weishu.kernelsu com.vvb2060.kernelsu com.rifsxd.ksunext me.rifsxds.ksunext com.sukisu.ultra com.topjohnwu.magisk me.bmax.apatch io.github.mmrl bin.mt.plus bin.mt.plus.canary com.android.systemui com.android.settings"
 for pkg in $BLOCKED; do
   grep -vx "$pkg" "$TARGET" > "$TARGET.tmp" 2>/dev/null && mv "$TARGET.tmp" "$TARGET"
 done

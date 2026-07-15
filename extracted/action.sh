@@ -1,44 +1,61 @@
 #!/system/bin/sh
-# Opens the module WebUI app picker @Hivirtus (works on KernelSU / Magisk)
 MODDIR=${0%/*}
 ID=zygisk_floating_menu
 
-echo "@Hivirtus: Opening app selection WebUI..."
+open_uri() {
+  am start -a android.intent.action.VIEW -d "$1" >/dev/null 2>&1 && return 0
+  return 1
+}
 
-# KernelSU — open WebUI via deep link (most reliable)
-if am start -a android.intent.action.VIEW -d "kernelsu://webui/${ID}" >/dev/null 2>&1; then
-  echo "Opened in KernelSU Manager"
-  exit 0
-fi
+open_pkg_activity() {
+  PKG="$1"
+  ACT="$2"
+  URI="$3"
+  pm path "$PKG" >/dev/null 2>&1 || return 1
+  am start -n "${PKG}/${ACT}" -d "$URI" >/dev/null 2>&1 && return 0
+  am start -n "${PKG}/${ACT}" >/dev/null 2>&1 && return 0
+  return 1
+}
 
-# KernelSU — try known manager packages / activity names
-for PKG in me.weishu.kernelsu com.vvb2060.kernelsu; do
-  pm path "$PKG" >/dev/null 2>&1 || continue
-  if am start -n "${PKG}/.ui.webui.WebUIActivity" -d "kernelsu://webui/${ID}" >/dev/null 2>&1; then
-    echo "Opened WebUI via ${PKG}"
-    exit 0
-  fi
-  if am start -n "${PKG}/me.weishu.kernelsu.ui.webui.WebUIActivity" -d "kernelsu://webui/${ID}" >/dev/null 2>&1; then
-    echo "Opened WebUI via ${PKG}"
-    exit 0
-  fi
+# Deep links — KernelSU family, APatch, Magisk, MMRL
+for URI in \
+  "kernelsu://webui/${ID}" \
+  "ksunext://webui/${ID}" \
+  "sukisu://webui/${ID}" \
+  "apatch://webui/${ID}" \
+  "magisk://webui/${ID}" \
+  "mmrl://webui/${ID}"
+do
+  open_uri "$URI" && exit 0
 done
 
-# Magisk / MMRL WebUI deep link
-if am start -a android.intent.action.VIEW -d "magisk://webui/${ID}" >/dev/null 2>&1; then
-  echo "Opened in Magisk/MMRL"
-  exit 0
-fi
+# Manager packages → WebUI activity (KSU / KSU Next / SukiSU / APatch / Magisk / MMRL)
+MANAGERS="
+me.weishu.kernelsu
+com.vvb2060.kernelsu
+com.rifsxd.ksunext
+me.rifsxds.ksunext
+com.sukisu.ultra
+me.bmax.apatch
+com.topjohnwu.magisk
+io.github.mmrl
+com.dergoogler.mmrl
+"
 
-# APatch WebUI
-if am start -a android.intent.action.VIEW -d "apatch://webui/${ID}" >/dev/null 2>&1; then
-  echo "Opened in APatch"
-  exit 0
-fi
+ACTIVITIES="
+.ui.webui.WebUIActivity
+me.weishu.kernelsu.ui.webui.WebUIActivity
+com.sukisu.ultra.ui.webui.WebUIActivity
+me.bmax.apatch.ui.webui.WebUIActivity
+"
 
-echo ""
-echo "WebUI auto-open failed."
-echo "MANUAL: In KernelSU/Magisk, TAP THE MODULE NAME (Virtus v3 @Hivirtus) — not only Action."
-echo "The app list will open inside the manager WebView."
-echo ""
+for PKG in $MANAGERS; do
+  for URI in "kernelsu://webui/${ID}" "ksunext://webui/${ID}" "sukisu://webui/${ID}" "apatch://webui/${ID}" "magisk://webui/${ID}"; do
+    for ACT in $ACTIVITIES; do
+      open_pkg_activity "$PKG" "$ACT" "$URI" && exit 0
+    done
+  done
+done
+
+echo "Tap module name in your root manager to open app picker."
 exit 0

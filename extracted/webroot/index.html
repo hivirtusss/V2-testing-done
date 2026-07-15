@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Virtus v3 @Hivirtus - Select Hook Apps</title>
+  <title>Virtus v3 — Select Hook Apps</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -53,38 +53,51 @@
 <body>
   <div class="header">
     <div class="title">Virtus v3 @Hivirtus</div>
-    <div class="sub">Select apps to hook. Only selected apps get the floating bubble (SYSTEM / MESSAGE / TELEGRAM).</div>
-    <div class="warn">(*) wildcard removed — SystemUI / KernelSU / Magisk / MT Manager are blocked.</div>
+    <div class="sub">Sirf selected apps hook hongi. Bubble: SYSTEM / MESSAGE / TELEGRAM.</div>
+    <div class="warn">Root manager & system apps auto-blocked hain.</div>
   </div>
   <input class="search" id="search" type="search" placeholder="Search apps..." />
   <div id="status" class="loading">Loading installed apps...</div>
   <div class="list" id="list"></div>
   <div class="bar">
     <div class="count" id="count">0 selected</div>
-    <button class="btn" id="save">Save Selection @Hivirtus</button>
+    <button class="btn" id="save">Save & Reboot</button>
   </div>
   <script>
     const TARGET = '/data/adb/modules/zygisk_floating_menu/target_packages.txt';
     const BLOCKED = new Set([
-      'android', 'me.weishu.kernelsu', 'com.topjohnwu.magisk', 'bin.mt.plus',
-      'bin.mt.plus.canary', 'me.bmax.apatch', 'com.android.systemui',
+      'android', 'me.weishu.kernelsu', 'com.vvb2060.kernelsu', 'com.rifsxd.ksunext',
+      'me.rifsxds.ksunext', 'com.sukisu.ultra', 'com.topjohnwu.magisk',
+      'me.bmax.apatch', 'io.github.mmrl', 'com.dergoogler.mmrl',
+      'bin.mt.plus', 'bin.mt.plus.canary', 'com.android.systemui',
       'com.android.settings', 'com.android.launcher3', 'com.miui.home'
     ]);
     let selected = new Set();
     let allApps = [];
+    let rootApi = null;
+
+    function detectRootApi() {
+      if (typeof ksu !== 'undefined') return ksu;
+      if (typeof apatch !== 'undefined') return apatch;
+      if (typeof magisk !== 'undefined') return magisk;
+      if (typeof mmrl !== 'undefined') return mmrl;
+      return null;
+    }
 
     function toast(msg) {
       try {
-        if (typeof ksu !== 'undefined' && ksu.toast) { ksu.toast(msg); return; }
+        rootApi = rootApi || detectRootApi();
+        if (rootApi && rootApi.toast) { rootApi.toast(msg); return; }
       } catch (e) {}
       alert(msg);
     }
 
     function exec(cmd) {
-      if (typeof ksu === 'undefined' || !ksu.exec) {
-        throw new Error('KernelSU/Magisk WebUI API not available. Open this page from KernelSU Manager (tap module name), not from browser.');
+      rootApi = rootApi || detectRootApi();
+      if (!rootApi || !rootApi.exec) {
+        throw new Error('Root manager WebUI se open karo — Action ya module name tap karo.');
       }
-      const out = ksu.exec(cmd);
+      const out = rootApi.exec(cmd);
       if (typeof out === 'string') return { stdout: out, errno: 0 };
       return out || { stdout: '', errno: 0 };
     }
@@ -101,15 +114,21 @@
     }
 
     function listPackages() {
-      if (typeof ksu !== 'undefined') {
-        if (ksu.listAllPackages) {
-          const raw = ksu.listAllPackages();
+      rootApi = rootApi || detectRootApi();
+      if (rootApi) {
+        if (rootApi.listAllPackages) {
+          const raw = rootApi.listAllPackages();
           return typeof raw === 'string' ? JSON.parse(raw) : raw;
         }
-        if (ksu.listUserPackages && ksu.listSystemPackages) {
-          const u = JSON.parse(ksu.listUserPackages());
-          const s = JSON.parse(ksu.listSystemPackages());
+        if (rootApi.listUserPackages && rootApi.listSystemPackages) {
+          const u = JSON.parse(rootApi.listUserPackages());
+          const s = JSON.parse(rootApi.listSystemPackages());
           return [...new Set([...u, ...s])];
+        }
+        if (rootApi.listPackages) {
+          const u = rootApi.listPackages('user') || [];
+          const s = rootApi.listPackages('system') || [];
+          return [...new Set([...(u || []), ...(s || [])])];
         }
       }
       const { stdout } = exec('pm list packages -3 2>/dev/null; pm list packages -s 2>/dev/null');
@@ -122,7 +141,8 @@
 
     function getLabels(pkgs) {
       const map = {};
-      if (typeof ksu !== 'undefined' && ksu.getPackagesInfo) {
+      rootApi = rootApi || detectRootApi();
+      if (rootApi && rootApi.getPackagesInfo) {
         try {
           const info = ksu.getPackagesInfo(JSON.stringify(pkgs.slice(0, 500)));
           const arr = typeof info === 'string' ? JSON.parse(info) : info;
@@ -135,7 +155,8 @@
     }
 
     function iconUrl(pkg) {
-      if (typeof ksu !== 'undefined') return 'ksu://icon/' + encodeURIComponent(pkg);
+      rootApi = rootApi || detectRootApi();
+      if (rootApi) return 'ksu://icon/' + encodeURIComponent(pkg);
       return '';
     }
 
@@ -195,12 +216,13 @@
       }
       exec('chmod 644 "' + TARGET + '"');
       exec('grep -vx "\\*" "' + TARGET + '" > "' + TARGET + '.tmp" 2>/dev/null && mv "' + TARGET + '.tmp" "' + TARGET + '" || true');
-      toast('Saved ' + lines.length + ' app(s). Reboot now @Hivirtus');
+      toast('Saved ' + lines.length + ' apps. Ab reboot karo.');
     }
 
     async function init() {
       try {
-        if (typeof ksu !== 'undefined' && ksu.fullScreen) ksu.fullScreen(true);
+        rootApi = detectRootApi();
+        if (rootApi && rootApi.fullScreen) rootApi.fullScreen(true);
         loadSelected();
         const pkgs = listPackages().filter(p => p && !BLOCKED.has(p));
         const labels = getLabels(pkgs);
