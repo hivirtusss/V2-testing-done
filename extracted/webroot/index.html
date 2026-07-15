@@ -9,29 +9,31 @@
     html, body { height: 100%; background: transparent; }
     body { font-family: sans-serif; color: #eee; display: flex; align-items: flex-end; justify-content: center; }
     .sheet {
-      width: 100%; max-height: 50vh; background: #141418;
-      border-radius: 14px 14px 0 0; display: flex; flex-direction: column; overflow: hidden;
+      width: 100%; max-height: 50vh; background: #0d0d10;
+      border-radius: 14px 14px 0 0; border-top: 2px solid #c41e3a;
+      display: flex; flex-direction: column; overflow: hidden;
     }
-    .head { padding: 12px 14px 8px; border-bottom: 1px solid #2a2a30; flex-shrink: 0; }
-    .title { color: #c41e3a; font-size: 16px; font-weight: 700; }
+    .head { padding: 12px 14px 8px; border-bottom: 1px solid #3a1018; flex-shrink: 0; }
+    .title { color: #ff0033; font-size: 16px; font-weight: 700; }
+    .sub { color: #888; font-size: 11px; margin-top: 4px; }
     .search {
       width: 100%; margin-top: 8px; padding: 10px 12px;
-      border-radius: 8px; border: 1px solid #333; background: #1c1c22; color: #fff; font-size: 14px;
+      border-radius: 8px; border: 1px solid #5a1a28; background: #1a0a0e; color: #fff; font-size: 14px;
     }
     .list-wrap { flex: 1; overflow-y: auto; padding: 8px 10px; }
     .row {
       display: flex; align-items: center; gap: 10px; padding: 10px; margin-bottom: 6px;
-      border-radius: 10px; background: #1c1c22; border: 2px solid transparent;
+      border-radius: 10px; background: #161018; border: 2px solid transparent;
     }
-    .row.selected { border-color: #c41e3a; background: rgba(196,30,58,0.2); }
+    .row.selected { border-color: #ff0033; background: rgba(255,0,51,0.15); }
     .row img { width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0; }
     .row .info { flex: 1; min-width: 0; }
     .row .name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .row .pkg { font-size: 10px; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .dot { width: 18px; height: 18px; border-radius: 50%; border: 2px solid #666; flex-shrink: 0; }
-    .row.selected .dot { background: #c41e3a; border-color: #c41e3a; }
-    .bar { padding: 10px 14px 14px; border-top: 1px solid #2a2a30; flex-shrink: 0; }
-    .btn { width: 100%; padding: 12px; border: none; border-radius: 10px; background: #c41e3a; color: #fff; font-size: 15px; font-weight: 700; }
+    .row.selected .dot { background: #ff0033; border-color: #ff0033; }
+    .bar { padding: 10px 14px 14px; border-top: 1px solid #3a1018; flex-shrink: 0; }
+    .btn { width: 100%; padding: 12px; border: none; border-radius: 10px; background: #ff0033; color: #fff; font-size: 15px; font-weight: 700; }
     .count { text-align: center; font-size: 11px; color: #aaa; margin-bottom: 6px; }
     .status { text-align: center; padding: 20px; color: #888; font-size: 13px; }
     .err { color: #f55; }
@@ -41,10 +43,11 @@
   <div class="sheet">
     <div class="head">
       <div class="title">Zygisk Mode Virtus V3</div>
-      <input class="search" id="search" type="search" placeholder="Search" />
+      <div class="sub">Select apps to hook — Save then reboot</div>
+      <input class="search" id="search" type="search" placeholder="Search apps..." />
     </div>
     <div class="list-wrap">
-      <div id="status" class="status">Loading...</div>
+      <div id="status" class="status">Loading apps...</div>
       <div id="list"></div>
     </div>
     <div class="bar">
@@ -57,7 +60,9 @@
     const BLOCKED = new Set([
       'android', 'me.weishu.kernelsu', 'com.vvb2060.kernelsu', 'com.rifsxd.ksunext',
       'me.rifsxds.ksunext', 'com.sukisu.ultra', 'com.topjohnwu.magisk', 'me.bmax.apatch',
-      'io.github.mmrl', 'com.dergoogler.mmrl', 'com.android.systemui'
+      'io.github.mmrl', 'com.dergoogler.mmrl', 'com.dergoogler.mmrl.wx',
+      'com.android.systemui', 'com.android.vending', 'com.google.android.gms',
+      'com.android.settings', 'com.google.android.gsf'
     ]);
     let selected = new Set();
     let allApps = [];
@@ -96,34 +101,30 @@
         try {
           const j = JSON.parse(out);
           if (j && j.stdout != null) return String(j.stdout);
+          if (Array.isArray(j)) return out;
         } catch (e) {}
         return out;
       }
       if (out.stdout != null) return String(out.stdout);
+      if (out.errno === 0 && out.stdout != null) return String(out.stdout);
       return String(out);
+    }
+
+    async function execCmd(cmd) {
+      const a = api();
+      if (!a || !a.exec) throw new Error('Open from SukiSU module WebUI button');
+      let r = a.exec(cmd);
+      if (r && typeof r.then === 'function') r = await r;
+      if (typeof r === 'string') {
+        try { r = JSON.parse(r); } catch (e) {}
+      }
+      return stdoutOf(r);
     }
 
     function execSync(cmd) {
       const a = api();
-      if (!a || !a.exec) throw new Error('Open from root manager module page');
+      if (!a || !a.exec) throw new Error('Open from SukiSU module WebUI button');
       return stdoutOf(a.exec(cmd));
-    }
-
-    function execAsync(cmd) {
-      return new Promise((resolve) => {
-        const a = api();
-        if (!a || !a.exec) { resolve(''); return; }
-        if (a.exec.length >= 2) {
-          window.__virtusExecDone = function(code, stdout) {
-            resolve(stdout || '');
-          };
-          try {
-            a.exec(cmd, '__virtusExecDone');
-            return;
-          } catch (e) {}
-        }
-        resolve(execSync(cmd));
-      });
     }
 
     function toast(m) {
@@ -146,10 +147,7 @@
     function parseAny(raw) {
       if (raw == null) return [];
       if (Array.isArray(raw)) {
-        return raw.map(x => {
-          if (typeof x === 'object' && x) return pkgName(x);
-          return pkgName(x);
-        }).filter(Boolean);
+        return raw.map(x => pkgName(x)).filter(Boolean);
       }
       if (typeof raw === 'object') {
         if (raw.packageName || raw.package || raw.pkg) return [pkgName(raw)];
@@ -172,11 +170,69 @@
     function okPkg(p) {
       if (!p || BLOCKED.has(p)) return false;
       if (p === '*') return false;
+      if (p.startsWith('com.android.') && p !== 'com.android.chrome') return false;
       return true;
     }
 
     function uniq(arr) {
       return [...new Set(arr.filter(okPkg))];
+    }
+
+    async function callListAsync(fn) {
+      try {
+        let raw = fn();
+        if (raw && typeof raw.then === 'function') raw = await raw;
+        if (typeof raw === 'string') {
+          try { raw = JSON.parse(raw); } catch (e) {}
+        }
+        return uniq(parseAny(raw));
+      } catch (e) {
+        return [];
+      }
+    }
+
+    async function listFromShell() {
+      const cmds = [
+        'pm list packages -3',
+        'pm list packages -3 -u',
+        'cmd package list packages --user 0 -3',
+        'pm list packages -e -3'
+      ];
+      let best = [];
+      for (const cmd of cmds) {
+        let out = '';
+        try { out = await execCmd(cmd + ' 2>/dev/null'); } catch (e) {}
+        const pkgs = uniq(parseAny(out));
+        if (pkgs.length > best.length) best = pkgs;
+        if (best.length >= 5) break;
+      }
+      return best;
+    }
+
+    async function listFromApi() {
+      let merged = [];
+      for (const a of apis()) {
+        if (a.listPackages) {
+          for (const t of ['user', 'all']) {
+            const pkgs = await callListAsync(() => a.listPackages(t));
+            merged = uniq([...merged, ...pkgs]);
+          }
+        }
+        for (const fn of ['listUserPackages', 'listUserApps', 'listApps', 'listAllPackages']) {
+          if (!a[fn]) continue;
+          const pkgs = await callListAsync(() => a[fn]());
+          merged = uniq([...merged, ...pkgs]);
+        }
+      }
+      return merged;
+    }
+
+    async function listPackages() {
+      // Shell pm list is most reliable on SukiSU (API often returns 1 wrong app)
+      let pkgs = await listFromShell();
+      const apiPkgs = await listFromApi();
+      pkgs = uniq([...pkgs, ...apiPkgs]);
+      return pkgs;
     }
 
     function getLabels(pkgs) {
@@ -198,63 +254,12 @@
                 const n = pkgName(p);
                 if (n) map[n] = labelOf(p, n);
               });
-            } else {
-              parseAny(info).forEach(p => {
-                const n = pkgName(p);
-                if (n) map[n] = labelOf(p, n);
-              });
             }
           } catch (e) {}
         }
       }
       pkgs.forEach(p => { if (!map[p]) map[p] = p; });
       return map;
-    }
-
-    function callList(fn) {
-      try {
-        let raw = fn();
-        if (raw == null) return [];
-        if (typeof raw === 'string') {
-          try { raw = JSON.parse(raw); } catch (e) {}
-        }
-        return uniq(parseAny(raw));
-      } catch (e) {
-        return [];
-      }
-    }
-
-    async function listPackages() {
-      for (const a of apis()) {
-        const fns = ['listUserPackages', 'listUserApps', 'listApps', 'listPackages', 'listAllPackages'];
-        for (const fn of fns) {
-          if (!a[fn]) continue;
-          if (fn === 'listPackages') {
-            let pkgs = callList(() => a.listPackages('user'));
-            if (!pkgs.length) pkgs = callList(() => a.listPackages(false));
-            if (!pkgs.length) pkgs = callList(() => a.listPackages());
-            if (pkgs.length) return pkgs;
-          } else {
-            const pkgs = callList(() => a[fn]());
-            if (pkgs.length) return pkgs;
-          }
-        }
-      }
-
-      const cmds = [
-        'pm list packages -3',
-        'cmd package list packages -3',
-        'pm list packages -3 -u',
-        'pm list packages -e'
-      ];
-      for (const cmd of cmds) {
-        let out = '';
-        try { out = execSync(cmd + ' 2>/dev/null'); } catch (e) {}
-        if (!out || out.length < 3) out = await execAsync(cmd + ' 2>/dev/null');
-        const pkgs = uniq(parseAny(out));
-        if (pkgs.length) return pkgs;
-      }
-      return [];
     }
 
     function loadSelected() {
@@ -306,7 +311,7 @@
       }
       execSync('chmod 644 "' + TARGET + '"');
       execSync('grep -vx "\\*" "' + TARGET + '" > "' + TARGET + '.tmp" 2>/dev/null && mv "' + TARGET + '.tmp" "' + TARGET + '" || true');
-      toast('Saved. Reboot.');
+      toast('Saved. Reboot phone.');
       document.getElementById('count').textContent = lines.length + ' saved — reboot';
     }
 
@@ -319,10 +324,10 @@
         const labels = getLabels(pkgs);
         allApps = pkgs.map(p => ({ pkg: p, label: labels[p] || p }));
         allApps.sort((x, y) => x.label.localeCompare(y.label));
-        document.getElementById('count').textContent = selected.size + ' selected';
+        document.getElementById('count').textContent = selected.size + ' selected · ' + allApps.length + ' apps';
         if (!allApps.length) {
           document.getElementById('status').className = 'status err';
-          document.getElementById('status').textContent = 'No apps found';
+          document.getElementById('status').textContent = 'No apps found — grant root to WebUI';
         } else {
           render();
         }

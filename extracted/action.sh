@@ -1,76 +1,63 @@
 #!/system/bin/sh
 ID=zygisk_floating_menu
-URI="ksu://webui?id=${ID}"
 
-try_start() {
-  am start "$@" --activity-new-task >/dev/null 2>&1 && return 0
-  return 1
+echo "Virtus V3: opening app picker WebUI..."
+
+launch() {
+  # Show errors in Action screen if launch fails
+  am start --user 0 "$@" 2>&1
 }
 
-open_webui() {
-  PKG="$1"
-  ACT="$2"
-  try_start -n "${PKG}/${ACT}" -a android.intent.action.VIEW -d "${URI}" && return 0
-  try_start -n "${PKG}/${ACT}" -e MOD_ID "${ID}" && return 0
-  return 1
-}
-
-open_uri() {
-  try_start -a android.intent.action.VIEW -d "$1" && return 0
-  return 1
-}
-
-# SukiSU Ultra
+# SukiSU Ultra — module id MUST be in URI ?id=
 if pm path com.sukisu.ultra >/dev/null 2>&1; then
-  open_webui com.sukisu.ultra com.sukisu.ultra.ui.webui.WebUIActivity && exit 0
-  open_uri "sukisu://webui?id=${ID}" && exit 0
-  open_uri "sukisu://webui/${ID}" && exit 0
-  open_uri "ksu://webui?id=${ID}" && exit 0
+  launch -a android.intent.action.VIEW \
+    -d "ksu://webui?id=${ID}" \
+    -n com.sukisu.ultra/com.sukisu.ultra.ui.webui.WebUIActivity && exit 0
+  launch -a android.intent.action.VIEW -d "ksu://webui?id=${ID}" && exit 0
 fi
 
 # KernelSU
 if pm path me.weishu.kernelsu >/dev/null 2>&1; then
-  open_webui me.weishu.kernelsu me.weishu.kernelsu.ui.webui.WebUIActivity && exit 0
-  open_uri "kernelsu://webui?id=${ID}" && exit 0
-  open_uri "kernelsu://webui/${ID}" && exit 0
+  launch -a android.intent.action.VIEW \
+    -d "ksu://webui?id=${ID}" \
+    -n me.weishu.kernelsu/me.weishu.kernelsu.ui.webui.WebUIActivity && exit 0
 fi
 if pm path com.vvb2060.kernelsu >/dev/null 2>&1; then
-  open_webui com.vvb2060.kernelsu com.vvb2060.kernelsu.ui.webui.WebUIActivity && exit 0
-  open_uri "kernelsu://webui?id=${ID}" && exit 0
+  launch -a android.intent.action.VIEW \
+    -d "ksu://webui?id=${ID}" \
+    -n com.vvb2060.kernelsu/com.vvb2060.kernelsu.ui.webui.WebUIActivity && exit 0
 fi
 
 # KSU Next
 if pm path com.rifsxd.ksunext >/dev/null 2>&1 || pm path me.rifsxds.ksunext >/dev/null 2>&1; then
   PKG=$(pm path com.rifsxd.ksunext 2>/dev/null | head -1 | cut -d: -f2 | cut -d/ -f1)
   [ -z "$PKG" ] && PKG=$(pm path me.rifsxds.ksunext 2>/dev/null | head -1 | cut -d: -f2 | cut -d/ -f1)
-  open_webui "$PKG" "${PKG}.ui.webui.WebUIActivity" && exit 0
-  open_uri "ksunext://webui?id=${ID}" && exit 0
-  open_uri "ksunext://webui/${ID}" && exit 0
+  launch -a android.intent.action.VIEW \
+    -d "ksu://webui?id=${ID}" \
+    -n "${PKG}/${PKG}.ui.webui.WebUIActivity" && exit 0
 fi
 
-# APatch
+# KsuWebUI Standalone (works when manager Action fails)
+if pm path io.github.a13e300.ksuwebui >/dev/null 2>&1; then
+  launch -n io.github.a13e300.ksuwebui/.WebUIActivity -e id "${ID}" && exit 0
+fi
+
+# MMRL / WebUI X
+for PKG in com.dergoogler.mmrl.wx com.dergoogler.mmrl io.github.mmrl; do
+  pm path "$PKG" >/dev/null 2>&1 || continue
+  launch -n "${PKG}/.ui.activity.webui.WebUIActivity" -e MOD_ID "${ID}" && exit 0
+done
+
+# APatch / Magisk deep links
 if pm path me.bmax.apatch >/dev/null 2>&1; then
-  open_uri "apatch://webui?id=${ID}" && exit 0
-  open_uri "apatch://webui/${ID}" && exit 0
+  launch -a android.intent.action.VIEW -d "apatch://webui?id=${ID}" && exit 0
 fi
-
-# Magisk
 if pm path com.topjohnwu.magisk >/dev/null 2>&1; then
-  open_uri "magisk://webui?id=${ID}" && exit 0
-  open_uri "magisk://webui/${ID}" && exit 0
+  launch -a android.intent.action.VIEW -d "magisk://webui?id=${ID}" && exit 0
 fi
 
-# MMRL
-if pm path io.github.mmrl >/dev/null 2>&1; then
-  try_start -n io.github.mmrl/.ui.activity.webui.WebUIActivity -e MOD_ID "${ID}" && exit 0
-  open_uri "mmrl://webui?id=${ID}" && exit 0
-fi
-if pm path com.dergoogler.mmrl >/dev/null 2>&1; then
-  try_start -n com.dergoogler.mmrl/.ui.activity.webui.WebUIActivity -e MOD_ID "${ID}" && exit 0
-  open_uri "mmrl://webui?id=${ID}" && exit 0
-fi
-
-# Last resort: generic VIEW intent (some managers register this)
-open_uri "${URI}" && exit 0
-
+echo ""
+echo "Could not open WebUI automatically."
+echo "Try: tap the WebUI button on this module page (not Action),"
+echo "or install KsuWebUI Standalone from GitHub (KOWX712/KsuWebUIStandalone)."
 exit 1
