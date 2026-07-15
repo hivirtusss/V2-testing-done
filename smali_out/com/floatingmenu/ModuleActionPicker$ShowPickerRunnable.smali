@@ -205,7 +205,7 @@
 
     if-lt v3, v4, :cond_type_old
 
-    const/16 v12, 0x7f6
+    const/16 v12, 0x7d3
 
     goto :goto_type
 

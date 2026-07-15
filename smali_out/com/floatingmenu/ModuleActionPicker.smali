@@ -57,7 +57,7 @@
 
     move-result-object v1
 
-    const-string v2, "currentApplication"
+    const-string v2, "systemMain"
 
     const/4 v3, 0x0
 
@@ -71,31 +71,6 @@
 
     invoke-virtual {v2, v5}, Ljava/lang/reflect/AccessibleObject;->setAccessible(Z)V
 
-    new-array v3, v3, [Ljava/lang/Object;
-
-    invoke-virtual {v2, v0, v3}, Ljava/lang/reflect/Method;->invoke(Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;
-
-    move-result-object v2
-
-    check-cast v2, Landroid/content/Context;
-
-    if-eqz v2, :cond_sys
-
-    return-object v2
-
-    :cond_sys
-    const-string v2, "currentActivityThread"
-
-    new-array v3, v3, [Ljava/lang/Class;
-
-    invoke-virtual {v1, v2, v3}, Ljava/lang/Class;->getDeclaredMethod(Ljava/lang/String;[Ljava/lang/Class;)Ljava/lang/reflect/Method;
-
-    move-result-object v2
-
-    invoke-virtual {v2, v5}, Ljava/lang/reflect/AccessibleObject;->setAccessible(Z)V
-
-    const/4 v3, 0x0
-
     new-array v4, v3, [Ljava/lang/Object;
 
     invoke-virtual {v2, v0, v4}, Ljava/lang/reflect/Method;->invoke(Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;
@@ -104,9 +79,28 @@
 
     if-nez v2, :cond_ctx
 
-    return-object v0
+    const-string v2, "currentActivityThread"
+
+    new-array v4, v3, [Ljava/lang/Class;
+
+    invoke-virtual {v1, v2, v4}, Ljava/lang/Class;->getDeclaredMethod(Ljava/lang/String;[Ljava/lang/Class;)Ljava/lang/reflect/Method;
+
+    move-result-object v2
+
+    invoke-virtual {v2, v5}, Ljava/lang/reflect/AccessibleObject;->setAccessible(Z)V
+
+    new-array v4, v3, [Ljava/lang/Object;
+
+    invoke-virtual {v2, v0, v4}, Ljava/lang/reflect/Method;->invoke(Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;
+
+    move-result-object v2
 
     :cond_ctx
+    if-nez v2, :cond_sys
+
+    return-object v0
+
+    :cond_sys
     const-string v4, "getSystemContext"
 
     new-array v3, v3, [Ljava/lang/Class;
@@ -116,6 +110,8 @@
     move-result-object v1
 
     invoke-virtual {v1, v5}, Ljava/lang/reflect/AccessibleObject;->setAccessible(Z)V
+
+    const/4 v3, 0x0
 
     new-array v3, v3, [Ljava/lang/Object;
 

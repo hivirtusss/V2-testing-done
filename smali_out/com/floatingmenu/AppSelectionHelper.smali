@@ -645,7 +645,7 @@
 
     invoke-virtual {v0, v1}, Ljava/lang/StringBuilder;->append(I)Ljava/lang/StringBuilder;
 
-    const-string v1, " app(s) @Hivirtus"
+    const-string v1, " app(s). Reboot required @Hivirtus"
 
     invoke-virtual {v0, v1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
 
@@ -654,6 +654,8 @@
     move-result-object v0
 
     invoke-static {p0, v0}, Lcom/floatingmenu/FloatingMenu;->showToast(Landroid/content/Context;Ljava/lang/String;)V
+
+    invoke-static {}, Lcom/floatingmenu/TargetPackageGuard;->reload()V
 
     return-void
 .end method
