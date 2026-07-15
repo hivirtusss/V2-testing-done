@@ -19,6 +19,7 @@ cp "$ROOT/patch_smali/com/floatingmenu/TargetPackageGuard.smali" "$WORK/com/floa
 FM="$WORK/com/floatingmenu/FloatingMenu\$1.smali"
 FO="$WORK/com/floatingmenu/FloatingMenu.smali"
 python3 "$ROOT/scripts/patch_logo.py" "$FM" "$ROOT/tools/virtus_v_logo.b64"
+python3 "$ROOT/scripts/patch_bubble_drag.py" "$FM"
 
 apply_red_theme() {
   local file="$1"
@@ -30,7 +31,6 @@ apply_red_theme() {
     -e 's/"System SIM Card Configuration"/"System SIM Configuration"/' \
     -e 's/"@Hivirtus | System SIM Configuration"/"System SIM Configuration"/' \
     -e 's/const-string v5, "M"/const-string v5, "V"/' \
-    -e 's/const\/16 v9, 0x33/const\/16 v9, 0x11/' \
     -e 's/const\/high16 v6, 0x41a00000    # 20.0f/const\/high16 v6, 0x0/' \
     -e 's/const\/high16 v7, 0x43160000    # 150.0f/const\/high16 v7, 0x0/' \
     -e 's/const v7, -0x9c990f/const v7, -0x1000000/g' \
