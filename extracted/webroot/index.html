@@ -113,25 +113,26 @@
       return String(out);
     }
 
-    async function execCmd(cmd) {
+    function execCmd(cmd) {
       const a = api();
-      if (!a || !a.exec) throw new Error('Open from SukiSU → Modules → WebUI button');
-      let r = a.exec(cmd);
-      if (r && typeof r.then === 'function') r = await r;
-      if (typeof r === 'string') {
-        try { r = JSON.parse(r); } catch (e) {}
-      }
-      return normExecOut(r);
-    }
-
-    function execSync(cmd) {
-      const a = api();
-      if (!a || !a.exec) throw new Error('Open from SukiSU → Modules → WebUI button');
-      let r = a.exec(cmd);
-      if (typeof r === 'string') {
-        try { r = JSON.parse(r); } catch (e) {}
-      }
-      return normExecOut(r);
+      if (!a || !a.exec) return Promise.reject(new Error('Open from SukiSU → Modules → WebUI button'));
+      return new Promise((resolve, reject) => {
+        const cb = '__exec_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+        window[cb] = (errno, stdout, stderr) => {
+          delete window[cb];
+          resolve(normExecOut({ stdout: stdout || '' }));
+        };
+        try {
+          const r = a.exec(cmd, '{}', cb);
+          if (r && typeof r.then === 'function') {
+            delete window[cb];
+            r.then(v => resolve(normExecOut(v))).catch(reject);
+          }
+        } catch (e) {
+          delete window[cb];
+          reject(e);
+        }
+      });
     }
 
     function toast(m) {
@@ -144,11 +145,19 @@
 
     function okPkg(p) {
       if (!p || p === '*' || BLOCKED.has(p)) return false;
-      return /^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z0-9_]+)+$/.test(p);
+      return /^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z0-9_]+)+$/.test(p);
     }
 
     function uniq(arr) {
       return [...new Set(arr.filter(okPkg))];
+    }
+
+    async function fromWebCache() {
+      try {
+        const r = await fetch('./pkglist.txt?_=' + Date.now(), { cache: 'no-store' });
+        if (r.ok) return uniq(parseLines(await r.text()));
+      } catch (e) {}
+      return [];
     }
 
     async function fromCacheFile() {
@@ -157,13 +166,34 @@
       return uniq(parseLines(out));
     }
 
+    function fromKsuApi() {
+      let merged = [];
+      for (const a of apis()) {
+        if (!a.listPackages) continue;
+        for (const t of ['all', 'user', 'system']) {
+          try {
+            let r = a.listPackages(t);
+            if (r && typeof r.then === 'function') continue;
+            if (typeof r === 'string') {
+              try { r = JSON.parse(r); } catch (e) { r = []; }
+            }
+            if (Array.isArray(r)) merged = uniq([...merged, ...r]);
+          } catch (e) {}
+        }
+      }
+      return merged;
+    }
+
     async function fromShell() {
       const cmds = [
+        'pm list packages',
+        'pm list packages -u',
         'pm list packages -3',
         'pm list packages -3 -u',
+        'pm list packages -e',
+        'cmd package list packages --user 0',
         'cmd package list packages --user 0 -3',
-        'pm list packages -e -3',
-        'pm list packages | grep -E "^package:com\\."'
+        'cmd package list packages --user 0 -s'
       ];
       let best = [];
       for (const cmd of cmds) {
@@ -175,42 +205,37 @@
       return best;
     }
 
-    async function fromApi() {
-      let merged = [];
-      for (const a of apis()) {
-        if (!a.listPackages) continue;
-        for (const t of ['user', 'all']) {
-          try {
-            let r = a.listPackages(t);
-            if (r && typeof r.then === 'function') r = await r;
-            if (typeof r === 'string') {
-              try { r = JSON.parse(r); } catch (e) {}
-            }
-            if (Array.isArray(r)) merged = uniq([...merged, ...r]);
-          } catch (e) {}
-        }
-      }
-      return merged;
-    }
-
     async function refreshCache() {
       const cmds = [
+        'pm list packages 2>/dev/null',
+        'pm list packages -u 2>/dev/null',
         'pm list packages -3 2>/dev/null',
         'pm list packages -3 -u 2>/dev/null',
+        'cmd package list packages --user 0 2>/dev/null',
         'cmd package list packages --user 0 -3 2>/dev/null'
       ].join('; ');
       try {
-        await execCmd('mkdir -p "' + MOD + '"');
+        await execCmd('mkdir -p "' + MOD + '/webroot"');
         await execCmd('(' + cmds + ') | sed "s/^package://g" | sort -u | grep -v "^\\s*$" > "' + PKGFILE + '"');
+        await execCmd('cp "' + PKGFILE + '" "' + MOD + '/webroot/pkglist.txt"');
       } catch (e) {}
     }
 
     async function listPackages() {
+      let pkgs = uniq([
+        ...fromKsuApi(),
+        ...(await fromWebCache()),
+        ...(await fromCacheFile())
+      ]);
       await refreshCache();
-      let pkgs = await fromCacheFile();
       const shellPkgs = await fromShell();
-      const apiPkgs = await fromApi();
-      pkgs = uniq([...pkgs, ...shellPkgs, ...apiPkgs]);
+      pkgs = uniq([
+        ...pkgs,
+        ...fromKsuApi(),
+        ...(await fromWebCache()),
+        ...(await fromCacheFile()),
+        ...shellPkgs
+      ]);
       return pkgs;
     }
 
@@ -218,8 +243,8 @@
       const map = {};
       const a = api();
       if (a && a.getPackagesInfo) {
-        for (let i = 0; i < pkgs.length; i += 60) {
-          const batch = pkgs.slice(i, i + 60);
+        for (let i = 0; i < pkgs.length; i += 50) {
+          const batch = pkgs.slice(i, i + 50);
           try {
             let info = null;
             try { info = a.getPackagesInfo(JSON.stringify(batch)); } catch (e1) {
@@ -241,9 +266,9 @@
       return map;
     }
 
-    function loadSelected() {
+    async function loadSelected() {
       try {
-        const t = execSync('cat "' + TARGET + '" 2>/dev/null || true');
+        const t = await execCmd('cat "' + TARGET + '" 2>/dev/null || true');
         selected.clear();
         parseLines(t).forEach(p => { if (okPkg(p)) selected.add(p); });
       } catch (e) {}
@@ -283,15 +308,15 @@
       document.getElementById('status').style.display = 'none';
     }
 
-    function save() {
+    async function save() {
       const lines = [...selected].filter(okPkg);
-      execSync('mkdir -p "' + MOD + '"');
+      await execCmd('mkdir -p "' + MOD + '"');
       if (!lines.length) {
-        execSync(': > "' + TARGET + '"');
+        await execCmd(': > "' + TARGET + '"');
       } else {
-        execSync("cat > '" + TARGET + "' << 'EOF'\n" + lines.join('\n') + "\nEOF");
+        await execCmd("cat > '" + TARGET + "' << 'EOF'\n" + lines.join('\n') + "\nEOF");
       }
-      execSync('chmod 644 "' + TARGET + '"');
+      await execCmd('chmod 644 "' + TARGET + '"');
       toast('Saved ' + lines.length + ' apps. Reboot now.');
       document.getElementById('count').textContent = lines.length + ' saved — reboot phone';
     }
@@ -300,7 +325,7 @@
       try {
         const a = api();
         if (a && a.fullScreen) a.fullScreen(false);
-        loadSelected();
+        await loadSelected();
         document.getElementById('status').textContent = 'Loading all apps...';
         const pkgs = await listPackages();
         const labels = getLabels(pkgs);
@@ -309,7 +334,7 @@
         document.getElementById('count').textContent = selected.size + ' selected · ' + allApps.length + ' apps';
         if (!allApps.length) {
           document.getElementById('status').className = 'status err';
-          document.getElementById('status').textContent = 'No apps found — tap Refresh';
+          document.getElementById('status').textContent = 'No apps found — tap Refresh app list';
         } else {
           render();
         }
@@ -320,7 +345,7 @@
     }
 
     document.getElementById('search').oninput = render;
-    document.getElementById('save').onclick = save;
+    document.getElementById('save').onclick = () => save().catch(e => toast(e.message || String(e)));
     document.getElementById('refresh').onclick = boot;
     boot();
   </script>

@@ -2,15 +2,8 @@
 # Run early boot — strip wildcard before any app injection decisions.
 MODDIR=${0%/*}
 TARGET="$MODDIR/target_packages.txt"
-PKGFILE="$MODDIR/pkglist.txt"
 
-# Refresh app list cache for WebUI
-{
-  pm list packages -3 2>/dev/null
-  pm list packages -3 -u 2>/dev/null
-  cmd package list packages --user 0 -3 2>/dev/null
-} | sed 's/^package://g' | sort -u | grep -v '^\s*$' > "$PKGFILE" 2>/dev/null || : > "$PKGFILE"
-chmod 644 "$PKGFILE" 2>/dev/null
+sh "$MODDIR/refresh_pkglist.sh" "$MODDIR"
 
 if [ ! -f "$TARGET" ]; then
   : > "$TARGET"
