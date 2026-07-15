@@ -5,7 +5,7 @@
 TARGET="$MODPATH/target_packages.txt"
 
 ui_print "- @Hivirtus: Removing (*) wildcard hook-all"
-ui_print "- Tap Action on module card to select hook apps"
+ui_print "- Tap Action OR module name to select hook apps (WebUI)"
 
 : > "$TARGET"
 

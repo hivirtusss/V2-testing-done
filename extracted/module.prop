@@ -1,7 +1,8 @@
 id=zygisk_floating_menu
 name=Virtus v3 @Hivirtus
 version=v3
-versionCode=3
+versionCode=4
 author=@Hivirtus
-description=Zygisk Mode Menu Virtus v3 by @Hivirtus - Red Edition. Use Action button to select hook apps.
+description=Virtus v3 Red Edition @Hivirtus — Tap Action OR module name to select hook apps. Bubble only in selected apps.
+webui=webroot
 zygote=true

@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Virtus v3 @Hivirtus - Select Hook Apps</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f0f12;
+      color: #f2f2f2;
+      min-height: 100vh;
+      padding: 16px;
+      padding-bottom: 96px;
+    }
+    .header { margin-bottom: 12px; }
+    .title { color: #c41e3a; font-size: 20px; font-weight: 700; }
+    .sub { color: #aaa; font-size: 13px; margin-top: 6px; line-height: 1.4; }
+    .warn { color: #ff6b6b; font-size: 12px; margin-top: 8px; }
+    .search {
+      width: 100%; margin: 14px 0; padding: 12px 14px;
+      border-radius: 10px; border: 1px solid #333; background: #1a1a1f;
+      color: #fff; font-size: 15px;
+    }
+    .list { display: flex; flex-direction: column; gap: 8px; }
+    .row {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px; border-radius: 12px; background: #1a1a1f;
+      border: 2px solid transparent; cursor: pointer;
+    }
+    .row.selected { background: rgba(196,30,58,0.25); border-color: #c41e3a; }
+    .row img { width: 40px; height: 40px; border-radius: 10px; background: #333; }
+    .row .info { flex: 1; min-width: 0; }
+    .row .name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .row .pkg { font-size: 11px; color: #888; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .check { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #666; flex-shrink: 0; }
+    .row.selected .check { background: #c41e3a; border-color: #c41e3a; }
+    .bar {
+      position: fixed; left: 0; right: 0; bottom: 0;
+      padding: 12px 16px 20px; background: #121218; border-top: 1px solid #2a2a30;
+    }
+    .btn {
+      width: 100%; padding: 14px; border: none; border-radius: 12px;
+      background: #c41e3a; color: #fff; font-size: 16px; font-weight: 700;
+    }
+    .btn:active { opacity: 0.85; }
+    .count { text-align: center; color: #c41e3a; font-size: 12px; margin-bottom: 8px; }
+    .loading, .error { text-align: center; padding: 40px 16px; color: #aaa; }
+    .error { color: #ff6b6b; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="title">Virtus v3 @Hivirtus</div>
+    <div class="sub">Select apps to hook. Only selected apps get the floating bubble (SYSTEM / MESSAGE / TELEGRAM).</div>
+    <div class="warn">(*) wildcard removed — SystemUI / KernelSU / Magisk / MT Manager are blocked.</div>
+  </div>
+  <input class="search" id="search" type="search" placeholder="Search apps..." />
+  <div id="status" class="loading">Loading installed apps...</div>
+  <div class="list" id="list"></div>
+  <div class="bar">
+    <div class="count" id="count">0 selected</div>
+    <button class="btn" id="save">Save Selection @Hivirtus</button>
+  </div>
+  <script>
+    const TARGET = '/data/adb/modules/zygisk_floating_menu/target_packages.txt';
+    const BLOCKED = new Set([
+      'android', 'me.weishu.kernelsu', 'com.topjohnwu.magisk', 'bin.mt.plus',
+      'bin.mt.plus.canary', 'me.bmax.apatch', 'com.android.systemui',
+      'com.android.settings', 'com.android.launcher3', 'com.miui.home'
+    ]);
+    let selected = new Set();
+    let allApps = [];
+
+    function toast(msg) {
+      try {
+        if (typeof ksu !== 'undefined' && ksu.toast) { ksu.toast(msg); return; }
+      } catch (e) {}
+      alert(msg);
+    }
+
+    function exec(cmd) {
+      if (typeof ksu === 'undefined' || !ksu.exec) {
+        throw new Error('KernelSU/Magisk WebUI API not available. Open this page from KernelSU Manager (tap module name), not from browser.');
+      }
+      const out = ksu.exec(cmd);
+      if (typeof out === 'string') return { stdout: out, errno: 0 };
+      return out || { stdout: '', errno: 0 };
+    }
+
+    function loadSelected() {
+      try {
+        const { stdout } = exec('cat "' + TARGET + '" 2>/dev/null || true');
+        selected.clear();
+        (stdout || '').split('\n').forEach(line => {
+          line = line.trim();
+          if (line && line !== '*' && !BLOCKED.has(line)) selected.add(line);
+        });
+      } catch (e) { console.log(e); }
+    }
+
+    function listPackages() {
+      if (typeof ksu !== 'undefined') {
+        if (ksu.listAllPackages) {
+          const raw = ksu.listAllPackages();
+          return typeof raw === 'string' ? JSON.parse(raw) : raw;
+        }
+        if (ksu.listUserPackages && ksu.listSystemPackages) {
+          const u = JSON.parse(ksu.listUserPackages());
+          const s = JSON.parse(ksu.listSystemPackages());
+          return [...new Set([...u, ...s])];
+        }
+      }
+      const { stdout } = exec('pm list packages -3 2>/dev/null; pm list packages -s 2>/dev/null');
+      const pkgs = [];
+      (stdout || '').split('\n').forEach(line => {
+        if (line.startsWith('package:')) pkgs.push(line.replace('package:', '').trim());
+      });
+      return [...new Set(pkgs)];
+    }
+
+    function getLabels(pkgs) {
+      const map = {};
+      if (typeof ksu !== 'undefined' && ksu.getPackagesInfo) {
+        try {
+          const info = ksu.getPackagesInfo(JSON.stringify(pkgs.slice(0, 500)));
+          const arr = typeof info === 'string' ? JSON.parse(info) : info;
+          arr.forEach(p => { map[p.packageName] = p.label || p.packageName; });
+          return map;
+        } catch (e) {}
+      }
+      pkgs.forEach(p => { map[p] = p; });
+      return map;
+    }
+
+    function iconUrl(pkg) {
+      if (typeof ksu !== 'undefined') return 'ksu://icon/' + encodeURIComponent(pkg);
+      return '';
+    }
+
+    function render() {
+      const q = document.getElementById('search').value.toLowerCase();
+      const list = document.getElementById('list');
+      list.innerHTML = '';
+      const filtered = allApps.filter(a =>
+        !q || a.label.toLowerCase().includes(q) || a.pkg.toLowerCase().includes(q)
+      );
+      filtered.forEach(app => {
+        const row = document.createElement('div');
+        row.className = 'row' + (selected.has(app.pkg) ? ' selected' : '');
+        row.onclick = () => {
+          if (selected.has(app.pkg)) selected.delete(app.pkg);
+          else selected.add(app.pkg);
+          updateCount();
+          render();
+        };
+        const img = document.createElement('img');
+        img.src = iconUrl(app.pkg);
+        img.alt = '';
+        img.onerror = () => { img.style.display = 'none'; };
+        const info = document.createElement('div');
+        info.className = 'info';
+        info.innerHTML = '<div class="name">' + escapeHtml(app.label) + '</div><div class="pkg">' + escapeHtml(app.pkg) + '</div>';
+        const check = document.createElement('div');
+        check.className = 'check';
+        row.appendChild(img);
+        row.appendChild(info);
+        row.appendChild(check);
+        list.appendChild(row);
+      });
+      document.getElementById('status').style.display = 'none';
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function updateCount() {
+      document.getElementById('count').textContent = selected.size + ' selected — reboot after save';
+    }
+
+    function save() {
+      const lines = [...selected].filter(p => !BLOCKED.has(p) && p !== '*');
+      const content = lines.join('\n');
+      exec('mkdir -p /data/adb/modules/zygisk_floating_menu');
+      try {
+        const b64 = btoa(unescape(encodeURIComponent(content)));
+        exec('echo ' + b64 + ' | base64 -d > "' + TARGET + '"');
+      } catch (e) {
+        exec(': > "' + TARGET + '"');
+        lines.forEach(line => {
+          exec('echo "' + line.replace(/"/g, '\\"') + '" >> "' + TARGET + '"');
+        });
+      }
+      exec('chmod 644 "' + TARGET + '"');
+      exec('grep -vx "\\*" "' + TARGET + '" > "' + TARGET + '.tmp" 2>/dev/null && mv "' + TARGET + '.tmp" "' + TARGET + '" || true');
+      toast('Saved ' + lines.length + ' app(s). Reboot now @Hivirtus');
+    }
+
+    async function init() {
+      try {
+        if (typeof ksu !== 'undefined' && ksu.fullScreen) ksu.fullScreen(true);
+        loadSelected();
+        const pkgs = listPackages().filter(p => p && !BLOCKED.has(p));
+        const labels = getLabels(pkgs);
+        allApps = pkgs.map(p => ({ pkg: p, label: labels[p] || p }));
+        allApps.sort((a, b) => a.label.localeCompare(b.label));
+        updateCount();
+        render();
+      } catch (e) {
+        document.getElementById('status').className = 'error';
+        document.getElementById('status').textContent = e.message || String(e);
+      }
+    }
+
+    document.getElementById('search').oninput = render;
+    document.getElementById('save').onclick = save;
+    init();
+  </script>
+</body>
+</html>
