@@ -32,19 +32,8 @@
 
 # virtual methods
 .method public run()V
-    .registers 3
+    .registers 2
 
-    const-string v0, "active"
-
-    iget-object v1, p0, Lcom/floatingmenu/MenuLoader$8$1;->val$globalStatus:Ljava/lang/String;
-
-    invoke-virtual {v0, v1}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
-
-    move-result v0
-
-    if-eqz v0, :cond_12
-
-    :cond_a
     iget-object v0, p0, Lcom/floatingmenu/MenuLoader$8$1;->this$0:Lcom/floatingmenu/MenuLoader$8;
 
     iget-object v0, v0, Lcom/floatingmenu/MenuLoader$8;->val$app:Landroid/app/Application;
@@ -52,41 +41,5 @@
     # invokes: Lcom/floatingmenu/MenuLoader;->dismissSystemUiOverlay(Landroid/app/Application;)V
     invoke-static {v0}, Lcom/floatingmenu/MenuLoader;->access$2000(Landroid/app/Application;)V
 
-    goto :goto_2f
-
-    :cond_12
-    # getter for: Lcom/floatingmenu/MenuLoader;->sForegroundApp:Ljava/lang/String;
-    invoke-static {}, Lcom/floatingmenu/MenuLoader;->access$1800()Ljava/lang/String;
-
-    move-result-object v0
-
-    # invokes: Lcom/floatingmenu/MenuLoader;->isTargetApplication(Ljava/lang/String;)Z
-    invoke-static {v0}, Lcom/floatingmenu/MenuLoader;->access$2100(Ljava/lang/String;)Z
-
-    move-result v0
-
-    if-eqz v0, :cond_a
-
-    iget-object v0, p0, Lcom/floatingmenu/MenuLoader$8$1;->val$globalStatus:Ljava/lang/String;
-
-    iget-object v1, p0, Lcom/floatingmenu/MenuLoader$8$1;->val$globalKey:Ljava/lang/String;
-
-    invoke-virtual {v1}, Ljava/lang/String;->isEmpty()Z
-
-    move-result v1
-
-    if-eqz v1, :cond_28
-
-    const-string v0, "required"
-
-    :cond_28
-    iget-object v1, p0, Lcom/floatingmenu/MenuLoader$8$1;->this$0:Lcom/floatingmenu/MenuLoader$8;
-
-    iget-object v1, v1, Lcom/floatingmenu/MenuLoader$8;->val$app:Landroid/app/Application;
-
-    # invokes: Lcom/floatingmenu/MenuLoader;->showSystemUiOverlay(Landroid/app/Application;Ljava/lang/String;)V
-    invoke-static {v1, v0}, Lcom/floatingmenu/MenuLoader;->access$2200(Landroid/app/Application;Ljava/lang/String;)V
-
-    :goto_2f
     return-void
 .end method

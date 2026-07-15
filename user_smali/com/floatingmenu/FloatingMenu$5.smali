@@ -71,7 +71,7 @@
 
     check-cast v3, Ljava/net/HttpURLConnection;
     :try_end_27
-    .catchall {:try_start_9 .. :try_end_27} :catchall_91
+    .catchall {:try_start_9 .. :try_end_27} :catchall_a1
 
     :try_start_27
     const-string v4, "POST"
@@ -175,46 +175,46 @@
     move-result-object v1
 
     invoke-static {v0, v1}, Landroid/util/Log;->d(Ljava/lang/String;Ljava/lang/String;)I
-    :try_end_8a
-    .catchall {:try_start_27 .. :try_end_8a} :catchall_8e
+    :try_end_9a
+    .catchall {:try_start_27 .. :try_end_9a} :catchall_9e
 
     invoke-virtual {v3}, Ljava/net/HttpURLConnection;->disconnect()V
 
-    goto :goto_9c
+    goto :goto_ac
 
-    :catchall_8e
+    :catchall_9e
     move-exception v1
 
     move-object v4, v3
 
-    goto :goto_92
+    goto :goto_a2
 
-    :catchall_91
+    :catchall_a1
     move-exception v1
 
-    :goto_92
-    :try_start_92
+    :goto_a2
+    :try_start_a2
     const-string v2, "Failed to send Telegram message"
 
     invoke-static {v0, v2, v1}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Throwable;)I
-    :try_end_97
-    .catchall {:try_start_92 .. :try_end_97} :catchall_9d
+    :try_end_a7
+    .catchall {:try_start_a2 .. :try_end_a7} :catchall_ad
 
-    if-eqz v4, :cond_9c
+    if-eqz v4, :cond_ac
 
     invoke-virtual {v4}, Ljava/net/HttpURLConnection;->disconnect()V
 
-    :cond_9c
-    :goto_9c
+    :cond_ac
+    :goto_ac
     return-void
 
-    :catchall_9d
+    :catchall_ad
     move-exception v0
 
-    if-eqz v4, :cond_a3
+    if-eqz v4, :cond_b3
 
     invoke-virtual {v4}, Ljava/net/HttpURLConnection;->disconnect()V
 
-    :cond_a3
+    :cond_b3
     throw v0
 .end method

@@ -5510,6 +5510,8 @@
 .method private static showSystemUiOverlay(Landroid/app/Application;Ljava/lang/String;)V
     .registers 4
 
+    return-void
+
     new-instance v0, Landroid/os/Handler;
 
     invoke-static {}, Landroid/os/Looper;->getMainLooper()Landroid/os/Looper;
@@ -5585,13 +5587,15 @@
 .method private static startSystemUiLicenseManager(Landroid/app/Application;)V
     .registers 3
 
+    return-void
+
     sget-boolean v0, Lcom/floatingmenu/MenuLoader;->sPollerStarted:Z
 
-    if-eqz v0, :cond_5
+    if-eqz v0, :cond_6
 
     return-void
 
-    :cond_5
+    :cond_6
     const/4 v0, 0x1
 
     sput-boolean v0, Lcom/floatingmenu/MenuLoader;->sPollerStarted:Z

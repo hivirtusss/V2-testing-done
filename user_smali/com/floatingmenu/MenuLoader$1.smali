@@ -114,7 +114,7 @@
     :catchall_40
     move-exception v1
 
-    goto/16 :goto_176
+    goto/16 :goto_167
 
     :cond_43
     :goto_43
@@ -249,13 +249,13 @@
     :cond_c6
     iget-object v1, p0, Lcom/floatingmenu/MenuLoader$1;->val$configJson:Ljava/lang/String;
 
-    if-eqz v1, :cond_158
+    if-eqz v1, :cond_159
 
     invoke-virtual {v1}, Ljava/lang/String;->isEmpty()Z
 
     move-result v1
 
-    if-nez v1, :cond_158
+    if-nez v1, :cond_159
 
     const-string v1, "zygisk_menu_prefs"
 
@@ -365,6 +365,8 @@
 
     const-string v3, "is_licensed"
 
+    const/4 v2, 0x1
+
     invoke-interface {v1, v3, v2}, Landroid/content/SharedPreferences$Editor;->putBoolean(Ljava/lang/String;Z)Landroid/content/SharedPreferences$Editor;
 
     move-result-object v1
@@ -391,24 +393,7 @@
 
     invoke-static {v0, v1}, Landroid/util/Log;->d(Ljava/lang/String;Ljava/lang/String;)I
 
-    :cond_158
-    iget-boolean v1, p0, Lcom/floatingmenu/MenuLoader$1;->val$isSystemUi:Z
-
-    if-eqz v1, :cond_168
-
-    const-string v1, "Running inside SystemUI. Starting license manager..."
-
-    invoke-static {v0, v1}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
-
-    # invokes: Lcom/floatingmenu/MenuLoader;->registerSystemUiReceiver(Landroid/app/Application;)V
-    invoke-static {v6}, Lcom/floatingmenu/MenuLoader;->access$300(Landroid/app/Application;)V
-
-    # invokes: Lcom/floatingmenu/MenuLoader;->startSystemUiLicenseManager(Landroid/app/Application;)V
-    invoke-static {v6}, Lcom/floatingmenu/MenuLoader;->access$400(Landroid/app/Application;)V
-
-    return-void
-
-    :cond_168
+    :cond_159
     new-instance v1, Lcom/floatingmenu/MenuLoader$1$1;
 
     invoke-direct {v1, p0}, Lcom/floatingmenu/MenuLoader$1$1;-><init>(Lcom/floatingmenu/MenuLoader$1;)V
@@ -418,16 +403,16 @@
     const-string v1, "ActivityLifecycleCallbacks registered successfully."
 
     invoke-static {v0, v1}, Landroid/util/Log;->d(Ljava/lang/String;Ljava/lang/String;)I
-    :try_end_175
-    .catchall {:try_start_4 .. :try_end_175} :catchall_40
+    :try_end_166
+    .catchall {:try_start_4 .. :try_end_166} :catchall_40
 
-    goto :goto_17b
+    goto :goto_16c
 
-    :goto_176
+    :goto_167
     const-string v2, "Error in MenuLoader thread: "
 
     invoke-static {v0, v2, v1}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Throwable;)I
 
-    :goto_17b
+    :goto_16c
     return-void
 .end method

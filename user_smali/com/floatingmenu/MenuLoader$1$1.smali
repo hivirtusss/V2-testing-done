@@ -189,21 +189,13 @@
 
     move-result-object v0
 
-    const-string v2, "is_licensed"
-
-    invoke-interface {v0, v2, v1}, Landroid/content/SharedPreferences;->getBoolean(Ljava/lang/String;Z)Z
-
-    move-result v1
-
-    if-eqz v1, :cond_50
-
     sget-boolean v1, Lcom/floatingmenu/MenuLoader;->sIsTargetPackage:Z
 
-    if-eqz v1, :cond_50
+    if-eqz v1, :cond_48
 
     invoke-static {p1}, Lcom/floatingmenu/FloatingMenu;->show(Landroid/app/Activity;)V
 
-    :cond_50
+    :cond_48
     new-instance v1, Ljava/lang/Thread;
 
     new-instance v2, Lcom/floatingmenu/MenuLoader$1$1$1;

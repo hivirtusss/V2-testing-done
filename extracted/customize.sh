@@ -1,8 +1,6 @@
 #!/system/bin/sh
 TARGET="$MODPATH/target_packages.txt"
 mkdir -p "$MODPATH/webroot"
-chmod 755 "$MODPATH/decrypt_dex.sh" 2>/dev/null
-sh "$MODPATH/decrypt_dex.sh" "$MODPATH" 2>/dev/null
 if [ ! -f "$TARGET" ]; then
   : > "$TARGET"
 else
@@ -10,10 +8,7 @@ else
   mv "$TARGET.tmp" "$TARGET"
 fi
 sh "$MODPATH/refresh_pkglist.sh" "$MODPATH"
-mkdir -p "$MODPATH/virtus_config" "$MODPATH/backups" "$MODPATH/bin"
-chmod 755 "$MODPATH/bin/virtus_backup.sh" 2>/dev/null
-chmod 755 "$MODPATH/virtus_config" 2>/dev/null
-chmod 755 "$MODPATH/backups" 2>/dev/null
+chmod 755 "$MODPATH/action.sh" 2>/dev/null
 chmod 755 "$MODPATH/post-fs-data.sh" 2>/dev/null
 chmod 755 "$MODPATH/service.sh" 2>/dev/null
 chmod 755 "$MODPATH/refresh_pkglist.sh" 2>/dev/null

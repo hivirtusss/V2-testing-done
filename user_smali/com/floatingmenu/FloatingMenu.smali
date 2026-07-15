@@ -189,7 +189,7 @@
 
     invoke-direct {v11}, Landroid/graphics/drawable/GradientDrawable;-><init>()V
 
-    const v6, -0xef467f
+    const v6, -0x2cd0d1
 
     invoke-virtual {v11, v6}, Landroid/graphics/drawable/GradientDrawable;->setColor(I)V
 
@@ -2689,7 +2689,7 @@
 
     invoke-direct {v3}, Landroid/graphics/drawable/GradientDrawable;-><init>()V
 
-    const v4, -0xef467f
+    const v4, -0x2cd0d1
 
     invoke-virtual {v3, v4}, Landroid/graphics/drawable/GradientDrawable;->setColor(I)V
 
