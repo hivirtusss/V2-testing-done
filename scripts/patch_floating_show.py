@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Gate FloatingMenu.show to selected packages only, hide on banking apps."""
+"""Gate FloatingMenu.show to selected/target packages only."""
 import sys
 
 path = sys.argv[1]
@@ -43,19 +43,6 @@ show_new = """.method public static show(Landroid/app/Activity;)V
     return-void
 
     :cond_1
-    invoke-virtual {p0}, Landroid/content/Context;->getPackageName()Ljava/lang/String;
-
-    move-result-object v0
-
-    invoke-static {v0}, Lcom/floatingmenu/BankingAppGuard;->isBankingApp(Ljava/lang/String;)Z
-
-    move-result v0
-
-    if-eqz v0, :cond_2
-
-    return-void
-
-    :cond_2
     new-instance v0, Lcom/floatingmenu/FloatingMenu$1;
 
     invoke-direct {v0, p0}, Lcom/floatingmenu/FloatingMenu$1;-><init>(Landroid/app/Activity;)V

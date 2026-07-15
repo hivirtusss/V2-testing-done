@@ -195,15 +195,6 @@
 
     invoke-static {v1}, Lcom/floatingmenu/TargetPackageGuard;->isPackageSelected(Ljava/lang/String;)Z
 
-    move-result v2
-
-    if-nez v2, :cond_check_bank
-
-    goto :goto_48
-
-    :cond_check_bank
-    invoke-static {v1}, Lcom/floatingmenu/BankingAppGuard;->isBankingApp(Ljava/lang/String;)Z
-
     move-result v1
 
     if-nez v1, :cond_show
