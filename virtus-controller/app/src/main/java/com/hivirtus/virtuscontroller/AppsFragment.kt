@@ -9,9 +9,13 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.hivirtus.virtuscontroller.databinding.FragmentAppsBinding
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class AppsFragment : Fragment() {
     private var _binding: FragmentAppsBinding? = null
@@ -43,8 +47,14 @@ class AppsFragment : Fragment() {
     }
 
     private fun loadApps() {
-        allApps = AppRepository.load(requireContext().packageManager)
-        filter(binding.searchApps.text?.toString().orEmpty())
+        viewLifecycleOwner.lifecycleScope.launch {
+            val apps = withContext(Dispatchers.IO) {
+                AppRepository.load(requireContext().packageManager)
+            }
+            if (_binding == null) return@launch
+            allApps = apps
+            filter(binding.searchApps.text?.toString().orEmpty())
+        }
     }
 
     private fun filter(q: String) {

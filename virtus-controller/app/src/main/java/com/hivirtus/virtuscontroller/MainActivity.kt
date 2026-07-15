@@ -6,7 +6,7 @@ import androidx.fragment.app.Fragment
 import androidx.viewpager2.adapter.FragmentStateAdapter
 import com.google.android.material.tabs.TabLayoutMediator
 import com.hivirtus.virtuscontroller.databinding.ActivityMainBinding
-import kotlinx.coroutines.CoroutineScope
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -52,20 +52,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun onAppSelected(app: AppInfo) {
+        binding.statusText.text = "Selected: ${app.label}"
         identityFragment.refreshSelection()
         backupFragment.refreshSelection()
-        binding.statusText.text = "Selected: ${app.label}"
     }
 
     private fun refreshStatus() {
-        CoroutineScope(Dispatchers.Main).launch {
+        lifecycleScope.launch {
             val root = withContext(Dispatchers.IO) { RootShell.hasRoot() }
             val mod = withContext(Dispatchers.IO) { ModuleStatus.isInstalled() }
             val parts = mutableListOf<String>()
             parts += if (root) getString(R.string.root_ok) else getString(R.string.root_fail)
             parts += if (mod) getString(R.string.module_ok) else getString(R.string.module_missing)
             binding.statusText.text = parts.joinToString(" | ")
-            moduleFragment.refresh()
         }
     }
 }

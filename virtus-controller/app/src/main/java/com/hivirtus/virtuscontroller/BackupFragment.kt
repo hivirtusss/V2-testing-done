@@ -11,7 +11,7 @@ import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.hivirtus.virtuscontroller.databinding.FragmentBackupBinding
-import kotlinx.coroutines.CoroutineScope
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -39,16 +39,17 @@ class BackupFragment : Fragment() {
     }
 
     fun refreshSelection() {
+        val b = _binding ?: return
         val pkg = SelectionHolder.selectedPackage
-        binding.backupPkgLabel.text = if (pkg == null) "Select app from Apps tab"
+        b.backupPkgLabel.text = if (pkg == null) "Select app from Apps tab"
         else "${SelectionHolder.selectedLabel} — $pkg"
         if (pkg != null) loadBackups(pkg)
     }
 
     private fun loadBackups(pkg: String) {
-        CoroutineScope(Dispatchers.Main).launch {
+        viewLifecycleOwner.lifecycleScope.launch {
             val list = withContext(Dispatchers.IO) { BackupManager.list(pkg) }
-            adapter.submit(list)
+            _binding?.let { adapter.submit(list) }
         }
     }
 
@@ -58,7 +59,7 @@ class BackupFragment : Fragment() {
             return
         }
         val note = binding.backupNoteInput.text.toString()
-        CoroutineScope(Dispatchers.Main).launch {
+        viewLifecycleOwner.lifecycleScope.launch {
             Toast.makeText(requireContext(), "Creating backup...", Toast.LENGTH_SHORT).show()
             val r = withContext(Dispatchers.IO) { BackupManager.create(pkg, note) }
             Toast.makeText(
@@ -72,7 +73,7 @@ class BackupFragment : Fragment() {
 
     private fun restore(entry: BackupEntry) {
         val pkg = SelectionHolder.selectedPackage ?: return
-        CoroutineScope(Dispatchers.Main).launch {
+        viewLifecycleOwner.lifecycleScope.launch {
             Toast.makeText(requireContext(), "Restoring... app will reset data", Toast.LENGTH_SHORT).show()
             val r = withContext(Dispatchers.IO) { BackupManager.restore(pkg, entry.id) }
             Toast.makeText(
@@ -85,7 +86,7 @@ class BackupFragment : Fragment() {
 
     private fun delete(entry: BackupEntry) {
         val pkg = SelectionHolder.selectedPackage ?: return
-        CoroutineScope(Dispatchers.Main).launch {
+        viewLifecycleOwner.lifecycleScope.launch {
             val r = withContext(Dispatchers.IO) { BackupManager.delete(pkg, entry.id) }
             Toast.makeText(
                 requireContext(),
@@ -98,7 +99,7 @@ class BackupFragment : Fragment() {
 
     private fun exportMt(entry: BackupEntry) {
         val pkg = SelectionHolder.selectedPackage ?: return
-        CoroutineScope(Dispatchers.Main).launch {
+        viewLifecycleOwner.lifecycleScope.launch {
             Toast.makeText(requireContext(), "Exporting to MT2/Backup...", Toast.LENGTH_SHORT).show()
             val r = withContext(Dispatchers.IO) { BackupManager.exportToMtManager(pkg, entry.id) }
             Toast.makeText(

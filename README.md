@@ -9,7 +9,7 @@ KernelSU / SukiSU / Magisk Zygisk module with per-app bubble menu, plus a contro
 | File | Description |
 |------|-------------|
 | [zygisk_floating_menu_hivirtus_selection.zip](releases/zygisk_floating_menu_hivirtus_selection.zip) | Module ZIP (v34) — injects bubble in WebUI-selected apps |
-| [virtus_controller_v1.1.apk](releases/virtus_controller_v1.1.apk) | Controller APK — Device ID, backup, MT export |
+| [virtus_controller_v1.2.apk](releases/virtus_controller_v1.2.apk) | Controller APK v1.2 — crash fix on open |
 | [virtus_emergency_uninstall.zip](releases/virtus_emergency_uninstall.zip) | Emergency uninstall if module breaks boot |
 
 ## Install

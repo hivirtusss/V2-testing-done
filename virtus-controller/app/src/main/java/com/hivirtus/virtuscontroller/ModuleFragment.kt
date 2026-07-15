@@ -8,7 +8,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
 import com.hivirtus.virtuscontroller.databinding.FragmentModuleBinding
-import kotlinx.coroutines.CoroutineScope
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -34,9 +34,10 @@ class ModuleFragment : Fragment() {
     }
 
     fun refresh() {
-        CoroutineScope(Dispatchers.Main).launch {
+        if (_binding == null) return
+        viewLifecycleOwner.lifecycleScope.launch {
             val summary = withContext(Dispatchers.IO) { ModuleStatus.summary() }
-            binding.moduleStatus.text = summary
+            _binding?.moduleStatus?.text = summary
         }
     }
 

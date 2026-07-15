@@ -7,7 +7,7 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import com.hivirtus.virtuscontroller.databinding.FragmentIdentityBinding
-import kotlinx.coroutines.CoroutineScope
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -30,17 +30,18 @@ class IdentityFragment : Fragment() {
     }
 
     fun refreshSelection() {
+        val b = _binding ?: return
         val pkg = SelectionHolder.selectedPackage
         if (pkg == null) {
-            binding.selectedPkgLabel.text = "Select an app from Apps tab"
+            b.selectedPkgLabel.text = "Select an app from Apps tab"
             return
         }
-        binding.selectedPkgLabel.text = "${SelectionHolder.selectedLabel}\n$pkg"
-        CoroutineScope(Dispatchers.Main).launch {
+        b.selectedPkgLabel.text = "${SelectionHolder.selectedLabel}\n$pkg"
+        viewLifecycleOwner.lifecycleScope.launch {
             val cfg = withContext(Dispatchers.IO) { IdentityConfig.load(pkg) }
-            binding.androidIdInput.setText(cfg.androidId)
-            binding.signatureSwitch.isChecked = cfg.signatureSpoofEnabled
-            binding.signatureHashInput.setText(cfg.signatureSha256)
+            _binding?.androidIdInput?.setText(cfg.androidId)
+            _binding?.signatureSwitch?.isChecked = cfg.signatureSpoofEnabled
+            _binding?.signatureHashInput?.setText(cfg.signatureSha256)
         }
     }
 
@@ -61,7 +62,7 @@ class IdentityFragment : Fragment() {
             signatureSpoofEnabled = binding.signatureSwitch.isChecked,
             signatureSha256 = binding.signatureHashInput.text.toString().trim().lowercase()
         )
-        CoroutineScope(Dispatchers.Main).launch {
+        viewLifecycleOwner.lifecycleScope.launch {
             val r = withContext(Dispatchers.IO) { IdentityConfig.save(cfg) }
             Toast.makeText(
                 requireContext(),
