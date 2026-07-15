@@ -16,7 +16,7 @@
     }
     .sheet {
       width: 100%;
-      max-height: 52vh;
+      max-height: 50vh;
       background: #141418;
       border-radius: 14px 14px 0 0;
       display: flex;
@@ -80,6 +80,7 @@
     function api() {
       if (!rootApi) {
         if (typeof ksu !== 'undefined') rootApi = ksu;
+        else if (typeof sukisu !== 'undefined') rootApi = sukisu;
         else if (typeof apatch !== 'undefined') rootApi = apatch;
         else if (typeof magisk !== 'undefined') rootApi = magisk;
         else if (typeof mmrl !== 'undefined') rootApi = mmrl;
@@ -87,12 +88,26 @@
       return rootApi;
     }
 
+    function iconPrefix() {
+      if (typeof sukisu !== 'undefined') return 'sukisu://icon/';
+      if (typeof apatch !== 'undefined') return 'apatch://icon/';
+      if (typeof magisk !== 'undefined') return 'magisk://icon/';
+      if (typeof mmrl !== 'undefined') return 'mmrl://icon/';
+      return 'ksu://icon/';
+    }
+
     function exec(cmd) {
       const a = api();
       if (!a || !a.exec) throw new Error('Open from root manager module page');
       const out = a.exec(cmd);
-      if (typeof out === 'string') return out;
-      return (out && out.stdout) ? out.stdout : '';
+      if (typeof out === 'string') {
+        try {
+          const parsed = JSON.parse(out);
+          if (parsed && parsed.stdout != null) return parsed.stdout;
+        } catch (e) {}
+        return out;
+      }
+      return (out && out.stdout != null) ? out.stdout : '';
     }
 
     function toast(m) {
@@ -111,17 +126,59 @@
     function okPkg(p) {
       if (!p || BLOCKED.has(p)) return false;
       if (p.indexOf('.overlay') >= 0) return false;
-      if (p.indexOf('overlay') >= 0 && p.indexOf('launcher') >= 0) return false;
+      if (p.indexOf('overlay.') >= 0) return false;
+      if (/\.overlay\./.test(p)) return false;
+      if (p.indexOf('com.android.') === 0) return false;
+      if (p.indexOf('com.google.android.') === 0) return false;
+      if (p.indexOf('com.motorola.') === 0 && p.indexOf('overlay') >= 0) return false;
       return true;
     }
 
+    function uniq(arr) {
+      return [...new Set(arr)];
+    }
+
+    function fromShellList(out) {
+      return (out || '').split('\n')
+        .map(l => l.replace(/^package:/, '').trim())
+        .filter(okPkg);
+    }
+
     function listPackages() {
-      let out = exec('pm list packages -3 2>/dev/null');
-      let pkgs = (out || '').split('\n').map(l => l.replace(/^package:/, '').trim()).filter(okPkg);
-      if (pkgs.length) return pkgs;
-      out = exec('pm list packages 2>/dev/null');
-      pkgs = (out || '').split('\n').map(l => l.replace(/^package:/, '').trim()).filter(okPkg);
-      return pkgs;
+      const a = api();
+      if (a) {
+        try {
+          if (typeof a.listUserPackages === 'function') {
+            const pkgs = parsePkgJson(a.listUserPackages())
+              .map(p => (typeof p === 'string' ? p : (p && p.packageName) || ''))
+              .filter(okPkg);
+            if (pkgs.length) return uniq(pkgs);
+          }
+        } catch (e) {}
+        try {
+          if (typeof a.listPackages === 'function') {
+            let raw = a.listPackages('user');
+            const pkgs = parsePkgJson(raw)
+              .map(p => (typeof p === 'string' ? p : (p && p.packageName) || ''))
+              .filter(okPkg);
+            if (pkgs.length) return uniq(pkgs);
+          }
+        } catch (e) {}
+      }
+
+      let pkgs = fromShellList(exec('pm list packages -3 2>/dev/null'));
+      if (pkgs.length) return uniq(pkgs);
+
+      pkgs = fromShellList(exec('cmd package list packages -3 2>/dev/null'));
+      if (pkgs.length) return uniq(pkgs);
+
+      pkgs = fromShellList(exec('pm list packages -3 -u 2>/dev/null'));
+      if (pkgs.length) return uniq(pkgs);
+
+      pkgs = fromShellList(exec('pm list packages 2>/dev/null')).filter(p => {
+        return p.indexOf('com.android.') !== 0 && p.indexOf('com.google.android.') !== 0;
+      });
+      return uniq(pkgs);
     }
 
     function getLabels(pkgs) {
@@ -131,9 +188,14 @@
         for (let i = 0; i < pkgs.length; i += 80) {
           const batch = pkgs.slice(i, i + 80);
           try {
-            const info = a.getPackagesInfo(JSON.stringify(batch));
+            let info = null;
+            try { info = a.getPackagesInfo(JSON.stringify(batch)); } catch (e1) {
+              try { info = a.getPackagesInfo(batch); } catch (e2) {}
+            }
             const arr = parsePkgJson(info);
-            arr.forEach(p => { if (p && p.packageName) map[p.packageName] = p.label || p.packageName; });
+            arr.forEach(p => {
+              if (p && p.packageName) map[p.packageName] = p.appLabel || p.label || p.packageName;
+            });
           } catch (e) {}
         }
       }
@@ -165,7 +227,7 @@
           render();
         };
         const img = document.createElement('img');
-        img.src = 'ksu://icon/' + encodeURIComponent(app.pkg);
+        img.src = iconPrefix() + encodeURIComponent(app.pkg);
         img.onerror = () => { img.style.visibility = 'hidden'; };
         const info = document.createElement('div');
         info.className = 'info';
@@ -182,10 +244,13 @@
 
     function save() {
       const lines = [...selected].filter(p => okPkg(p) && p !== '*');
-      const content = lines.join('\n');
       exec('mkdir -p /data/adb/modules/zygisk_floating_menu');
-      const b64 = btoa(unescape(encodeURIComponent(content)));
-      exec("echo '" + b64 + "' | base64 -d > '" + TARGET + "'");
+      if (!lines.length) {
+        exec(': > "' + TARGET + '"');
+      } else {
+        const body = lines.join('\n');
+        exec("cat > '" + TARGET + "' << 'EOF'\n" + body + "\nEOF");
+      }
       exec('chmod 644 "' + TARGET + '"');
       exec('grep -vx "\\*" "' + TARGET + '" > "' + TARGET + '.tmp" 2>/dev/null && mv "' + TARGET + '.tmp" "' + TARGET + '" || true');
       toast('Saved. Reboot.');
