@@ -131,6 +131,11 @@ class AppSettingsActivity : AppCompatActivity() {
     private fun createBackup() {
         val note = binding.backupNoteInput.text.toString().trim()
         lifecycleScope.launch {
+            val check = withContext(Dispatchers.IO) { BackupManager.checkData(packageName) }
+            if (!check.ok) {
+                toast("Pehle target app kholo → login karo → force stop karo → phir Create Backup")
+                return@launch
+            }
             toast("Creating backup...")
             val id = binding.androidIdInput.text.toString().trim().lowercase()
             val androidId = if (id.length == 16) id else ""

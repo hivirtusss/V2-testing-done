@@ -9,25 +9,24 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingHorizontal="16dp"
-        android:paddingTop="16dp"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:paddingTop="20dp"
         android:paddingBottom="8dp">
 
         <ImageView
-            android:layout_width="28dp"
-            android:layout_height="28dp"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
             android:contentDescription="@null"
+            android:scaleType="fitCenter"
             android:src="@drawable/virtus_logo" />
 
         <TextView
-            android:layout_width="0dp"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
-            android:layout_weight="1"
+            android:layout_marginTop="8dp"
             android:text="Settings"
-            android:textColor="@color/virtus_text"
+            android:textColor="@color/virtus_red"
             android:textSize="20sp"
             android:textStyle="bold" />
     </LinearLayout>
@@ -35,7 +34,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginHorizontal="16dp"
+        android:layout_gravity="center_horizontal"
         android:layout_marginBottom="12dp"
         android:background="@drawable/bg_tab_selected"
         android:paddingHorizontal="20dp"
@@ -81,7 +80,6 @@
                     android:textSize="13sp" />
             </LinearLayout>
 
-            <!-- Android ID card -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -144,7 +142,7 @@
                     <EditText
                         android:id="@+id/androidIdInput"
                         android:layout_width="0dp"
-                        android:layout_height="46dp"
+                        android:layout_height="48dp"
                         android:layout_weight="1"
                         android:background="@drawable/bg_input_active"
                         android:fontFamily="monospace"
@@ -152,40 +150,43 @@
                         android:inputType="textNoSuggestions"
                         android:maxLength="16"
                         android:paddingHorizontal="12dp"
-                        android:textColor="@color/virtus_text"
+                        android:textColor="@color/virtus_green"
                         android:textColorHint="@color/virtus_text_dim"
-                        android:textSize="13sp" />
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
 
                     <ImageButton
                         android:id="@+id/btnRefreshId"
-                        android:layout_width="46dp"
-                        android:layout_height="46dp"
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
                         android:layout_marginStart="8dp"
                         android:background="@drawable/bg_input"
                         android:contentDescription="@string/android_id"
                         android:padding="11dp"
                         android:src="@drawable/ic_refresh"
-                        android:tint="@color/virtus_text_secondary" />
+                        android:tint="@color/virtus_red" />
                 </LinearLayout>
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnSaveId"
                     android:layout_width="match_parent"
-                    android:layout_height="48dp"
+                    android:layout_height="52dp"
                     android:layout_marginTop="12dp"
-                    android:backgroundTint="@color/virtus_red"
+                    android:backgroundTint="@color/virtus_red_dark"
                     android:text="@string/save"
                     android:textAllCaps="false"
                     android:textColor="@color/virtus_text"
+                    android:textSize="15sp"
                     android:textStyle="bold"
                     app:cornerRadius="12dp"
                     app:icon="@drawable/ic_save"
                     app:iconGravity="textStart"
                     app:iconPadding="8dp"
-                    app:iconTint="@color/virtus_text" />
+                    app:iconTint="@color/virtus_text"
+                    app:strokeColor="@color/virtus_btn_stroke"
+                    app:strokeWidth="1dp" />
             </LinearLayout>
 
-            <!-- Data Management header -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -260,10 +261,12 @@
                     android:layout_width="match_parent"
                     android:layout_height="48dp"
                     android:layout_marginTop="12dp"
-                    android:backgroundTint="@color/virtus_red"
+                    android:backgroundTint="@color/virtus_red_dark"
                     android:text="@string/reset_data"
                     android:textAllCaps="false"
-                    app:cornerRadius="12dp" />
+                    app:cornerRadius="12dp"
+                    app:strokeColor="@color/virtus_btn_stroke"
+                    app:strokeWidth="1dp" />
             </LinearLayout>
 
             <LinearLayout
@@ -306,13 +309,15 @@
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnCreateBackup"
                     android:layout_width="match_parent"
-                    android:layout_height="48dp"
+                    android:layout_height="52dp"
                     android:layout_marginTop="10dp"
-                    android:backgroundTint="@color/virtus_red"
+                    android:backgroundTint="@color/virtus_red_dark"
                     android:text="@string/create_backup"
                     android:textAllCaps="false"
                     android:textStyle="bold"
-                    app:cornerRadius="12dp" />
+                    app:cornerRadius="12dp"
+                    app:strokeColor="@color/virtus_btn_stroke"
+                    app:strokeWidth="1dp" />
 
                 <androidx.recyclerview.widget.RecyclerView
                     android:id="@+id/backupList"

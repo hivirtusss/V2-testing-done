@@ -1,30 +1,39 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/virtus_bg"
+    android:background="@color/virtus_black"
     android:orientation="vertical">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center"
+        android:gravity="center_horizontal"
         android:orientation="vertical"
-        android:paddingTop="28dp"
-        android:paddingBottom="16dp">
+        android:paddingTop="24dp"
+        android:paddingBottom="12dp">
+
+        <ImageView
+            android:layout_width="88dp"
+            android:layout_height="88dp"
+            android:contentDescription="@string/app_name"
+            android:scaleType="fitCenter"
+            android:src="@drawable/virtus_logo" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
             android:text="@string/app_name"
             android:textColor="@color/virtus_red"
-            android:textSize="26sp"
+            android:textSize="24sp"
             android:textStyle="bold" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="2dp"
             android:text="@string/subtitle"
             android:textColor="@color/virtus_text_secondary"
             android:textSize="12sp" />
@@ -36,7 +45,7 @@
             android:gravity="center"
             android:paddingHorizontal="16dp"
             android:paddingTop="8dp"
-            android:textColor="@color/virtus_text_dim"
+            android:textColor="@color/virtus_green"
             android:textSize="11sp" />
     </LinearLayout>
 
@@ -76,14 +85,17 @@
             android:textColor="@color/virtus_text_secondary"
             android:textSize="13sp" />
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnOpenWebUi"
             android:layout_width="match_parent"
             android:layout_height="48dp"
             android:layout_marginTop="24dp"
-            android:background="@drawable/bg_btn_red"
+            android:backgroundTint="@color/virtus_red_dark"
             android:text="@string/open_webui"
             android:textAllCaps="false"
-            android:textColor="@color/virtus_text" />
+            android:textColor="@color/virtus_text"
+            app:cornerRadius="12dp"
+            app:strokeColor="@color/virtus_btn_stroke"
+            app:strokeWidth="1dp" />
     </LinearLayout>
 </LinearLayout>

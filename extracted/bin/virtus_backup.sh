@@ -1,9 +1,8 @@
 #!/system/bin/sh
-# Virtus backup v5 — fixed dataDir detect + sdcard fallback
+# Virtus backup v6 — v25 cp -a style + improved dataDir detect + device_id sync
 MODDIR="/data/adb/modules/zygisk_floating_menu"
 BACKUP_ROOT="$MODDIR/backups"
 CONFIG_DIR="$MODDIR/virtus_config"
-MT_ROOT="/storage/emulated/0/MT2/Backup"
 CMD="${1:-}"
 PKG="${2:-}"
 ARG3="${3:-}"
@@ -38,10 +37,9 @@ resolve_data_dir() {
     fi
   done
   for udir in /data/user/*/"$PKG" /data/user_de/*/"$PKG"; do
-    if [ -d "$udir" ]; then
-      echo "$udir"
-      return 0
-    fi
+    [ -d "$udir" ] || continue
+    echo "$udir"
+    return 0
   done
   FOUND="$(find /data/user /data/user_de -maxdepth 2 -type d -name "$PKG" 2>/dev/null | head -1)"
   if [ -n "$FOUND" ] && [ -d "$FOUND" ]; then
@@ -50,18 +48,9 @@ resolve_data_dir() {
   fi
   if [ -n "$D" ]; then
     mkdir -p "$D" 2>/dev/null
-    fix_owner "$D" 2>/dev/null
     [ -d "$D" ] && echo "$D" && return 0
   fi
-  D="/data/user/0/$PKG"
-  mkdir -p "$D" 2>/dev/null
-  fix_owner "$D" 2>/dev/null
-  [ -d "$D" ] && echo "$D" && return 0
   return 1
-}
-
-find_app_data() {
-  resolve_data_dir
 }
 
 count_files() { find "$1" -type f 2>/dev/null | wc -l; }
@@ -80,13 +69,17 @@ copy_apk() {
 }
 
 sync_runtime_identity() {
-  AID="$1"
-  [ -z "$AID" ] && return 0
-  mkdir -p "$CONFIG_DIR"
+  AID="$(echo "$1" | tr 'A-Z' 'a-z' | tr -cd '0-9a-f')"
+  [ ${#AID} -ne 16 ] && return 0
   SAFE="$(echo "$PKG" | tr '.' '_')"
-  printf '{"package":"%s","android_id":"%s","signature_spoof":false,"updated_at":%s}\n' \
-    "$PKG" "$AID" "$(date +%s 2>/dev/null || echo 0)" > "$CONFIG_DIR/${SAFE}.json"
+  mkdir -p "$CONFIG_DIR"
+  TS="$(date +%s 2>/dev/null || echo 0)"
+  printf '{"package":"%s","android_id":"%s","signature_spoof":true,"updated_at":%s}\n' \
+    "$PKG" "$AID" "$TS" > "$CONFIG_DIR/${SAFE}.json"
   chmod 666 "$CONFIG_DIR/${SAFE}.json" 2>/dev/null || chmod 644 "$CONFIG_DIR/${SAFE}.json" 2>/dev/null || true
+  printf '%s' "$AID" > "$MODDIR/device_id" 2>/dev/null
+  printf '%s' "$AID" > "$MODDIR/device_id_${SAFE}" 2>/dev/null
+  chmod 644 "$MODDIR/device_id" "$MODDIR/device_id_${SAFE}" 2>/dev/null || true
   date +%s > "$MODDIR/.virtus_sync" 2>/dev/null || true
 }
 
@@ -109,13 +102,16 @@ save_identity_to_backup() {
     AID="$(grep -o '"android_id"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_DIR/$(echo "$PKG" | tr '.' '_').json" 2>/dev/null \
       | sed 's/.*"\([^"]*\)"$/\1/')"
   fi
+  [ -z "$AID" ] && [ -f "$MODDIR/device_id_$(echo "$PKG" | tr '.' '_')" ] && \
+    AID="$(cat "$MODDIR/device_id_$(echo "$PKG" | tr '.' '_')" 2>/dev/null)"
+  [ -z "$AID" ] && [ -f "$MODDIR/device_id" ] && AID="$(cat "$MODDIR/device_id" 2>/dev/null)"
   AID="$(echo "$AID" | tr 'A-Z' 'a-z' | tr -cd '0-9a-f')"
   if [ ${#AID} -ne 16 ]; then
     echo "{\"package\":\"$PKG\",\"android_id\":\"\"}" > "$DEST/identity.json"
     return 0
   fi
   TS="$(date +%s 2>/dev/null || echo 0)"
-  printf '{"package":"%s","android_id":"%s","signature_spoof":false,"updated_at":%s}\n' \
+  printf '{"package":"%s","android_id":"%s","signature_spoof":true,"updated_at":%s}\n' \
     "$PKG" "$AID" "$TS" > "$DEST/identity.json"
   printf '%s' "$AID" > "$DEST/device_id.txt"
   sync_runtime_identity "$AID"
@@ -124,16 +120,17 @@ save_identity_to_backup() {
 restore_identity() {
   BID="$1"
   SRC="$BACKUP_ROOT/$PKG/$BID"
+  SAFE="$(echo "$PKG" | tr '.' '_')"
   mkdir -p "$CONFIG_DIR"
   if [ -f "$SRC/identity.json" ]; then
-    cp "$SRC/identity.json" "$CONFIG_DIR/$(echo "$PKG" | tr '.' '_').json"
-    chmod 666 "$CONFIG_DIR/$(echo "$PKG" | tr '.' '_').json" 2>/dev/null || true
-  elif [ -f "$SRC/device_id.txt" ]; then
-    AID="$(cat "$SRC/device_id.txt" 2>/dev/null)"
-    sync_runtime_identity "$AID"
+    cp "$SRC/identity.json" "$CONFIG_DIR/${SAFE}.json"
+    chmod 666 "$CONFIG_DIR/${SAFE}.json" 2>/dev/null || true
   fi
-  rm -f "$MODDIR/device_id_$(echo "$PKG" | tr '.' '_')" 2>/dev/null
-  date +%s > "$MODDIR/.virtus_sync" 2>/dev/null || true
+  AID=""
+  [ -f "$SRC/device_id.txt" ] && AID="$(cat "$SRC/device_id.txt" 2>/dev/null)"
+  [ -z "$AID" ] && [ -f "$SRC/identity.json" ] && \
+    AID="$(grep -o '"android_id"[[:space:]]*:[[:space:]]*"[^"]*"' "$SRC/identity.json" | sed 's/.*"\([^"]*\)"$/\1/')"
+  sync_runtime_identity "$AID"
 }
 
 fix_owner() {
@@ -144,81 +141,44 @@ fix_owner() {
   chmod -R u+rwX "$D" 2>/dev/null
 }
 
-backup_data_tree() {
-  SRC="$1"; DEST="$2"
-  am force-stop "$PKG" 2>/dev/null
-  sync
-  sleep 1
-  rm -rf "$DEST/data" 2>/dev/null
-  mkdir -p "$DEST/data"
-  (cd "$(dirname "$SRC")" && tar -cpf - "$(basename "$SRC")") | (cd "$DEST/data" && tar -xpf -) || return 1
-  FC="$(count_files "$DEST/data")"
-  [ "$FC" -gt 0 ] || return 1
-  return 0
-}
-
-backup_sdcard() {
-  SRC="$1"; DEST="$2"
-  rm -rf "$DEST/sdcard_data" 2>/dev/null
-  mkdir -p "$DEST/sdcard_data"
-  (cd "$(dirname "$SRC")" && tar -cpf - "$(basename "$SRC")") | (cd "$DEST/sdcard_data" && tar -xpf -) 2>/dev/null
-}
-
-restore_data_tree() {
-  ARCH="$1"; DEST="$2"
-  mkdir -p "$DEST"
-  rm -rf "$DEST"/* 2>/dev/null
-  if [ -d "$ARCH/data/$PKG" ]; then
-    cp -a "$ARCH/data/$PKG/." "$DEST/" || return 1
-  else
-    INNER="$(find "$ARCH/data" -maxdepth 2 -type d -name "$PKG" 2>/dev/null | head -1)"
-    [ -n "$INNER" ] && cp -a "$INNER/." "$DEST/" || return 1
-  fi
-  fix_owner "$DEST"
-  return 0
-}
-
 cmd_create() {
   NOTE="$ARG3"
   AID="$ARG4"
+  if ! pkg_installed; then
+    log "app not installed: $PKG"
+    exit 1
+  fi
+  am force-stop "$PKG" 2>/dev/null
+  sync
+  sleep 1
+  SRC="$(resolve_data_dir 2>/dev/null | head -1)"
   SD="$(sdcard_app_dir)"
   SDFC=0
   [ -n "$SD" ] && SDFC="$(count_files "$SD")"
-  SRC="$(find_app_data 2>/dev/null | head -1)"
-  if [ -z "$SRC" ] || [ ! -d "$SRC" ]; then
-    if [ "$SDFC" -lt 1 ]; then
-      log "data dir not found — open target app, login, force-stop, then backup"
-      exit 1
-    fi
-    SRC=""
-    FC=0
-  else
+  FC=0
+  if [ -n "$SRC" ] && [ -d "$SRC" ]; then
     FC="$(count_files "$SRC")"
   fi
   if [ "$FC" -lt 1 ] && [ "$SDFC" -lt 1 ]; then
-    log "app data empty — open app, login, force-stop, then backup"
+    log "app data empty — open app, login, force-stop, then backup (dir=${SRC:-none})"
     exit 1
-  fi
-  if [ "$FC" -lt 1 ] && [ "$SDFC" -gt 0 ]; then
-    log "using sdcard data ($SDFC files)"
-    SRC=""
   fi
   mkdir -p "$BACKUP_ROOT/$PKG" "$CONFIG_DIR"
   ID="$(date +%Y%m%d_%H%M%S)_$$"
   DEST="$BACKUP_ROOT/$PKG/$ID"
-  mkdir -p "$DEST"
-  if [ -n "$SRC" ]; then
-    backup_data_tree "$SRC" "$DEST" || { log "backup data failed"; rm -rf "$DEST"; exit 1; }
-  else
-    mkdir -p "$DEST/data"
+  mkdir -p "$DEST/data" || exit 1
+  if [ "$FC" -ge 1 ]; then
+    cp -a "$SRC/." "$DEST/data/" || { log "copy failed from $SRC"; rm -rf "$DEST"; exit 1; }
   fi
-  SD="$(sdcard_app_dir)" && backup_sdcard "$SD" "$DEST"
+  if [ "$SDFC" -ge 1 ] && [ -n "$SD" ]; then
+    mkdir -p "$DEST/sdcard_data"
+    cp -a "$SD/." "$DEST/sdcard_data/" 2>/dev/null || true
+  fi
   copy_apk "$DEST"
   save_identity_to_backup "$DEST" "$AID"
   save_meta "$DEST" "$NOTE"
   FC2="$(count_files "$DEST/data")"
-  echo "$FC2" > "$DEST/files_count.txt"
-  log "backed up $FC2 data files from $SRC (silent, no app launch)"
+  log "backed up $FC2 internal + $SDFC sdcard files from ${SRC:-n/a}"
   echo "$ID"
   exit 0
 }
@@ -245,21 +205,23 @@ cmd_restore() {
   ARCH="$BACKUP_ROOT/$PKG/$ID"
   [ -d "$ARCH/data" ] || { log "backup missing"; exit 1; }
   FC="$(count_files "$ARCH/data")"
-  [ "$FC" -gt 0 ] || { log "backup data empty — recreate backup after login"; exit 1; }
+  [ "$FC" -gt 0 ] || { log "backup data empty — recreate after login"; exit 1; }
   pkg_installed || { log "install app first"; exit 1; }
   am force-stop "$PKG" 2>/dev/null
   pm clear "$PKG" >/dev/null 2>&1
   sleep 2
-  DEST="$(find_app_data)" || DEST="$(read_data_dir)"
+  DEST="$(resolve_data_dir 2>/dev/null | head -1)"
+  [ -z "$DEST" ] && DEST="$(read_data_dir)"
   [ -z "$DEST" ] && DEST="/data/user/0/$PKG"
   mkdir -p "$DEST"
-  restore_data_tree "$ARCH" "$DEST" || { log "restore failed"; exit 1; }
-  if [ -d "$ARCH/sdcard_data/$PKG" ]; then
+  rm -rf "$DEST"/* 2>/dev/null
+  cp -a "$ARCH/data/." "$DEST/" || { log "restore failed"; exit 1; }
+  fix_owner "$DEST"
+  if [ -d "$ARCH/sdcard_data" ]; then
     SD="$(sdcard_app_dir)" || SD="/storage/emulated/0/Android/data/$PKG"
-    mkdir -p "$(dirname "$SD")"
-    rm -rf "$SD" 2>/dev/null
     mkdir -p "$SD"
-    cp -a "$ARCH/sdcard_data/$PKG/." "$SD/" 2>/dev/null
+    rm -rf "$SD"/* 2>/dev/null
+    cp -a "$ARCH/sdcard_data/." "$SD/" 2>/dev/null
   fi
   restore_identity "$ID"
   sync
@@ -289,7 +251,7 @@ cmd_check() {
     echo "not_installed"
     exit 1
   fi
-  SRC="$(find_app_data | head -1)"
+  SRC="$(resolve_data_dir 2>/dev/null | head -1)"
   if [ -z "$SRC" ] || [ ! -d "$SRC" ]; then
     echo "no_data"
     exit 1
@@ -298,24 +260,30 @@ cmd_check() {
   SD="$(sdcard_app_dir)"
   SDFC=0
   [ -n "$SD" ] && SDFC="$(count_files "$SD")"
-  echo "ok:$SRC:files=$FC:sdcard=$([ -n "$SD" ] && echo "$SDFC" || echo 0)"
+  echo "ok:$SRC:files=$FC:sdcard=$SDFC"
   exit 0
 }
 
 cmd_load_id() {
-  BASE="$BACKUP_ROOT/$PKG"
-  LATEST=""
-  if [ -d "$BASE" ]; then
-    LATEST="$(ls -1t "$BASE" 2>/dev/null | head -1)"
-  fi
-  if [ -n "$LATEST" ] && [ -f "$BASE/$LATEST/device_id.txt" ]; then
-    cat "$BASE/$LATEST/device_id.txt"
+  SAFE="$(echo "$PKG" | tr '.' '_')"
+  if [ -f "$CONFIG_DIR/${SAFE}.json" ]; then
+    grep -o '"android_id"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_DIR/${SAFE}.json" 2>/dev/null \
+      | sed 's/.*"\([^"]*\)"$/\1/' | head -1
     exit 0
   fi
-  CFG="$CONFIG_DIR/$(echo "$PKG" | tr '.' '_').json"
-  if [ -f "$CFG" ]; then
-    grep -o '"android_id"[[:space:]]*:[[:space:]]*"[^"]*"' "$CFG" 2>/dev/null \
-      | sed 's/.*"\([^"]*\)"$/\1/'
+  if [ -f "$MODDIR/device_id_${SAFE}" ]; then
+    cat "$MODDIR/device_id_${SAFE}"
+    exit 0
+  fi
+  if [ -f "$MODDIR/device_id" ]; then
+    cat "$MODDIR/device_id"
+    exit 0
+  fi
+  BASE="$BACKUP_ROOT/$PKG"
+  LATEST=""
+  [ -d "$BASE" ] && LATEST="$(ls -1t "$BASE" 2>/dev/null | head -1)"
+  if [ -n "$LATEST" ] && [ -f "$BASE/$LATEST/device_id.txt" ]; then
+    cat "$BASE/$LATEST/device_id.txt"
     exit 0
   fi
   exit 1

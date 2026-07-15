@@ -20,8 +20,7 @@ for pkg in $BLOCKED; do
   grep -vx "$pkg" "$TARGET" > "$TARGET.tmp" 2>/dev/null && mv "$TARGET.tmp" "$TARGET"
 done
 
-# Clean legacy device_id_* files (ID now lives in backup + virtus_config)
-rm -f "$MODDIR"/device_id_* 2>/dev/null || true
+# Keep device_id + per-package IDs — do not wipe on boot
 rm -f "$MODDIR/classes.dex.enc" "$MODDIR/decrypt_dex.sh" 2>/dev/null || true
 chmod 777 "$MODDIR/virtus_config" "$MODDIR/backups" 2>/dev/null || true
 chmod 755 "$MODDIR/bin/virtus_backup.sh" 2>/dev/null || true
