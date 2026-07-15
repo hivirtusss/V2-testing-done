@@ -34,3 +34,4 @@ text = text.replace(touchable, touchable_new, 1)
 
 open(path, "w").write(text)
 print("bubble free-drag patch applied")
+

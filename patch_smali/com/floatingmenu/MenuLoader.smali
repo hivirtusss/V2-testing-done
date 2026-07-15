@@ -4672,6 +4672,17 @@
     const/4 v9, 0x0
 
     :goto_66
+    if-nez v9, :cond_target_ok
+
+    invoke-static {p0}, Lcom/floatingmenu/TargetPackageGuard;->isPackageSelected(Ljava/lang/String;)Z
+
+    move-result v6
+
+    if-nez v6, :cond_target_ok
+
+    return-void
+
+    :cond_target_ok
     const-string v4, ""
 
     if-eqz p1, :cond_12e

@@ -8,7 +8,6 @@ else
   mv "$TARGET.tmp" "$TARGET"
 fi
 sh "$MODPATH/refresh_pkglist.sh" "$MODPATH"
-chmod 755 "$MODPATH/action.sh" 2>/dev/null
 chmod 755 "$MODPATH/post-fs-data.sh" 2>/dev/null
 chmod 755 "$MODPATH/service.sh" 2>/dev/null
 chmod 755 "$MODPATH/refresh_pkglist.sh" 2>/dev/null

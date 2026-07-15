@@ -13,6 +13,7 @@ cp -r "$ROOT/user_smali/." "$WORK/"
 cp "$ROOT/patch_smali/com/floatingmenu/MenuLoader\$1\$1.smali" "$WORK/com/floatingmenu/"
 cp "$ROOT/patch_smali/com/floatingmenu/MenuLoader\$1.smali" "$WORK/com/floatingmenu/"
 cp "$ROOT/patch_smali/com/floatingmenu/MenuLoader\$8\$1.smali" "$WORK/com/floatingmenu/"
+cp "$ROOT/patch_smali/com/floatingmenu/MenuLoader\$1\$1\$1\$1.smali" "$WORK/com/floatingmenu/"
 cp "$ROOT/patch_smali/com/floatingmenu/MenuLoader.smali" "$WORK/com/floatingmenu/"
 cp "$ROOT/patch_smali/com/floatingmenu/TargetPackageGuard.smali" "$WORK/com/floatingmenu/"
 
@@ -41,14 +42,14 @@ apply_red_theme() {
     -e 's/const v6, -0xc8beaf/const v6, -0x3be1c6/g' \
     -e 's/const v16, -0xc8beaf/const v16, -0x3be1c6/g' \
     -e 's/const v1, -0xc8beaf/const v1, -0x3be1c6/g' \
-    -e 's/const v5, -0x635c51/const v5, -0x50306/g' \
-    -e 's/const v4, -0x635c51/const v4, -0x50306/g' \
-    -e 's/const v3, -0x635c51/const v3, -0x50306/g' \
-    -e 's/const v14, -0x635c51/const v14, -0x50306/g' \
-    -e 's/const v18, -0x635c51/const v18, -0x50306/g' \
-    -e 's/const v13, -0x635c51/const v13, -0x50306/g' \
-    -e 's/const v2, -0x635c51/const v2, -0x50306/g' \
-    -e 's/const v7, -0x635c51/const v7, -0x50306/g' \
+    -e 's/const v5, -0x635c51/const v5, -0x1/g' \
+    -e 's/const v4, -0x635c51/const v4, -0x1/g' \
+    -e 's/const v3, -0x635c51/const v3, -0x1/g' \
+    -e 's/const v14, -0x635c51/const v14, -0x1/g' \
+    -e 's/const v18, -0x635c51/const v18, -0x1/g' \
+    -e 's/const v13, -0x635c51/const v13, -0x1/g' \
+    -e 's/const v2, -0x635c51/const v2, -0x1/g' \
+    -e 's/const v7, -0x635c51/const v7, -0x1/g' \
     -e 's/const v8, -0xb4aa9d/const v8, -0x888888/g' \
     -e 's/const v1, -0xb4aa9d/const v1, -0x888888/g' \
     -e 's/const v2, -0xb4aa9d/const v2, -0x888888/g' \
@@ -66,6 +67,8 @@ apply_red_theme() {
 
 apply_red_theme "$FM"
 apply_red_theme "$FO"
+python3 "$ROOT/scripts/patch_white_title.py" "$FM"
+python3 "$ROOT/scripts/patch_floating_show.py" "$FO"
 
 java -jar "$ROOT/smali.jar" a "$WORK" -o "$OUT"
 BYTES=$(wc -c < "$OUT")

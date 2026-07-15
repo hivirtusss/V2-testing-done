@@ -119,6 +119,10 @@
 .method public static isPackageSelected(Ljava/lang/String;)Z
     .registers 3
 
+    const/4 v0, 0x0
+
+    sput-boolean v0, Lcom/floatingmenu/TargetPackageGuard;->sLoaded:Z
+
     invoke-static {}, Lcom/floatingmenu/TargetPackageGuard;->ensureLoaded()V
 
     if-eqz p0, :cond_false
