@@ -1,11 +1,15 @@
 #!/system/bin/sh
-# Device ID inject — runtime sync + clear data (Android Faker style)
+# Device ID inject — runtime sync + clear data (System Error style)
 MODDIR="/data/adb/modules/zygisk_floating_menu"
 CONFIG_DIR="$MODDIR/virtus_config"
 BACKUP_ROOT="$MODDIR/backups"
 CMD="${1:-}"
 PKG="${2:-}"
 AID="${3:-}"
+SIG_SPOOF="${4:-1}"
+SIG_SHA="${5:-}"
+VER_CODE="${6:-0}"
+VER_NAME="${7:-}"
 
 log() { echo "[virtus_identity] $*" >&2; }
 
@@ -31,6 +35,31 @@ normalize_id() {
   echo "$1" | tr 'A-Z' 'a-z' | tr -cd '0-9a-f'
 }
 
+fetch_pkg_meta() {
+  VC="$VER_CODE"; VN="$VER_NAME"; SHA="$SIG_SHA"
+  if [ -z "$VC" ] || [ "$VC" = "0" ]; then
+    VC="$(dumpsys package "$PKG" 2>/dev/null | awk -F= '/versionCode=/{print $2; exit}' | tr -cd '0-9')"
+  fi
+  if [ -z "$VN" ]; then
+    VN="$(dumpsys package "$PKG" 2>/dev/null | awk -F= '/versionName=/{print $2; exit}' | tr -d "'")"
+  fi
+  if [ -z "$SHA" ]; then
+    SHA="$(pm dump "$PKG" 2>/dev/null | grep -m1 -i 'SHA-256' | tr -cd '0-9a-fA-F' | head -c 64 | tr 'A-Z' 'a-z')"
+  fi
+  [ -z "$VC" ] && VC=0
+  [ -z "$VN" ] && VN=""
+  [ -z "$SHA" ] && SHA=""
+}
+
+build_body() {
+  AID="$1"
+  TS="$(date +%s 2>/dev/null || echo 0)"
+  fetch_pkg_meta
+  SS="false"; [ "$SIG_SPOOF" = "1" ] && SS="true"
+  printf '{"package":"%s","android_id":"%s","signature_spoof":%s,"signature_sha256":"%s","version_code":%s,"version_name":"%s","updated_at":%s}' \
+    "$PKG" "$AID" "$SS" "$SHA" "$VC" "$VN" "$TS"
+}
+
 cmd_save() {
   AID="$(normalize_id "$AID")"
   if [ ${#AID} -ne 16 ]; then
@@ -40,11 +69,10 @@ cmd_save() {
   ensure_dirs
   SAFE="$(safe_name "$PKG")"
   JSON="$CONFIG_DIR/${SAFE}.json"
-  TS="$(date +%s 2>/dev/null || echo 0)"
-  BODY="{\"package\":\"$PKG\",\"android_id\":\"$AID\",\"signature_spoof\":false,\"signature_sha256\":\"\",\"updated_at\":$TS}"
+  BODY="$(build_body "$AID")"
   write_json "$JSON" "$BODY" || exit 1
   rm -f "$MODDIR/device_id_${SAFE}" 2>/dev/null
-  write_json "$MODDIR/.virtus_sync" "$TS" || true
+  write_json "$MODDIR/.virtus_sync" "$(date +%s)" || true
   echo "ok"
   echo "$AID"
   exit 0
@@ -74,11 +102,6 @@ cmd_load() {
       cat "$BASE/$LATEST/identity.json"
       exit 0
     fi
-    if [ -n "$LATEST" ] && [ -f "$BASE/$LATEST/device_id.txt" ]; then
-      A="$(cat "$BASE/$LATEST/device_id.txt" 2>/dev/null)"
-      echo "{\"package\":\"$PKG\",\"android_id\":\"$A\",\"signature_spoof\":false}"
-      exit 0
-    fi
   fi
   exit 1
 }
@@ -89,5 +112,5 @@ case "$CMD" in
   save) cmd_save ;;
   inject) cmd_inject ;;
   load) cmd_load ;;
-  *) log "usage: $0 save|inject|load <package> [android_id]"; exit 1 ;;
+  *) log "usage: $0 save|inject|load <package> [android_id] [sig_spoof] [sig_sha] [ver_code] [ver_name]"; exit 1 ;;
 esac

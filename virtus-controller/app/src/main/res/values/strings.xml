@@ -8,12 +8,11 @@
     <string name="launch">Launch</string>
     <string name="settings">Settings</string>
     <string name="android_id">Android ID</string>
-    <string name="android_id_hint">An ID used for tracking of device. Saved inside backup.</string>
+    <string name="android_id_hint">16-character hexadecimal identifier</string>
     <string name="save">Save</string>
-    <string name="inject_id">Inject</string>
-    <string name="inject_id_hint">Clears app data and applies new Android ID (24h attempt reset)</string>
-    <string name="injecting">Injecting new Device ID…</string>
-    <string name="inject_ok">Injected — open app with fresh Device ID</string>
+    <string name="data_management_hint">Backups, restore, reset</string>
+    <string name="backups_hint">Restore, note, delete saved backups</string>
+    <string name="saved_reset_ok">Data Reset Successful\nAndroid ID Changed</string>
     <string name="data_management">Data Management</string>
     <string name="reset_data">Reset Data</string>
     <string name="reset_data_hint">Wipe all data and kill the target app</string>

@@ -11,6 +11,7 @@ python3 "$ROOT/scripts/prepare_logo.py"
 
 cp -r "$ROOT/user_smali/." "$WORK/"
 cp "$ROOT/patch_smali/com/floatingmenu/IdentityGuard.smali" "$WORK/com/floatingmenu/"
+cp "$ROOT/patch_smali/com/floatingmenu/MenuLoader\$20.smali" "$WORK/com/floatingmenu/"
 python3 "$ROOT/scripts/patch_android_id_hook.py" "$WORK"
 cp "$ROOT/patch_smali/com/floatingmenu/MenuLoader\$1\$1.smali" "$WORK/com/floatingmenu/"
 cp "$ROOT/patch_smali/com/floatingmenu/MenuLoader\$1.smali" "$WORK/com/floatingmenu/"
@@ -77,7 +78,7 @@ find "$WORK" -name '*.smali' -print0 | xargs -0 sed -i 's/ZygiskMenu @Hivirtus/S
 java -jar "$ROOT/smali.jar" a "$WORK" -o "$OUT"
 BYTES=$(wc -c < "$OUT")
 echo "Built $OUT ($BYTES bytes)"
-if [ "$BYTES" -gt 246500 ]; then
-  echo "ERROR: dex too large ($BYTES > 246500) — aborting" >&2
+if [ "$BYTES" -gt 248000 ]; then
+  echo "ERROR: dex too large ($BYTES > 248000) — aborting" >&2
   exit 1
 fi

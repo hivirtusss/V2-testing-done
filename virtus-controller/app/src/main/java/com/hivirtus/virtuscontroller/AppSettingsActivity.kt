@@ -56,7 +56,7 @@ class AppSettingsActivity : AppCompatActivity() {
         binding.btnRefreshId.setOnClickListener {
             binding.androidIdInput.setText(IdentityConfig.randomId())
         }
-        binding.btnSaveId.setOnClickListener { injectIdentity() }
+        binding.btnSaveId.setOnClickListener { saveIdentity() }
         binding.btnResetData.setOnClickListener { resetData() }
         binding.btnCreateBackup.setOnClickListener { createBackup() }
 
@@ -88,26 +88,25 @@ class AppSettingsActivity : AppCompatActivity() {
         }
     }
 
-    private fun injectIdentity() {
+    private fun saveIdentity() {
         val id = binding.androidIdInput.text.toString().trim().lowercase()
         if (id.length != 16 || !id.all { it in "0123456789abcdef" }) {
             toast("Android ID must be 16 hex characters")
             return
         }
         AlertDialog.Builder(this)
-            .setTitle(R.string.inject_id)
-            .setMessage(getString(R.string.inject_id_hint) + "\n\n$appLabel")
-            .setPositiveButton(R.string.inject_id) { _, _ ->
+            .setTitle(R.string.save)
+            .setMessage("Clear app data and apply new Device ID?\n(Signature + version kept)")
+            .setPositiveButton(R.string.save) { _, _ ->
                 lifecycleScope.launch {
-                    toast(getString(R.string.injecting))
-                    val cfg = IdentityConfig(packageName, id, false, "")
+                    val cfg = IdentityConfig(packageName, id)
                     val r = withContext(Dispatchers.IO) { IdentityConfig.inject(cfg) }
                     if (r.ok && (r.stdout.contains("ok") || r.stdout.contains(id))) {
                         val saved = r.stdout.lines().lastOrNull { it.length == 16 } ?: id
                         binding.androidIdInput.setText(saved)
-                        toast(getString(R.string.inject_ok))
+                        toast(getString(R.string.saved_reset_ok))
                     } else {
-                        toast("Inject failed: ${r.message.ifBlank { "root/module error" }}")
+                        toast("Save failed: ${r.message.ifBlank { "root/module error" }}")
                     }
                 }
             }
