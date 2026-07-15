@@ -19,23 +19,34 @@ pkg_installed() {
 }
 
 read_data_dir() {
-  dumpsys package "$PKG" 2>/dev/null | grep -m1 'dataDir=' | sed 's/.*dataDir=//'
+  dumpsys package "$PKG" 2>/dev/null | while IFS= read -r line; do
+    case "$line" in
+      *dataDir=*)
+        D="${line#*dataDir=}"
+        D="${D%% *}"
+        [ -n "$D" ] && [ -d "$D" ] && echo "$D" && exit 0
+        ;;
+    esac
+  done
 }
-
-count_files() { find "$1" -type f 2>/dev/null | wc -l; }
 
 find_app_data() {
   if ! pkg_installed; then
     log "not installed: $PKG"
     return 1
   fi
-  D="$(read_data_dir)"
+  D="$(read_data_dir | head -1)"
   if [ -n "$D" ] && [ -d "$D" ]; then echo "$D"; return 0; fi
-  for b in /data/user/0 /data/user/10 /data/user_de/0 /data/data; do
+  for b in /data/user/0 /data/user/10 /data/user/999 /data/user_de/0 /data/data; do
     [ -d "$b/$PKG" ] && echo "$b/$PKG" && return 0
   done
-  return 1
+  for udir in /data/user/*/"$PKG" /data/user_de/*/"$PKG"; do
+    [ -d "$udir" ] && echo "$udir" && return 0
+  done
+  find /data/user /data/user_de -maxdepth 2 -type d -name "$PKG" 2>/dev/null | head -1
 }
+
+count_files() { find "$1" -type f 2>/dev/null | wc -l; }
 
 sdcard_app_dir() {
   for p in "/storage/emulated/0/Android/data/$PKG" "/sdcard/Android/data/$PKG"; do
@@ -152,9 +163,19 @@ restore_data_tree() {
 cmd_create() {
   NOTE="$ARG3"
   AID="$ARG4"
-  SRC="$(find_app_data)" || { log "data dir not found — open app once & login, then backup"; exit 1; }
+  SRC="$(find_app_data | head -1)"
+  if [ -z "$SRC" ] || [ ! -d "$SRC" ]; then
+    log "data dir not found — open target app, login, force-stop, then backup"
+    exit 1
+  fi
   FC="$(count_files "$SRC")"
-  [ "$FC" -gt 0 ] || { log "app data empty ($SRC) — login in app first"; exit 1; }
+  SD="$(sdcard_app_dir)"
+  SDFC=0
+  [ -n "$SD" ] && SDFC="$(count_files "$SD")"
+  if [ "$FC" -lt 1 ] && [ "$SDFC" -lt 1 ]; then
+    log "app data empty ($SRC) — login, then force-stop app before backup"
+    exit 1
+  fi
   mkdir -p "$BACKUP_ROOT/$PKG" "$CONFIG_DIR"
   ID="$(date +%Y%m%d_%H%M%S)_$$"
   DEST="$BACKUP_ROOT/$PKG/$ID"
@@ -237,10 +258,16 @@ cmd_check() {
     echo "not_installed"
     exit 1
   fi
-  SRC="$(find_app_data)" || { echo "no_data"; exit 1; }
+  SRC="$(find_app_data | head -1)"
+  if [ -z "$SRC" ] || [ ! -d "$SRC" ]; then
+    echo "no_data"
+    exit 1
+  fi
   FC="$(count_files "$SRC")"
   SD="$(sdcard_app_dir)"
-  echo "ok:$SRC:files=$FC:sdcard=$([ -n "$SD" ] && echo yes || echo no)"
+  SDFC=0
+  [ -n "$SD" ] && SDFC="$(count_files "$SD")"
+  echo "ok:$SRC:files=$FC:sdcard=$([ -n "$SD" ] && echo "$SDFC" || echo 0)"
   exit 0
 }
 

@@ -132,20 +132,7 @@ class AppSettingsActivity : AppCompatActivity() {
     private fun createBackup() {
         val note = binding.backupNoteInput.text.toString().trim()
         lifecycleScope.launch {
-            val check = withContext(Dispatchers.IO) { BackupManager.checkData(packageName) }
-            val status = check.stdout.lines().firstOrNull()?.trim().orEmpty()
-            when {
-                status.startsWith("not_installed") ->
-                    toast("App not installed: $packageName\nWebUI se sahi package select karo.")
-                status.startsWith("no_data") ->
-                    toast("Pehle app ek baar kholo (login/setup), phir backup banao")
-                !check.ok && status.isBlank() ->
-                    toast("Check failed: ${check.message}")
-                else -> Unit
-            }
-            if (!status.startsWith("ok")) return@launch
-
-            toast("Creating backup (app open nahi hogi)...")
+            toast("Creating backup...")
             val id = binding.androidIdInput.text.toString().trim().lowercase()
             val androidId = if (id.length == 16) id else ""
             val r = withContext(Dispatchers.IO) {
@@ -156,15 +143,24 @@ class AppSettingsActivity : AppCompatActivity() {
                 val entries = withContext(Dispatchers.IO) { BackupManager.list(packageName) }
                 val entry = entries.firstOrNull { it.id == backupId }
                 val fc = entry?.fileCount ?: 0
-                if (fc < 5) {
-                    toast("Warning: only $fc data files — login in app first, then recreate backup")
+                if (fc < 3) {
+                    toast("Backup ban gaya lekin sirf $fc files — app me login karo, force-stop karo, phir dubara backup")
                 } else {
                     toast(getString(R.string.backup_created) + " ($fc files)")
                 }
                 binding.backupNoteInput.text?.clear()
                 loadBackups()
             } else {
-                toast("Failed: ${r.message.ifBlank { r.stderr }}")
+                val msg = when {
+                    r.stderr.contains("not installed") || r.message.contains("not installed") ->
+                        "App install nahi hai: $packageName"
+                    r.stderr.contains("empty") || r.message.contains("empty") ->
+                        "Login karo → app band karo (force stop) → phir Create Backup"
+                    r.stderr.contains("not found") || r.message.contains("not found") ->
+                        "Data folder nahi mila — target app kholo, login karo, band karo, phir try karo"
+                    else -> "Failed: ${r.message.ifBlank { r.stderr }}"
+                }
+                toast(msg)
             }
         }
     }
