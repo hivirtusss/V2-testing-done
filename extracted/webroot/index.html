@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Select Apps</title>
+  <title>Zygisk Mode Virtus V3</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; background: transparent; }
@@ -40,7 +40,7 @@
 <body>
   <div class="sheet">
     <div class="head">
-      <div class="title">Select Hook Apps</div>
+      <div class="title">Zygisk Mode Virtus V3</div>
       <input class="search" id="search" type="search" placeholder="Search" />
     </div>
     <div class="list-wrap">
@@ -133,14 +133,29 @@
     function pkgName(p) {
       if (!p) return '';
       if (typeof p === 'string') return p.trim();
-      return String(p.packageName || p.pkg || p.name || '').trim();
+      return String(p.packageName || p.package || p.pkg || p.name || '').trim();
+    }
+
+    function labelOf(p, fallback) {
+      if (typeof p === 'object' && p) {
+        return String(p.appLabel || p.label || p.applicationLabel || fallback || pkgName(p)).trim();
+      }
+      return fallback || pkgName(p);
     }
 
     function parseAny(raw) {
       if (raw == null) return [];
-      if (Array.isArray(raw)) return raw.map(pkgName).filter(Boolean);
+      if (Array.isArray(raw)) {
+        return raw.map(x => {
+          if (typeof x === 'object' && x) return pkgName(x);
+          return pkgName(x);
+        }).filter(Boolean);
+      }
       if (typeof raw === 'object') {
-        if (raw.packageName) return [pkgName(raw)];
+        if (raw.packageName || raw.package || raw.pkg) return [pkgName(raw)];
+        if (raw.data && Array.isArray(raw.data)) return parseAny(raw.data);
+        if (raw.packages && Array.isArray(raw.packages)) return parseAny(raw.packages);
+        if (raw.list && Array.isArray(raw.list)) return parseAny(raw.list);
         return Object.values(raw).map(pkgName).filter(Boolean);
       }
       if (typeof raw === 'string') {
@@ -175,10 +190,20 @@
             try { info = a.getPackagesInfo(JSON.stringify(batch)); } catch (e1) {
               try { info = a.getPackagesInfo(batch); } catch (e2) {}
             }
-            parseAny(info).forEach(p => {
-              const n = pkgName(p);
-              if (n) map[n] = (typeof p === 'object' && (p.appLabel || p.label)) ? (p.appLabel || p.label) : n;
-            });
+            if (typeof info === 'string') {
+              try { info = JSON.parse(info); } catch (e) {}
+            }
+            if (Array.isArray(info)) {
+              info.forEach(p => {
+                const n = pkgName(p);
+                if (n) map[n] = labelOf(p, n);
+              });
+            } else {
+              parseAny(info).forEach(p => {
+                const n = pkgName(p);
+                if (n) map[n] = labelOf(p, n);
+              });
+            }
           } catch (e) {}
         }
       }
@@ -190,6 +215,9 @@
       try {
         let raw = fn();
         if (raw == null) return [];
+        if (typeof raw === 'string') {
+          try { raw = JSON.parse(raw); } catch (e) {}
+        }
         return uniq(parseAny(raw));
       } catch (e) {
         return [];
@@ -198,18 +226,18 @@
 
     async function listPackages() {
       for (const a of apis()) {
-        if (a.listUserPackages) {
-          const pkgs = callList(() => a.listUserPackages());
-          if (pkgs.length) return pkgs;
-        }
-        if (a.listPackages) {
-          let pkgs = callList(() => a.listPackages('user'));
-          if (!pkgs.length) pkgs = callList(() => a.listPackages());
-          if (pkgs.length) return pkgs;
-        }
-        if (a.listAllPackages) {
-          const pkgs = callList(() => a.listAllPackages());
-          if (pkgs.length) return pkgs;
+        const fns = ['listUserPackages', 'listUserApps', 'listApps', 'listPackages', 'listAllPackages'];
+        for (const fn of fns) {
+          if (!a[fn]) continue;
+          if (fn === 'listPackages') {
+            let pkgs = callList(() => a.listPackages('user'));
+            if (!pkgs.length) pkgs = callList(() => a.listPackages(false));
+            if (!pkgs.length) pkgs = callList(() => a.listPackages());
+            if (pkgs.length) return pkgs;
+          } else {
+            const pkgs = callList(() => a[fn]());
+            if (pkgs.length) return pkgs;
+          }
         }
       }
 
