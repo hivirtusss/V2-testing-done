@@ -1,8 +1,8 @@
 id=zygisk_floating_menu
-name=Virtus v3 @Hivirtus
+name=Zygisk Mode Menu Virtus V3
 version=v3
-versionCode=10
+versionCode=11
 author=@Hivirtus
-description=Virtus v3 Red Edition
+description=Zygisk Mode Virtus V3
 webui=webroot
 zygote=true
