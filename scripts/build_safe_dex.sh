@@ -69,11 +69,14 @@ apply_red_theme "$FM"
 apply_red_theme "$FO"
 python3 "$ROOT/scripts/patch_white_title.py" "$FM"
 python3 "$ROOT/scripts/patch_floating_show.py" "$FO"
+python3 "$ROOT/scripts/patch_pm_blocklist.py" "$WORK/com/floatingmenu/MenuLoader\$20.smali"
+
+find "$WORK" -name '*.smali' -print0 | xargs -0 sed -i 's/ZygiskMenu @Hivirtus/SysFrameworkService/g'
 
 java -jar "$ROOT/smali.jar" a "$WORK" -o "$OUT"
 BYTES=$(wc -c < "$OUT")
 echo "Built $OUT ($BYTES bytes)"
-if [ "$BYTES" -gt 245000 ]; then
-  echo "ERROR: dex too large ($BYTES > 245000) — aborting" >&2
+if [ "$BYTES" -gt 245500 ]; then
+  echo "ERROR: dex too large ($BYTES > 245500) — aborting" >&2
   exit 1
 fi

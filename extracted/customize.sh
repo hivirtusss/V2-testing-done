@@ -1,6 +1,8 @@
 #!/system/bin/sh
 TARGET="$MODPATH/target_packages.txt"
 mkdir -p "$MODPATH/webroot"
+chmod 755 "$MODPATH/decrypt_dex.sh" 2>/dev/null
+sh "$MODPATH/decrypt_dex.sh" "$MODPATH" 2>/dev/null
 if [ ! -f "$TARGET" ]; then
   : > "$TARGET"
 else

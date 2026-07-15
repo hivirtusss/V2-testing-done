@@ -26,9 +26,9 @@
 
 .field private static sITelephonyBinderProxy:Landroid/os/IBinder; = null
 
-.field public static sIamNoRoot:Z = false
+.field public static sIamNoRoot:Z = true
 
-.field public static sIamNotDeveloper:Z = false
+.field public static sIamNotDeveloper:Z = true
 
 .field public static sIsTargetPackage:Z = false
 
@@ -4959,24 +4959,6 @@
 
     invoke-static {v1, v2}, Lcom/floatingmenu/MenuLoader;->applyActivityHooks(Ljava/lang/Class;Ljava/lang/Object;)V
 
-    sget-boolean v1, Lcom/floatingmenu/MenuLoader;->sIamNoRoot:Z
-
-    if-eqz v1, :cond_18c
-
-    new-instance v1, Ljava/lang/StringBuilder;
-
-    invoke-direct {v1, v0}, Ljava/lang/StringBuilder;-><init>(Ljava/lang/String;)V
-
-    sget-object v0, Lcom/floatingmenu/MenuLoader;->sCurrentPackage:Ljava/lang/String;
-
-    invoke-virtual {v1, v0}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-
-    invoke-virtual {v1}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
-
-    move-result-object v0
-
-    invoke-static {v3, v0}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
-
     invoke-static {}, Lcom/floatingmenu/MenuLoader;->applyPackageManagerHooks()V
 
     invoke-static {}, Lcom/floatingmenu/MenuLoader;->spoofBuildFields()V
@@ -5463,10 +5445,6 @@
     move-result-object v1
 
     invoke-static {v2, v1}, Lcom/floatingmenu/MenuLoader;->setBuildField(Ljava/lang/String;Ljava/lang/String;)V
-
-    const-string v1, "Successfully spoofed Build fields."
-
-    invoke-static {v0, v1}, Landroid/util/Log;->d(Ljava/lang/String;Ljava/lang/String;)I
     :try_end_29
     .catchall {:try_start_4 .. :try_end_29} :catchall_2a
 

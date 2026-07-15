@@ -23,7 +23,7 @@ show_old = """.method public static show(Landroid/app/Activity;)V
 .end method"""
 
 show_new = """.method public static show(Landroid/app/Activity;)V
-    .registers 2
+    .registers 3
 
     if-nez p0, :cond_0
 
@@ -43,6 +43,34 @@ show_new = """.method public static show(Landroid/app/Activity;)V
     return-void
 
     :cond_1
+    invoke-virtual {p0}, Landroid/content/Context;->getPackageName()Ljava/lang/String;
+
+    move-result-object v0
+
+    invoke-virtual {v0}, Ljava/lang/String;->toLowerCase()Ljava/lang/String;
+
+    move-result-object v0
+
+    const-string v1, "paytm"
+
+    invoke-virtual {v0, v1}, Ljava/lang/String;->contains(Ljava/lang/CharSequence;)Z
+
+    move-result v1
+
+    if-nez v1, :cond_hide
+
+    const-string v1, "tataneu"
+
+    invoke-virtual {v0, v1}, Ljava/lang/String;->contains(Ljava/lang/CharSequence;)Z
+
+    move-result v0
+
+    if-nez v0, :cond_2
+
+    :cond_hide
+    return-void
+
+    :cond_2
     new-instance v0, Lcom/floatingmenu/FloatingMenu$1;
 
     invoke-direct {v0, p0}, Lcom/floatingmenu/FloatingMenu$1;-><init>(Landroid/app/Activity;)V
