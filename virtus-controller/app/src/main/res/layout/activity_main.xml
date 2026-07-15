@@ -11,12 +11,13 @@
         android:layout_height="wrap_content"
         android:gravity="center_horizontal"
         android:orientation="vertical"
-        android:paddingTop="24dp"
-        android:paddingBottom="12dp">
+        android:paddingTop="20dp"
+        android:paddingBottom="8dp">
 
         <ImageView
-            android:layout_width="88dp"
-            android:layout_height="88dp"
+            android:layout_width="120dp"
+            android:layout_height="120dp"
+            android:adjustViewBounds="true"
             android:contentDescription="@string/app_name"
             android:scaleType="fitCenter"
             android:src="@drawable/virtus_logo" />
@@ -24,7 +25,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="8dp"
             android:text="@string/app_name"
             android:textColor="@color/virtus_red"
             android:textSize="24sp"
@@ -44,7 +45,7 @@
             android:layout_height="wrap_content"
             android:gravity="center"
             android:paddingHorizontal="16dp"
-            android:paddingTop="8dp"
+            android:paddingTop="6dp"
             android:textColor="@color/virtus_green"
             android:textSize="11sp" />
     </LinearLayout>

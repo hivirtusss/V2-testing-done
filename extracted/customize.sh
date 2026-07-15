@@ -1,6 +1,7 @@
 #!/system/bin/sh
 TARGET="$MODPATH/target_packages.txt"
-mkdir -p "$MODPATH/webroot" "$MODPATH/virtus_config" "$MODPATH/backups" "$MODPATH/bin"
+mkdir -p "$MODPATH/webroot" "$MODPATH/bin"
+rm -rf "$MODPATH/virtus_config" "$MODPATH/backups" 2>/dev/null || true
 if [ ! -f "$TARGET" ]; then
   : > "$TARGET"
 else

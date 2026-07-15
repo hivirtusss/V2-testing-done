@@ -11,8 +11,8 @@ android {
         applicationId = "com.hivirtus.virtuscontroller"
         minSdk = 26
         targetSdk = 34
-        versionCode = 15
-        versionName = "2.5-v25"
+        versionCode = 16
+        versionName = "2.7.0"
     }
 
     signingConfigs {

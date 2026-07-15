@@ -10,15 +10,10 @@ data class AppInfo(
 )
 
 object TargetAppRepository {
-    private val script = "${ModulePaths.MODULE_DIR}/bin/virtus_backup.sh"
-
     fun ensureModuleDirs() {
         RootShell.run(
-            "mkdir -p '${ModulePaths.CONFIG_DIR}' '${ModulePaths.BACKUP_DIR}' '${ModulePaths.MODULE_DIR}/bin' && " +
-                "chmod 777 '${ModulePaths.CONFIG_DIR}' '${ModulePaths.BACKUP_DIR}' 2>/dev/null; " +
-                "chmod 755 '${ModulePaths.MODULE_DIR}/bin/virtus_backup.sh' 2>/dev/null; " +
-                "chmod 755 '${ModulePaths.MODULE_DIR}/bin/virtus_identity.sh' 2>/dev/null; " +
-                "true"
+            "mkdir -p '${ModulePaths.MODULE_DIR}/bin' '${ModulePaths.BACKUP_DIR}' 2>/dev/null; " +
+                "chmod 755 '${ModulePaths.MODULE_DIR}/bin/virtus_backup.sh' 2>/dev/null; true"
         )
     }
 

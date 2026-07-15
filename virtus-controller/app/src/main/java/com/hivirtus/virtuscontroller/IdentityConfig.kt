@@ -1,39 +1,28 @@
 package com.hivirtus.virtuscontroller
 
-import org.json.JSONObject
+import android.content.Context
 import java.security.SecureRandom
+
+object VirtusPrefs {
+    private const val PREF = "virtus_identity"
+
+    fun getId(context: Context, pkg: String): String? =
+        context.getSharedPreferences(PREF, Context.MODE_PRIVATE)
+            .getString("android_id_$pkg", null)
+
+    fun setId(context: Context, pkg: String, id: String) {
+        context.getSharedPreferences(PREF, Context.MODE_PRIVATE)
+            .edit()
+            .putString("android_id_$pkg", id)
+            .apply()
+    }
+}
 
 data class IdentityConfig(
     val packageName: String,
-    val androidId: String,
-    val signatureSpoofEnabled: Boolean = false,
-    val signatureSha256: String = "",
-    val updatedAt: Long = System.currentTimeMillis()
+    val androidId: String
 ) {
-    fun toJson(): String = JSONObject().apply {
-        put("package", packageName)
-        put("android_id", androidId)
-        put("signature_spoof", signatureSpoofEnabled)
-        put("signature_sha256", signatureSha256)
-        put("updated_at", updatedAt)
-    }.toString()
-
     companion object {
-        fun fromJson(raw: String, pkg: String): IdentityConfig {
-            return try {
-                val o = JSONObject(raw)
-                IdentityConfig(
-                    packageName = pkg,
-                    androidId = o.optString("android_id", randomId()),
-                    signatureSpoofEnabled = o.optBoolean("signature_spoof", false),
-                    signatureSha256 = o.optString("signature_sha256", ""),
-                    updatedAt = o.optLong("updated_at", 0L)
-                )
-            } catch (_: Exception) {
-                IdentityConfig(pkg, randomId())
-            }
-        }
-
         fun randomId(): String {
             val hex = "0123456789abcdef"
             val rnd = SecureRandom()
@@ -42,13 +31,10 @@ data class IdentityConfig(
             }
         }
 
-        fun configPath(pkg: String): String =
-            "${ModulePaths.CONFIG_DIR}/${pkg.replace('.', '_')}.json"
-
-        fun load(pkg: String): IdentityConfig {
-            val path = configPath(pkg)
-            val r = RootShell.run("cat '$path' 2>/dev/null")
-            if (r.ok && r.stdout.isNotBlank()) return fromJson(r.stdout, pkg)
+        fun load(context: Context, pkg: String): IdentityConfig {
+            VirtusPrefs.getId(context, pkg)?.let {
+                if (it.length == 16) return IdentityConfig(pkg, it)
+            }
             val dev = RootShell.run(
                 "cat '${ModulePaths.MODULE_DIR}/device_id_${pkg.replace('.', '_')}' 2>/dev/null"
             )
@@ -58,38 +44,27 @@ data class IdentityConfig(
             return IdentityConfig(pkg, randomId())
         }
 
-        fun save(config: IdentityConfig): RootShell.Result {
-            TargetAppRepository.ensureModuleDirs()
+        /** Store ID locally — written into backup on Create Backup (not module clutter). */
+        fun saveLocal(context: Context, config: IdentityConfig): Boolean {
             val id = config.androidId.trim().lowercase()
-            val json = config.copy(androidId = id).toJson().replace("'", "'\\''")
-            val path = configPath(config.packageName)
-            val safe = config.packageName.replace('.', '_')
-            val cmd = """
-                mkdir -p '${ModulePaths.CONFIG_DIR}' && \
-                printf '%s' '$json' > '$path' && \
-                chmod 644 '$path' && \
-                printf '%s' '$id' > '${ModulePaths.MODULE_DIR}/device_id_$safe' && \
-                printf '%s' '$id' > '${ModulePaths.MODULE_DIR}/device_id' && \
-                chmod 644 '${ModulePaths.MODULE_DIR}/device_id_$safe' '${ModulePaths.MODULE_DIR}/device_id' && \
-                date +%s > '${ModulePaths.SYNC_FLAG}'
-            """.trimIndent().replace("\n", " ")
-            return RootShell.run(cmd)
+            if (id.length != 16) return false
+            VirtusPrefs.setId(context, config.packageName, id)
+            return true
         }
 
-        /** Clear app + apply Device ID (v25 module paths). */
-        fun inject(config: IdentityConfig): RootShell.Result {
+        /** Apply ID now: clear app data + module device_id (runtime). */
+        fun applyNow(config: IdentityConfig): RootShell.Result {
             val pkg = config.packageName
             val id = config.androidId.trim().lowercase()
             RootShell.run("am force-stop '$pkg'")
             RootShell.run("pm clear '$pkg'")
             Thread.sleep(1500)
-            val saved = save(config.copy(androidId = id))
-            if (!saved.ok) return saved
             return RootShell.runScript(
                 "${ModulePaths.MODULE_DIR}/bin/virtus_backup.sh",
                 "save_id",
                 pkg,
-                id
+                id,
+                timeoutSec = 60
             )
         }
     }

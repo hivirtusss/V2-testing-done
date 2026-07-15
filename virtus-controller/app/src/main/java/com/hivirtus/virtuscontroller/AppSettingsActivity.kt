@@ -75,7 +75,7 @@ class AppSettingsActivity : AppCompatActivity() {
 
     private fun loadAll() {
         lifecycleScope.launch {
-            val cfg = withContext(Dispatchers.IO) { IdentityConfig.load(packageName) }
+            val cfg = withContext(Dispatchers.IO) { IdentityConfig.load(this@AppSettingsActivity, packageName) }
             binding.androidIdInput.setText(cfg.androidId)
             loadBackups()
         }
@@ -96,17 +96,16 @@ class AppSettingsActivity : AppCompatActivity() {
         }
         AlertDialog.Builder(this)
             .setTitle(R.string.save)
-            .setMessage("Clear app data and apply new Device ID?\n(Signature + version kept)")
+            .setMessage("Clear app data, apply Device ID?\nID backup ke sath bhi save hogi jab Create Backup karoge.")
             .setPositiveButton(R.string.save) { _, _ ->
                 lifecycleScope.launch {
                     val cfg = IdentityConfig(packageName, id)
-                    val r = withContext(Dispatchers.IO) { IdentityConfig.inject(cfg) }
-                    if (r.ok && (r.stdout.contains("ok") || r.stdout.contains(id))) {
-                        val saved = r.stdout.lines().lastOrNull { it.length == 16 } ?: id
-                        binding.androidIdInput.setText(saved)
+                    withContext(Dispatchers.IO) { IdentityConfig.saveLocal(this@AppSettingsActivity, cfg) }
+                    val r = withContext(Dispatchers.IO) { IdentityConfig.applyNow(cfg) }
+                    if (r.ok) {
                         toast(getString(R.string.saved_reset_ok))
                     } else {
-                        toast("Save failed: ${r.message.ifBlank { "root/module error" }}")
+                        toast("Save failed: ${r.message.ifBlank { "root error" }}")
                     }
                 }
             }
@@ -148,9 +147,9 @@ class AppSettingsActivity : AppCompatActivity() {
                 val entry = entries.firstOrNull { it.id == backupId }
                 val fc = entry?.fileCount ?: 0
                 if (fc < 3) {
-                    toast("MT2/Backup me save hua lekin kam files ($fc) — login + force stop + dubara try")
+                    toast("VirtusBackup me save hua lekin kam files ($fc) — login + force stop + dubara try")
                 } else {
-                    toast(getString(R.string.backup_created) + " → MT2/Backup ($fc files)")
+                    toast(getString(R.string.backup_created) + " → VirtusBackup ($fc files)")
                 }
                 binding.backupNoteInput.text?.clear()
                 loadBackups()
@@ -180,7 +179,7 @@ class AppSettingsActivity : AppCompatActivity() {
                         BackupManager.restore(packageName, entry.id)
                     }
                     if (r.ok) {
-                        val cfg = withContext(Dispatchers.IO) { IdentityConfig.load(packageName) }
+                        val cfg = withContext(Dispatchers.IO) { IdentityConfig.load(this@AppSettingsActivity, packageName) }
                         binding.androidIdInput.setText(cfg.androidId)
                         toast(getString(R.string.restored_ok))
                         loadBackups()

@@ -20,5 +20,7 @@ for pkg in $BLOCKED; do
   grep -vx "$pkg" "$TARGET" > "$TARGET.tmp" 2>/dev/null && mv "$TARGET.tmp" "$TARGET"
 done
 
-mkdir -p "$MODDIR/virtus_config" "$MODDIR/backups" "$MODDIR/bin"
+mkdir -p "$MODDIR/bin"
 chmod 755 "$MODDIR/bin/virtus_backup.sh" 2>/dev/null
+# Clean legacy module clutter — backups live in VirtusBackup/ on sdcard
+rm -rf "$MODDIR/virtus_config" "$MODDIR/backups" 2>/dev/null || true
