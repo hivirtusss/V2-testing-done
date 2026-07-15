@@ -5,44 +5,55 @@ data class BackupEntry(
     val note: String,
     val createdAt: String,
     val sizeHuman: String,
-    val mtReady: Boolean
-)
+    val mtReady: Boolean,
+    val androidId: String
+) {
+    val displayName: String
+        get() = note.ifBlank { id }
+}
 
 object BackupManager {
     private fun script(): String = "${ModulePaths.MODULE_DIR}/bin/virtus_backup.sh"
 
     fun list(pkg: String): List<BackupEntry> {
-        val r = RootShell.run("'${script()}' list '${pkg.replace("'", "")}'")
+        TargetAppRepository.ensureModuleDirs()
+        val r = RootShell.runScript(script(), "list", pkg)
         if (!r.ok || r.stdout.isBlank()) return emptyList()
         return r.stdout.lines()
             .filter { it.contains('|') }
             .mapNotNull { line ->
                 val p = line.split('|')
-                if (p.size < 4) return@mapNotNull null
+                if (p.isEmpty()) return@mapNotNull null
                 BackupEntry(
-                    p[0].trim(),
-                    p.getOrElse(2) { "" }.trim(),
-                    p.getOrElse(1) { "" }.trim(),
-                    p.getOrElse(3) { "" }.trim(),
-                    p.getOrElse(4) { "0" }.trim() == "1"
+                    id = p[0].trim(),
+                    createdAt = p.getOrElse(1) { "" }.trim(),
+                    note = p.getOrElse(2) { "" }.trim(),
+                    sizeHuman = p.getOrElse(3) { "" }.trim(),
+                    mtReady = p.getOrElse(4) { "0" }.trim() == "1",
+                    androidId = p.getOrElse(5) { "" }.trim()
                 )
             }
+            .sortedByDescending { it.createdAt }
     }
 
     fun create(pkg: String, note: String): RootShell.Result {
-        val safeNote = note.replace("'", "'\\''")
-        return RootShell.run("'${script()}' create '${pkg.replace("'", "")}' '$safeNote'", 300)
+        TargetAppRepository.ensureModuleDirs()
+        return RootShell.runScript(script(), "create", pkg, note, timeoutSec = 600)
     }
 
     fun restore(pkg: String, backupId: String): RootShell.Result {
-        return RootShell.run("'${script()}' restore '${pkg.replace("'", "")}' '${backupId.replace("'", "")}'", 300)
+        return RootShell.runScript(script(), "restore", pkg, backupId, timeoutSec = 600)
     }
 
     fun delete(pkg: String, backupId: String): RootShell.Result {
-        return RootShell.run("'${script()}' delete '${pkg.replace("'", "")}' '${backupId.replace("'", "")}'")
+        return RootShell.runScript(script(), "delete", pkg, backupId)
     }
 
-    fun exportToMtManager(pkg: String, backupId: String): RootShell.Result {
-        return RootShell.run("'${script()}' export_mt '${pkg.replace("'", "")}' '${backupId.replace("'", "")}'", 300)
+    fun setNote(pkg: String, backupId: String, note: String): RootShell.Result {
+        return RootShell.runScript(script(), "set_note", pkg, backupId, note)
+    }
+
+    fun resetData(pkg: String): RootShell.Result {
+        return RootShell.runScript(script(), "reset", pkg)
     }
 }

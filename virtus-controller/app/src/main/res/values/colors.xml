@@ -1,4 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <color name="virtus_black">#000000</color>
+    <color name="virtus_bg">#0a0a0c</color>
+    <color name="virtus_card">#141418</color>
+    <color name="virtus_card_elevated">#1c1c22</color>
+    <color name="virtus_red">#e53935</color>
+    <color name="virtus_red_dark">#b71c1c</color>
+    <color name="virtus_red_glow">#33e53935</color>
+    <color name="virtus_text">#ffffff</color>
+    <color name="virtus_text_secondary">#888888</color>
+    <color name="virtus_text_dim">#555555</color>
+    <color name="virtus_input_bg">#0d0d10</color>
+    <color name="virtus_green">#2e7d32</color>
+    <color name="virtus_blue">#1565c0</color>
+    <color name="virtus_divider">#222228</color>
     <color name="ic_launcher_background">#000000</color>
 </resources>

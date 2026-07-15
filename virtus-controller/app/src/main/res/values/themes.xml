@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.VirtusController" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <item name="colorPrimary">#c62828</item>
-        <item name="colorPrimaryVariant">#8b0000</item>
-        <item name="colorOnPrimary">#ffffff</item>
-        <item name="android:statusBarColor">#000000</item>
-        <item name="android:navigationBarColor">#000000</item>
-        <item name="android:windowBackground">#0d0d10</item>
+        <item name="colorPrimary">@color/virtus_red</item>
+        <item name="colorPrimaryVariant">@color/virtus_red_dark</item>
+        <item name="colorOnPrimary">@color/virtus_text</item>
+        <item name="colorSecondary">@color/virtus_red</item>
+        <item name="android:statusBarColor">@color/virtus_black</item>
+        <item name="android:navigationBarColor">@color/virtus_black</item>
+        <item name="android:windowBackground">@color/virtus_bg</item>
+        <item name="android:textColorPrimary">@color/virtus_text</item>
+        <item name="android:textColorSecondary">@color/virtus_text_secondary</item>
     </style>
 </resources>

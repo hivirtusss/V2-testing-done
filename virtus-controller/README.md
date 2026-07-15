@@ -1,47 +1,32 @@
-# Virtus Controller APK
+# Virtus Controller v2.0
 
-System Error style controller app for **Virtus Zygisk module** (`zygisk_floating_menu`).
-
-## Install (both required)
-
-1. Flash **ZIP module** (`zygisk_floating_menu_hivirtus_selection.zip`) in KernelSU/SukiSU
-2. Install **Virtus Controller APK** (`virtus_controller_v1.2.apk`)
-3. Module WebUI → select target apps → Save → **reboot**
-4. Open Virtus Controller → set Device ID / backups per app
-
-## How APK + ZIP work together
-
-| Component | Role |
-|-----------|------|
-| **ZIP module** | Zygisk inject → bubble menu in selected apps |
-| **Controller APK** | Device ID, signature config, unlimited backups |
-| **Shared folder** | `/data/adb/modules/zygisk_floating_menu/` |
-
-APK writes config → ZIP injection reads on next app open.
-
-```
-APK Save → virtus_config/<package>.json
-         → backups/<package>/<timestamp>/
-              ↓
-ZIP inject (classes.dex) → IdentityGuard loads config in target app
-```
+System Error style controller for **Virtus Zygisk module** (`zygisk_floating_menu`).
 
 ## Features
 
-- **Apps** — pick target package
-- **Identity** — Android ID (16 hex), signature spoof toggle
-- **Backup** — unlimited create/list/restore/delete; **Export to MT Manager** (APK + data)
-- **Module** — status + open WebUI
+- **Home** — only WebUI-selected apps (from `target_packages.txt`)
+- **Launch** + **Settings** per app (like System Error)
+- **Android ID** — 16 hex, save to module config
+- **Data Management** — Reset, Create Backup, Restore / Note / Delete
+- Backups include **Device ID + app data + APK** (MT Manager compatible)
 
-## Requirements
+## Install
 
-- Root (KernelSU / Magisk / APatch)
-- Virtus module v34+ installed
-- Android 8+
+1. Flash module ZIP v36+ → reboot
+2. WebUI → select apps → Save → reboot
+3. Install `virtus_controller_v2.0.apk`
+4. Grant root when prompted
+
+## Backup flow
+
+1. Open app → Settings (gear)
+2. Set Android ID → **Save**
+3. Enter note → **Create Backup**
+4. Restore brings back **data + Device ID** together
 
 ## Build
 
 ```bash
-export ANDROID_HOME=/workspace/android-sdk
+export ANDROID_HOME=/path/to/android-sdk
 cd virtus-controller && ./gradlew assembleRelease
 ```

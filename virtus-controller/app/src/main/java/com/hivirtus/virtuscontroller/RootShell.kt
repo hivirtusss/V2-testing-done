@@ -7,6 +7,11 @@ import java.util.concurrent.TimeUnit
 object RootShell {
     data class Result(val exitCode: Int, val stdout: String, val stderr: String) {
         val ok: Boolean get() = exitCode == 0
+        val message: String get() = when {
+            stderr.isNotBlank() -> stderr
+            stdout.isNotBlank() -> stdout
+            else -> "error"
+        }
     }
 
     fun run(command: String, timeoutSec: Long = 120): Result {
@@ -23,6 +28,11 @@ object RootShell {
         } catch (e: Exception) {
             Result(-1, "", e.message ?: "error")
         }
+    }
+
+    fun runScript(scriptPath: String, vararg args: String, timeoutSec: Long = 300): Result {
+        val escaped = args.joinToString(" ") { "'${it.replace("'", "'\\''")}'" }
+        return run("sh '$scriptPath' $escaped", timeoutSec)
     }
 
     fun hasRoot(): Boolean = run("id").stdout.contains("uid=0")
