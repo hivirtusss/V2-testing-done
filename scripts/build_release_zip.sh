@@ -13,6 +13,6 @@ cp -a "$ROOT/extracted/." "$STAGE/"
 rm -f "$STAGE/classes.dex"
 
 cd "$STAGE"
-chmod 755 decrypt_dex.sh post-fs-data.sh service.sh customize.sh refresh_pkglist.sh 2>/dev/null || true
+chmod 755 decrypt_dex.sh post-fs-data.sh service.sh customize.sh refresh_pkglist.sh merge_stealth_packages.sh 2>/dev/null || true
 zip -r "$ROOT/zygisk_floating_menu_hivirtus_selection.zip" .
 echo "Release zip: $ROOT/zygisk_floating_menu_hivirtus_selection.zip ($(wc -c < "$ROOT/zygisk_floating_menu_hivirtus_selection.zip") bytes)"

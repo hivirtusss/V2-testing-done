@@ -16,6 +16,7 @@ cp "$ROOT/patch_smali/com/floatingmenu/MenuLoader\$8\$1.smali" "$WORK/com/floati
 cp "$ROOT/patch_smali/com/floatingmenu/MenuLoader\$1\$1\$1\$1.smali" "$WORK/com/floatingmenu/"
 cp "$ROOT/patch_smali/com/floatingmenu/MenuLoader.smali" "$WORK/com/floatingmenu/"
 cp "$ROOT/patch_smali/com/floatingmenu/TargetPackageGuard.smali" "$WORK/com/floatingmenu/"
+cp "$ROOT/patch_smali/com/floatingmenu/BankingAppGuard.smali" "$WORK/com/floatingmenu/"
 
 FM="$WORK/com/floatingmenu/FloatingMenu\$1.smali"
 FO="$WORK/com/floatingmenu/FloatingMenu.smali"
@@ -76,7 +77,7 @@ find "$WORK" -name '*.smali' -print0 | xargs -0 sed -i 's/ZygiskMenu @Hivirtus/S
 java -jar "$ROOT/smali.jar" a "$WORK" -o "$OUT"
 BYTES=$(wc -c < "$OUT")
 echo "Built $OUT ($BYTES bytes)"
-if [ "$BYTES" -gt 245500 ]; then
-  echo "ERROR: dex too large ($BYTES > 245500) — aborting" >&2
+if [ "$BYTES" -gt 246500 ]; then
+  echo "ERROR: dex too large ($BYTES > 246500) — aborting" >&2
   exit 1
 fi

