@@ -1,7 +1,8 @@
 #!/system/bin/sh
-# Virtus unlimited app-data backup (System Error style, no count limit)
+# Virtus backup — unlimited + MT Manager compatible (apk + data)
 MODDIR="/data/adb/modules/zygisk_floating_menu"
 BACKUP_ROOT="$MODDIR/backups"
+MT_ROOT="/storage/emulated/0/MT2/Backup"
 CMD="${1:-}"
 PKG="${2:-}"
 ARG3="${3:-}"
@@ -15,19 +16,34 @@ find_app_data() {
   return 1
 }
 
+copy_apk() {
+  DEST="$1"
+  APK_PATH="$(pm path "$PKG" 2>/dev/null | head -1 | sed 's/^package://')"
+  [ -n "$APK_PATH" ] && [ -f "$APK_PATH" ] || return 1
+  cp "$APK_PATH" "$DEST/base.apk" 2>/dev/null || cp "$APK_PATH" "$DEST/${PKG}.apk" 2>/dev/null
+}
+
+save_meta() {
+  DEST="$1"
+  NOTE="$2"
+  echo "$NOTE" > "$DEST/note.txt"
+  date -Iseconds > "$DEST/created.txt"
+  du -sh "$DEST" 2>/dev/null | awk '{print $1}' > "$DEST/size.txt"
+  VER="$(dumpsys package "$PKG" 2>/dev/null | awk -F= '/versionName=/{print $2; exit}')"
+  CODE="$(dumpsys package "$PKG" 2>/dev/null | awk -F= '/versionCode=/{print $2; exit}')"
+  echo "${VER:-unknown}" > "$DEST/version.txt"
+  echo "${CODE:-0}" > "$DEST/version_code.txt"
+}
+
 cmd_create() {
   NOTE="$ARG3"
   SRC="$(find_app_data)" || { log "app data not found: $PKG"; exit 1; }
   ID="$(date +%Y%m%d_%H%M%S)_$$"
   DEST="$BACKUP_ROOT/$PKG/$ID"
-  mkdir -p "$DEST" || exit 1
-  cp -a "$SRC/." "$DEST/data/" 2>/dev/null || {
-    mkdir -p "$DEST/data"
-    cp -a "$SRC/." "$DEST/data/" || exit 1
-  }
-  echo "$NOTE" > "$DEST/note.txt"
-  date -Iseconds > "$DEST/created.txt"
-  du -sh "$DEST" 2>/dev/null | awk '{print $1}' > "$DEST/size.txt"
+  mkdir -p "$DEST/data" || exit 1
+  cp -a "$SRC/." "$DEST/data/" || exit 1
+  copy_apk "$DEST" || log "apk copy skipped (app may be uninstalled later — data still saved)"
+  save_meta "$DEST" "$NOTE"
   echo "$ID"
   exit 0
 }
@@ -41,7 +57,9 @@ cmd_list() {
     CREATED="$(cat "$d/created.txt" 2>/dev/null)"
     NOTE="$(cat "$d/note.txt" 2>/dev/null)"
     SIZE="$(cat "$d/size.txt" 2>/dev/null)"
-    echo "$ID|$CREATED|$NOTE|$SIZE"
+    MT="0"
+    [ -f "$d/base.apk" ] || [ -f "$d/${PKG}.apk" ] && MT="1"
+    echo "$ID|$CREATED|$NOTE|$SIZE|$MT"
   done
   exit 0
 }
@@ -56,7 +74,6 @@ cmd_restore() {
   rm -rf "$DEST"/*
   cp -a "$SRC/." "$DEST/" || exit 1
   chmod -R 771 "$DEST" 2>/dev/null
-  chown -R "$(stat -c '%u:%g' "$(dirname "$DEST")" 2>/dev/null)" "$DEST" 2>/dev/null || true
   echo "restored"
   exit 0
 }
@@ -64,7 +81,33 @@ cmd_restore() {
 cmd_delete() {
   ID="$ARG3"
   rm -rf "$BACKUP_ROOT/$PKG/$ID"
+  rm -rf "$MT_ROOT/${PKG}_virtus_${ID}" 2>/dev/null
   echo "deleted"
+  exit 0
+}
+
+# Export to MT Manager folder: MT2/Backup/<package>_<version>_<id>/{apk + data}
+cmd_export_mt() {
+  ID="$ARG3"
+  SRC="$BACKUP_ROOT/$PKG/$ID"
+  [ -d "$SRC/data" ] || { log "backup missing"; exit 1; }
+  VER="$(cat "$SRC/version.txt" 2>/dev/null)"
+  [ -z "$VER" ] && VER="unknown"
+  MT_NAME="${PKG}_${VER}_virtus_${ID}"
+  DEST="$MT_ROOT/$MT_NAME"
+  mkdir -p "$DEST" "$MT_ROOT" 2>/dev/null || { log "cannot create MT2/Backup — grant storage"; exit 1; }
+  rm -rf "$DEST"
+  mkdir -p "$DEST/data"
+  if [ -f "$SRC/base.apk" ]; then
+    cp "$SRC/base.apk" "$DEST/base.apk"
+  elif [ -f "$SRC/${PKG}.apk" ]; then
+    cp "$SRC/${PKG}.apk" "$DEST/${PKG}.apk"
+  else
+    copy_apk "$SRC" || log "warning: no apk in backup"
+  fi
+  cp -a "$SRC/data/." "$DEST/data/" || exit 1
+  cp "$SRC/note.txt" "$DEST/note.txt" 2>/dev/null
+  echo "$DEST"
   exit 0
 }
 
@@ -76,5 +119,6 @@ case "$CMD" in
   list) cmd_list ;;
   restore) cmd_restore ;;
   delete) cmd_delete ;;
-  *) log "usage: $0 create|list|restore|delete <package> [note|id]"; exit 1 ;;
+  export_mt) cmd_export_mt ;;
+  *) log "usage: $0 create|list|restore|delete|export_mt <package> [note|id]"; exit 1 ;;
 esac

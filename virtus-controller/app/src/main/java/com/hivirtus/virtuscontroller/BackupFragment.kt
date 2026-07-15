@@ -29,7 +29,8 @@ class BackupFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         adapter = BackupAdapter(
             onRestore = { entry -> restore(entry) },
-            onDelete = { entry -> delete(entry) }
+            onDelete = { entry -> delete(entry) },
+            onExportMt = { entry -> exportMt(entry) }
         )
         binding.backupList.layoutManager = LinearLayoutManager(requireContext())
         binding.backupList.adapter = adapter
@@ -62,7 +63,7 @@ class BackupFragment : Fragment() {
             val r = withContext(Dispatchers.IO) { BackupManager.create(pkg, note) }
             Toast.makeText(
                 requireContext(),
-                if (r.ok) "Backup created" else "Failed: ${r.stderr.ifBlank { r.stdout }}",
+                if (r.ok) "Backup created (APK + data)" else "Failed: ${r.stderr.ifBlank { r.stdout }}",
                 Toast.LENGTH_LONG
             ).show()
             loadBackups(pkg)
@@ -95,6 +96,19 @@ class BackupFragment : Fragment() {
         }
     }
 
+    private fun exportMt(entry: BackupEntry) {
+        val pkg = SelectionHolder.selectedPackage ?: return
+        CoroutineScope(Dispatchers.Main).launch {
+            Toast.makeText(requireContext(), "Exporting to MT2/Backup...", Toast.LENGTH_SHORT).show()
+            val r = withContext(Dispatchers.IO) { BackupManager.exportToMtManager(pkg, entry.id) }
+            Toast.makeText(
+                requireContext(),
+                if (r.ok) "MT Manager: ${r.stdout}\nOpen MT → Backup → restore" else "Failed: ${r.stderr.ifBlank { r.stdout }}",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
@@ -102,7 +116,8 @@ class BackupFragment : Fragment() {
 
     private class BackupAdapter(
         private val onRestore: (BackupEntry) -> Unit,
-        private val onDelete: (BackupEntry) -> Unit
+        private val onDelete: (BackupEntry) -> Unit,
+        private val onExportMt: (BackupEntry) -> Unit
     ) : RecyclerView.Adapter<BackupAdapter.VH>() {
         private var items: List<BackupEntry> = emptyList()
 
@@ -110,6 +125,7 @@ class BackupFragment : Fragment() {
             val name: TextView = v.findViewById(R.id.backupName)
             val meta: TextView = v.findViewById(R.id.backupMeta)
             val restore: Button = v.findViewById(R.id.btnRestore)
+            val exportMt: Button = v.findViewById(R.id.btnExportMt)
             val delete: Button = v.findViewById(R.id.btnDelete)
         }
 
@@ -121,8 +137,10 @@ class BackupFragment : Fragment() {
         override fun onBindViewHolder(holder: VH, position: Int) {
             val item = items[position]
             holder.name.text = item.id
-            holder.meta.text = "${item.createdAt} | ${item.note.ifBlank { "no note" }} | ${item.sizeHuman}"
+            val mtTag = if (item.mtReady) "APK+data" else "data only"
+            holder.meta.text = "${item.createdAt} | ${item.note.ifBlank { "no note" }} | ${item.sizeHuman} | $mtTag"
             holder.restore.setOnClickListener { onRestore(item) }
+            holder.exportMt.setOnClickListener { onExportMt(item) }
             holder.delete.setOnClickListener { onDelete(item) }
         }
 

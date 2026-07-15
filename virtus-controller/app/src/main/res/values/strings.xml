@@ -16,5 +16,6 @@
     <string name="android_id">Android ID (16 hex)</string>
     <string name="signature_mode">Signature Spoof</string>
     <string name="generate_id">Generate Random ID</string>
+    <string name="export_mt">Export to MT Manager</string>
     <string name="sync_inject">Syncs with Zygisk injection on next app open</string>
 </resources>

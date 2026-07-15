@@ -1,8 +1,8 @@
 id=zygisk_floating_menu
 name=Zygisk Mode Menu Virtus V3
 version=v3
-versionCode=33
+versionCode=34
 author=@Hivirtus
-description=Virtus V3 + Controller APK sync
+description=Virtus V3 + MT Manager backup support
 webui=webroot
 zygote=true

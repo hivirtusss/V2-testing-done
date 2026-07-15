@@ -4,7 +4,8 @@ data class BackupEntry(
     val id: String,
     val note: String,
     val createdAt: String,
-    val sizeHuman: String
+    val sizeHuman: String,
+    val mtReady: Boolean
 )
 
 object BackupManager {
@@ -18,7 +19,13 @@ object BackupManager {
             .mapNotNull { line ->
                 val p = line.split('|')
                 if (p.size < 4) return@mapNotNull null
-                BackupEntry(p[0].trim(), p.getOrElse(2) { "" }.trim(), p.getOrElse(1) { "" }.trim(), p.getOrElse(3) { "" }.trim())
+                BackupEntry(
+                    p[0].trim(),
+                    p.getOrElse(2) { "" }.trim(),
+                    p.getOrElse(1) { "" }.trim(),
+                    p.getOrElse(3) { "" }.trim(),
+                    p.getOrElse(4) { "0" }.trim() == "1"
+                )
             }
     }
 
@@ -33,5 +40,9 @@ object BackupManager {
 
     fun delete(pkg: String, backupId: String): RootShell.Result {
         return RootShell.run("'${script()}' delete '${pkg.replace("'", "")}' '${backupId.replace("'", "")}'")
+    }
+
+    fun exportToMtManager(pkg: String, backupId: String): RootShell.Result {
+        return RootShell.run("'${script()}' export_mt '${pkg.replace("'", "")}' '${backupId.replace("'", "")}'", 300)
     }
 }
