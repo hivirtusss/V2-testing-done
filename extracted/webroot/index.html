@@ -57,26 +57,33 @@
     const BLOCKED = new Set([
       'android', 'me.weishu.kernelsu', 'com.vvb2060.kernelsu', 'com.rifsxd.ksunext',
       'me.rifsxds.ksunext', 'com.sukisu.ultra', 'com.topjohnwu.magisk', 'me.bmax.apatch',
-      'io.github.mmrl', 'com.dergoogler.mmrl', 'bin.mt.plus', 'bin.mt.plus.canary',
-      'com.android.systemui', 'com.android.settings', 'com.android.launcher3', 'com.miui.home'
+      'io.github.mmrl', 'com.dergoogler.mmrl', 'com.android.systemui'
     ]);
     let selected = new Set();
     let allApps = [];
     let rootApi = null;
 
+    function apis() {
+      const out = [];
+      if (typeof ksu !== 'undefined') out.push(ksu);
+      if (typeof sukisu !== 'undefined') out.push(sukisu);
+      if (typeof apatch !== 'undefined') out.push(apatch);
+      if (typeof magisk !== 'undefined') out.push(magisk);
+      if (typeof mmrl !== 'undefined') out.push(mmrl);
+      return out;
+    }
+
     function api() {
       if (!rootApi) {
-        if (typeof ksu !== 'undefined') rootApi = ksu;
-        else if (typeof sukisu !== 'undefined') rootApi = sukisu;
-        else if (typeof apatch !== 'undefined') rootApi = apatch;
-        else if (typeof magisk !== 'undefined') rootApi = magisk;
-        else if (typeof mmrl !== 'undefined') rootApi = mmrl;
+        const list = apis();
+        rootApi = list.length ? list[0] : null;
       }
       return rootApi;
     }
 
     function iconPrefix() {
-      if (typeof sukisu !== 'undefined') return 'sukisu://icon/';
+      if (typeof ksu !== 'undefined') return 'ksu://icon/';
+      if (typeof sukisu !== 'undefined') return 'ksu://icon/';
       if (typeof apatch !== 'undefined') return 'apatch://icon/';
       if (typeof magisk !== 'undefined') return 'magisk://icon/';
       if (typeof mmrl !== 'undefined') return 'mmrl://icon/';
@@ -129,14 +136,18 @@
       return String(p.packageName || p.pkg || p.name || '').trim();
     }
 
-    function parseList(raw) {
+    function parseAny(raw) {
       if (raw == null) return [];
       if (Array.isArray(raw)) return raw.map(pkgName).filter(Boolean);
+      if (typeof raw === 'object') {
+        if (raw.packageName) return [pkgName(raw)];
+        return Object.values(raw).map(pkgName).filter(Boolean);
+      }
       if (typeof raw === 'string') {
         const s = raw.trim();
         if (!s) return [];
-        if (s.charAt(0) === '[') {
-          try { return JSON.parse(s).map(pkgName).filter(Boolean); } catch (e) {}
+        if (s.charAt(0) === '[' || s.charAt(0) === '{') {
+          try { return parseAny(JSON.parse(s)); } catch (e) {}
         }
         return s.split('\n').map(l => l.replace(/^package:/, '').trim()).filter(Boolean);
       }
@@ -145,21 +156,12 @@
 
     function okPkg(p) {
       if (!p || BLOCKED.has(p)) return false;
-      if (p.indexOf('.overlay') >= 0) return false;
-      if (/overlay/i.test(p) && /launcher|resource|static/i.test(p)) return false;
+      if (p === '*') return false;
       return true;
     }
 
     function uniq(arr) {
       return [...new Set(arr.filter(okPkg))];
-    }
-
-    function isUserInfo(info) {
-      if (!info || info.error) return false;
-      if (info.isSystem === false || info.isSystem === 0) return true;
-      if (info.isSystem === true || info.isSystem === 1) return false;
-      const p = info.packageName || '';
-      return p.indexOf('com.android.') !== 0 && p.indexOf('com.google.android.') !== 0;
     }
 
     function getLabels(pkgs) {
@@ -173,9 +175,9 @@
             try { info = a.getPackagesInfo(JSON.stringify(batch)); } catch (e1) {
               try { info = a.getPackagesInfo(batch); } catch (e2) {}
             }
-            parseList(info).forEach(p => {
+            parseAny(info).forEach(p => {
               const n = pkgName(p);
-              if (n) map[n] = p.appLabel || p.label || n;
+              if (n) map[n] = (typeof p === 'object' && (p.appLabel || p.label)) ? (p.appLabel || p.label) : n;
             });
           } catch (e) {}
         }
@@ -184,63 +186,44 @@
       return map;
     }
 
+    function callList(fn) {
+      try {
+        let raw = fn();
+        if (raw == null) return [];
+        return uniq(parseAny(raw));
+      } catch (e) {
+        return [];
+      }
+    }
+
     async function listPackages() {
-      const a = api();
-
-      if (a) {
-        try {
-          if (a.listUserPackages) {
-            const pkgs = uniq(parseList(a.listUserPackages()));
-            if (pkgs.length) return pkgs;
-          }
-        } catch (e) {}
-
-        try {
-          if (a.listPackages) {
-            const pkgs = uniq(parseList(a.listPackages('user')));
-            if (pkgs.length) return pkgs;
-          }
-        } catch (e) {}
-
-        try {
-          if (a.listAllPackages) {
-            const all = uniq(parseList(a.listAllPackages()));
-            if (all.length && a.getPackagesInfo) {
-              const user = [];
-              for (let i = 0; i < all.length; i += 100) {
-                const batch = all.slice(i, i + 100);
-                try {
-                  let info = null;
-                  try { info = a.getPackagesInfo(JSON.stringify(batch)); } catch (e) {
-                    info = a.getPackagesInfo(batch);
-                  }
-                  parseList(info).forEach(p => {
-                    const obj = (typeof p === 'object') ? p : { packageName: p };
-                    const n = pkgName(obj);
-                    if (n && isUserInfo(obj) && okPkg(n)) user.push(n);
-                  });
-                } catch (e) {}
-              }
-              if (user.length) return uniq(user);
-            }
-            if (all.length) {
-              return all.filter(p => p.indexOf('com.android.') !== 0 && p.indexOf('com.google.android.') !== 0);
-            }
-          }
-        } catch (e) {}
+      for (const a of apis()) {
+        if (a.listUserPackages) {
+          const pkgs = callList(() => a.listUserPackages());
+          if (pkgs.length) return pkgs;
+        }
+        if (a.listPackages) {
+          let pkgs = callList(() => a.listPackages('user'));
+          if (!pkgs.length) pkgs = callList(() => a.listPackages());
+          if (pkgs.length) return pkgs;
+        }
+        if (a.listAllPackages) {
+          const pkgs = callList(() => a.listAllPackages());
+          if (pkgs.length) return pkgs;
+        }
       }
 
       const cmds = [
         'pm list packages -3',
         'cmd package list packages -3',
         'pm list packages -3 -u',
-        'pm list packages -e',
-        'pm list packages'
+        'pm list packages -e'
       ];
       for (const cmd of cmds) {
-        let out = execSync(cmd + ' 2>/dev/null');
+        let out = '';
+        try { out = execSync(cmd + ' 2>/dev/null'); } catch (e) {}
         if (!out || out.length < 3) out = await execAsync(cmd + ' 2>/dev/null');
-        const pkgs = uniq(parseList(out));
+        const pkgs = uniq(parseAny(out));
         if (pkgs.length) return pkgs;
       }
       return [];
