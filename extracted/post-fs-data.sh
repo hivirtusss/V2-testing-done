@@ -21,4 +21,6 @@ for pkg in $BLOCKED; do
 done
 
 mkdir -p "$MODDIR/virtus_config" "$MODDIR/backups" "$MODDIR/bin"
-chmod 755 "$MODDIR/bin/virtus_backup.sh" 2>/dev/null
+chmod 777 "$MODDIR/virtus_config" "$MODDIR/backups" 2>/dev/null || true
+chmod 755 "$MODDIR/bin/virtus_backup.sh" 2>/dev/null || true
+chmod 755 "$MODDIR/bin/virtus_identity.sh" 2>/dev/null || true

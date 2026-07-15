@@ -1,7 +1,7 @@
 id=zygisk_floating_menu
 name=Zygisk Mode Menu Virtus V3
 version=v3
-versionCode=26
+versionCode=27
 author=@Hivirtus
 description=Virtus V3 user base + full backup restore
 webui=webroot

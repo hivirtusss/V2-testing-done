@@ -102,7 +102,13 @@ class AppSettingsActivity : AppCompatActivity() {
         )
         lifecycleScope.launch {
             val r = withContext(Dispatchers.IO) { IdentityConfig.save(cfg) }
-            toast(if (r.ok) getString(R.string.saved_ok) else r.message)
+            if (r.ok && (r.stdout.contains("ok") || r.stdout.length >= 16)) {
+                val saved = r.stdout.lines().lastOrNull { it.length == 16 } ?: id
+                binding.androidIdInput.setText(saved)
+                toast(getString(R.string.saved_ok))
+            } else {
+                toast("Save failed: ${r.message.ifBlank { "chmod/path error — reflash module ZIP" }}")
+            }
         }
     }
 

@@ -1,7 +1,6 @@
 package com.hivirtus.virtuscontroller
 
 import org.json.JSONObject
-import java.io.File
 import java.security.SecureRandom
 
 data class IdentityConfig(
@@ -20,6 +19,9 @@ data class IdentityConfig(
     }.toString()
 
     companion object {
+        private fun identityScript(): String =
+            "${ModulePaths.MODULE_DIR}/bin/virtus_identity.sh"
+
         fun fromJson(raw: String, pkg: String): IdentityConfig {
             return try {
                 val o = JSONObject(raw)
@@ -47,32 +49,18 @@ data class IdentityConfig(
             "${ModulePaths.CONFIG_DIR}/${pkg.replace('.', '_')}.json"
 
         fun load(pkg: String): IdentityConfig {
-            val path = configPath(pkg)
-            val r = RootShell.run("cat '$path' 2>/dev/null")
-            if (r.ok && r.stdout.isNotBlank()) return fromJson(r.stdout, pkg)
-            val devPath = "${ModulePaths.MODULE_DIR}/device_id_${pkg.replace('.', '_')}"
-            val d = RootShell.run("cat '$devPath' 2>/dev/null")
-            if (d.ok && d.stdout.length == 16) {
-                return IdentityConfig(pkg, d.stdout.trim(), false, "")
+            TargetAppRepository.ensureModuleDirs()
+            val r = RootShell.runScript(identityScript(), "load", pkg)
+            if (r.ok && r.stdout.contains("android_id")) {
+                return fromJson(r.stdout.lines().first { it.contains("android_id") }, pkg)
             }
             return IdentityConfig(pkg, randomId(), false, "")
         }
 
         fun save(config: IdentityConfig): RootShell.Result {
-            val json = config.toJson().replace("'", "'\\''")
-            val path = configPath(config.packageName)
-            val devPath = "${ModulePaths.MODULE_DIR}/device_id_${config.packageName.replace('.', '_')}"
-            val aid = config.androidId.replace("'", "'\\''")
-            val cmd = """
-                mkdir -p '${ModulePaths.CONFIG_DIR}' && \
-                chmod 755 '${ModulePaths.CONFIG_DIR}' && \
-                printf '%s' '$json' > '$path' && \
-                printf '%s' '$aid' > '$devPath' && \
-                chmod 644 '$path' '$devPath' && \
-                date +%s > '${ModulePaths.SYNC_FLAG}' && \
-                chmod 644 '${ModulePaths.SYNC_FLAG}'
-            """.trimIndent().replace("\n", " ")
-            return RootShell.run(cmd)
+            TargetAppRepository.ensureModuleDirs()
+            val id = config.androidId.trim().lowercase()
+            return RootShell.runScript(identityScript(), "save", config.packageName, id)
         }
     }
 }

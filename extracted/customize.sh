@@ -12,4 +12,6 @@ chmod 755 "$MODPATH/action.sh" 2>/dev/null
 chmod 755 "$MODPATH/post-fs-data.sh" 2>/dev/null
 chmod 755 "$MODPATH/service.sh" 2>/dev/null
 chmod 755 "$MODPATH/refresh_pkglist.sh" 2>/dev/null
-chmod 755 "$MODPATH/bin/virtus_backup.sh" 2>/dev/null
+chmod 755 "$MODPATH/bin/virtus_backup.sh" 2>/dev/null || true
+chmod 755 "$MODPATH/bin/virtus_identity.sh" 2>/dev/null || true
+chmod 777 "$MODPATH/virtus_config" "$MODPATH/backups" 2>/dev/null || true
