@@ -1,223 +1,273 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/virtus_bg"
-    android:fillViewport="true">
+    android:background="@color/virtus_black"
+    android:orientation="vertical">
 
+    <!-- Header like System Error -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="16dp">
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="16dp"
+        android:paddingBottom="8dp">
 
-        <!-- Package card -->
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Settings"
+            android:textColor="@color/virtus_text"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- Overview tab -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginBottom="12dp"
+        android:background="@drawable/bg_tab_selected"
+        android:paddingHorizontal="20dp"
+        android:paddingVertical="8dp"
+        android:text="Overview"
+        android:textColor="@color/virtus_text"
+        android:textSize="13sp"
+        android:textStyle="bold" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="@drawable/bg_card"
             android:orientation="vertical"
-            android:padding="16dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/package_label"
-                android:textColor="@color/virtus_text_secondary"
-                android:textSize="12sp" />
-
-            <TextView
-                android:id="@+id/packageName"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:textColor="@color/virtus_text"
-                android:textSize="14sp" />
-        </LinearLayout>
-
-        <!-- Android ID card -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:background="@drawable/bg_card"
-            android:orientation="vertical"
-            android:padding="16dp">
+            android:paddingHorizontal="16dp"
+            android:paddingBottom="24dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="16dp">
 
-                <ImageView
-                    android:layout_width="28dp"
-                    android:layout_height="28dp"
-                    android:contentDescription="@null"
-                    android:src="@drawable/ic_shield" />
-
-                <LinearLayout
-                    android:layout_width="0dp"
+                <TextView
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="10dp"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
+                    android:text="@string/package_label"
+                    android:textColor="@color/virtus_text_secondary"
+                    android:textSize="11sp" />
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/android_id"
-                        android:textColor="@color/virtus_text"
-                        android:textSize="16sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/android_id_hint"
-                        android:textColor="@color/virtus_text_secondary"
-                        android:textSize="11sp" />
-                </LinearLayout>
+                <TextView
+                    android:id="@+id/packageName"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:textColor="@color/virtus_text"
+                    android:textSize="13sp" />
             </LinearLayout>
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <FrameLayout
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:background="@drawable/bg_tab_selected">
+
+                        <ImageView
+                            android:layout_width="20dp"
+                            android:layout_height="20dp"
+                            android:layout_gravity="center"
+                            android:contentDescription="@null"
+                            android:src="@drawable/ic_shield"
+                            android:tint="@color/virtus_text" />
+                    </FrameLayout>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="12dp"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/android_id"
+                            android:textColor="@color/virtus_text"
+                            android:textSize="15sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/android_id_hint"
+                            android:textColor="@color/virtus_text_secondary"
+                            android:textSize="10sp" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <EditText
+                        android:id="@+id/androidIdInput"
+                        android:layout_width="0dp"
+                        android:layout_height="46dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/bg_input"
+                        android:fontFamily="monospace"
+                        android:hint="0000000000000000"
+                        android:inputType="textNoSuggestions"
+                        android:maxLength="16"
+                        android:paddingHorizontal="12dp"
+                        android:textColor="@color/virtus_text"
+                        android:textColorHint="@color/virtus_text_dim"
+                        android:textSize="13sp" />
+
+                    <ImageButton
+                        android:id="@+id/btnRefreshId"
+                        android:layout_width="46dp"
+                        android:layout_height="46dp"
+                        android:layout_marginStart="8dp"
+                        android:background="@drawable/bg_input"
+                        android:contentDescription="@string/android_id"
+                        android:padding="11dp"
+                        android:src="@drawable/ic_refresh"
+                        android:tint="@color/virtus_text_secondary" />
+                </LinearLayout>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnSaveId"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="12dp"
+                    android:backgroundTint="@color/virtus_red"
+                    android:text="@string/save"
+                    android:textAllCaps="false"
+                    android:textColor="@color/virtus_text"
+                    android:textStyle="bold"
+                    app:cornerRadius="12dp"
+                    xmlns:app="http://schemas.android.com/apk/res-auto" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:layout_marginBottom="8dp"
+                android:text="@string/data_management"
+                android:textColor="@color/virtus_text"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/reset_data"
+                    android:textColor="@color/virtus_text"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="@string/reset_data_hint"
+                    android:textColor="@color/virtus_text_secondary"
+                    android:textSize="11sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnResetData"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="12dp"
+                    android:backgroundTint="@color/virtus_red"
+                    android:text="@string/reset_data"
+                    android:textAllCaps="false"
+                    app:cornerRadius="12dp"
+                    xmlns:app="http://schemas.android.com/apk/res-auto" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/backups"
+                    android:textColor="@color/virtus_text"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
 
                 <EditText
-                    android:id="@+id/androidIdInput"
-                    android:layout_width="0dp"
-                    android:layout_height="48dp"
-                    android:layout_weight="1"
+                    android:id="@+id/backupNoteInput"
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:layout_marginTop="10dp"
                     android:background="@drawable/bg_input"
-                    android:fontFamily="monospace"
-                    android:hint="0000000000000000"
-                    android:inputType="textNoSuggestions"
-                    android:maxLength="16"
+                    android:hint="@string/backup_note_hint"
+                    android:inputType="text"
                     android:paddingHorizontal="12dp"
                     android:textColor="@color/virtus_text"
                     android:textColorHint="@color/virtus_text_dim"
-                    android:textSize="14sp" />
+                    android:textSize="13sp" />
 
-                <ImageButton
-                    android:id="@+id/btnRefreshId"
-                    android:layout_width="48dp"
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnCreateBackup"
+                    android:layout_width="match_parent"
                     android:layout_height="48dp"
-                    android:layout_marginStart="8dp"
-                    android:background="@drawable/bg_btn_grey"
-                    android:contentDescription="@string/android_id"
-                    android:padding="12dp"
-                    android:src="@drawable/ic_refresh" />
+                    android:layout_marginTop="10dp"
+                    android:backgroundTint="@color/virtus_red"
+                    android:text="@string/create_backup"
+                    android:textAllCaps="false"
+                    android:textStyle="bold"
+                    app:cornerRadius="12dp"
+                    xmlns:app="http://schemas.android.com/apk/res-auto" />
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/backupList"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:nestedScrollingEnabled="false" />
             </LinearLayout>
-
-            <Button
-                android:id="@+id/btnSaveId"
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:layout_marginTop="12dp"
-                android:background="@drawable/bg_btn_red"
-                android:text="@string/save"
-                android:textAllCaps="false"
-                android:textColor="@color/virtus_text"
-                android:textStyle="bold" />
         </LinearLayout>
-
-        <!-- Data Management header -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:layout_marginBottom="8dp"
-            android:text="@string/data_management"
-            android:textColor="@color/virtus_text"
-            android:textSize="18sp"
-            android:textStyle="bold" />
-
-        <!-- Reset card -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/bg_card"
-            android:orientation="vertical"
-            android:padding="16dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/reset_data"
-                android:textColor="@color/virtus_text"
-                android:textSize="15sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="@string/reset_data_hint"
-                android:textColor="@color/virtus_text_secondary"
-                android:textSize="12sp" />
-
-            <Button
-                android:id="@+id/btnResetData"
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:layout_marginTop="12dp"
-                android:background="@drawable/bg_btn_red"
-                android:text="@string/reset_data"
-                android:textAllCaps="false"
-                android:textColor="@color/virtus_text" />
-        </LinearLayout>
-
-        <!-- Backups card -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:background="@drawable/bg_card"
-            android:orientation="vertical"
-            android:padding="16dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/backups"
-                android:textColor="@color/virtus_text"
-                android:textSize="15sp"
-                android:textStyle="bold" />
-
-            <EditText
-                android:id="@+id/backupNoteInput"
-                android:layout_width="match_parent"
-                android:layout_height="44dp"
-                android:layout_marginTop="10dp"
-                android:background="@drawable/bg_input"
-                android:hint="@string/backup_note_hint"
-                android:inputType="text"
-                android:paddingHorizontal="12dp"
-                android:textColor="@color/virtus_text"
-                android:textColorHint="@color/virtus_text_dim"
-                android:textSize="13sp" />
-
-            <Button
-                android:id="@+id/btnCreateBackup"
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:layout_marginTop="10dp"
-                android:background="@drawable/bg_btn_red"
-                android:text="@string/create_backup"
-                android:textAllCaps="false"
-                android:textColor="@color/virtus_text"
-                android:textStyle="bold" />
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/backupList"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:nestedScrollingEnabled="false" />
-        </LinearLayout>
-    </LinearLayout>
-</ScrollView>
+    </ScrollView>
+</LinearLayout>

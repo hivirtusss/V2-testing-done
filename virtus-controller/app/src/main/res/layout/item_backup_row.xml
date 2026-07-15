@@ -2,7 +2,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginBottom="8dp"
+    android:layout_marginBottom="10dp"
     android:background="@drawable/bg_input"
     android:gravity="center_vertical"
     android:orientation="horizontal"
@@ -26,41 +26,41 @@
             android:id="@+id/backupMeta"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
+            android:layout_marginTop="3dp"
             android:textColor="@color/virtus_text_secondary"
-            android:textSize="11sp" />
+            android:textSize="10sp" />
     </LinearLayout>
 
     <ImageButton
         android:id="@+id/btnRestore"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
+        android:layout_width="42dp"
+        android:layout_height="42dp"
         android:layout_marginStart="6dp"
-        android:background="@color/virtus_green"
+        android:background="@drawable/bg_action_green"
         android:contentDescription="@string/restore"
-        android:padding="8dp"
+        android:padding="9dp"
         android:scaleType="centerInside"
         android:src="@drawable/ic_restore" />
 
     <ImageButton
         android:id="@+id/btnNote"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
+        android:layout_width="42dp"
+        android:layout_height="42dp"
         android:layout_marginStart="6dp"
-        android:background="@color/virtus_blue"
+        android:background="@drawable/bg_action_blue"
         android:contentDescription="@string/note"
-        android:padding="8dp"
+        android:padding="9dp"
         android:scaleType="centerInside"
         android:src="@drawable/ic_note" />
 
     <ImageButton
         android:id="@+id/btnDelete"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
+        android:layout_width="42dp"
+        android:layout_height="42dp"
         android:layout_marginStart="6dp"
-        android:background="@color/virtus_red"
+        android:background="@drawable/bg_action_red"
         android:contentDescription="@string/delete"
-        android:padding="8dp"
+        android:padding="9dp"
         android:scaleType="centerInside"
         android:src="@drawable/ic_delete" />
 </LinearLayout>

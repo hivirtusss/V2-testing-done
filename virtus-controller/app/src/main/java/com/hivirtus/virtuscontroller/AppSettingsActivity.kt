@@ -141,7 +141,12 @@ class AppSettingsActivity : AppCompatActivity() {
             }
             val r = withContext(Dispatchers.IO) { BackupManager.create(packageName, note) }
             if (r.ok && r.stdout.isNotBlank()) {
-                toast(getString(R.string.backup_created))
+                val fc = r.stdout.lines().lastOrNull()?.split('|')?.getOrNull(6)?.toIntOrNull() ?: 0
+                if (fc < 5) {
+                    toast("Warning: only $fc data files — login in app first, then recreate backup")
+                } else {
+                    toast(getString(R.string.backup_created) + " ($fc files)")
+                }
                 binding.backupNoteInput.text?.clear()
                 loadBackups()
             } else {
@@ -245,7 +250,7 @@ class AppSettingsActivity : AppCompatActivity() {
             val item = items[position]
             holder.title.text = item.displayName
             val idPart = if (item.androidId.isNotBlank()) " | ID: ${item.androidId.take(8)}..." else ""
-            holder.meta.text = "${item.createdAt} | ${item.sizeHuman}$idPart"
+            holder.meta.text = "${item.createdAt} | ${item.sizeHuman} | ${item.fileCount} files$idPart"
             holder.restore.setOnClickListener { onRestore(item) }
             holder.note.setOnClickListener { onNote(item) }
             holder.delete.setOnClickListener { onDelete(item) }

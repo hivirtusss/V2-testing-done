@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# Virtus backup v2 — full app data + APK + Device ID (System Error style)
+# Virtus backup v3 — tar-based full data + sdcard + Device ID
 MODDIR="/data/adb/modules/zygisk_floating_menu"
 BACKUP_ROOT="$MODDIR/backups"
 CONFIG_DIR="$MODDIR/virtus_config"
@@ -11,158 +11,147 @@ ARG4="${4:-}"
 
 log() { echo "[virtus_backup] $*" >&2; }
 
-pkg_installed() {
-  pm path "$PKG" >/dev/null 2>&1
-}
+pkg_installed() { pm path "$PKG" >/dev/null 2>&1; }
 
-identity_file() {
-  echo "$CONFIG_DIR/$(echo "$PKG" | tr '.' '_').json"
-}
-
-device_id_file() {
-  echo "$MODDIR/device_id_$(echo "$PKG" | tr '.' '_')"
-}
+identity_file() { echo "$CONFIG_DIR/$(echo "$PKG" | tr '.' '_').json"; }
+device_id_file() { echo "$MODDIR/device_id_$(echo "$PKG" | tr '.' '_')"; }
 
 read_data_dir() {
   dumpsys package "$PKG" 2>/dev/null | grep -m1 'dataDir=' | sed 's/.*dataDir=//'
 }
 
-wake_app_data() {
+count_files() { find "$1" -type f 2>/dev/null | wc -l; }
+
+wake_app() {
   am force-stop "$PKG" 2>/dev/null
   monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 \
-    || am start -n "$(cmd package resolve-activity --brief "$PKG" 2>/dev/null | tail -1)" >/dev/null 2>&1 \
     || am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "$PKG" >/dev/null 2>&1
-  sleep 2
+  sleep 3
 }
 
 find_app_data() {
-  if ! pkg_installed; then
-    log "app not installed: $PKG"
-    return 1
-  fi
-
-  DATA_DIR="$(read_data_dir)"
-  if [ -n "$DATA_DIR" ] && [ -d "$DATA_DIR" ]; then
-    echo "$DATA_DIR"
-    return 0
-  fi
-
-  for base in /data/user/0 /data/user/10 /data/user/999 /data/user_de/0 /data/data; do
-    if [ -d "$base/$PKG" ]; then
-      echo "$base/$PKG"
-      return 0
-    fi
+  if ! pkg_installed; then log "not installed: $PKG"; return 1; fi
+  D="$(read_data_dir)"
+  if [ -n "$D" ] && [ -d "$D" ]; then echo "$D"; return 0; fi
+  for b in /data/user/0 /data/user/10 /data/user_de/0 /data/data; do
+    [ -d "$b/$PKG" ] && echo "$b/$PKG" && return 0
   done
-
-  # Installed but data folder missing — open app once to create it
-  if [ -n "$DATA_DIR" ]; then
-    wake_app_data
-    [ -d "$DATA_DIR" ] && echo "$DATA_DIR" && return 0
-  fi
-
-  wake_app_data
-  for base in /data/user/0 /data/user/10 /data/user_de/0 /data/data; do
-    if [ -d "$base/$PKG" ]; then
-      echo "$base/$PKG"
-      return 0
-    fi
+  wake_app
+  D="$(read_data_dir)"
+  [ -n "$D" ] && [ -d "$D" ] && echo "$D" && return 0
+  for b in /data/user/0 /data/user/10 /data/data; do
+    [ -d "$b/$PKG" ] && echo "$b/$PKG" && return 0
   done
+  return 1
+}
 
-  DATA_DIR="$(read_data_dir)"
-  if [ -n "$DATA_DIR" ]; then
-    mkdir -p "$DATA_DIR" 2>/dev/null
-    wake_app_data
-    [ -d "$DATA_DIR" ] && echo "$DATA_DIR" && return 0
-  fi
-
+sdcard_app_dir() {
+  for p in "/storage/emulated/0/Android/data/$PKG" "/sdcard/Android/data/$PKG"; do
+    [ -d "$p" ] && echo "$p" && return 0
+  done
   return 1
 }
 
 copy_apk() {
   DEST="$1"
-  APK_PATH="$(pm path "$PKG" 2>/dev/null | head -1 | sed 's/^package://')"
-  [ -n "$APK_PATH" ] && [ -f "$APK_PATH" ] || return 1
-  cp "$APK_PATH" "$DEST/base.apk" 2>/dev/null || cp "$APK_PATH" "$DEST/${PKG}.apk" 2>/dev/null
+  APK="$(pm path "$PKG" 2>/dev/null | head -1 | sed 's/^package://')"
+  [ -n "$APK" ] && [ -f "$APK" ] && cp "$APK" "$DEST/base.apk" 2>/dev/null
 }
 
 save_meta() {
-  DEST="$1"
-  NOTE="$2"
+  DEST="$1"; NOTE="$2"
   printf '%s' "$NOTE" > "$DEST/note.txt"
   date '+%Y-%m-%d %H:%M:%S' > "$DEST/created.txt"
+  FC="$(count_files "$DEST/data")"
+  echo "$FC" > "$DEST/files_count.txt"
   du -sh "$DEST" 2>/dev/null | awk '{print $1}' > "$DEST/size.txt"
-  VER="$(dumpsys package "$PKG" 2>/dev/null | awk -F= '/versionName=/{print $2; exit}')"
-  CODE="$(dumpsys package "$PKG" 2>/dev/null | awk -F= '/versionCode=/{print $2; exit}')"
-  echo "${VER:-unknown}" > "$DEST/version.txt"
-  echo "${CODE:-0}" > "$DEST/version_code.txt"
+  dumpsys package "$PKG" 2>/dev/null | awk -F= '/versionName=/{print $2; exit}' > "$DEST/version.txt"
+  dumpsys package "$PKG" 2>/dev/null | awk -F= '/versionCode=/{print $2; exit}' > "$DEST/version_code.txt"
   echo "$PKG" > "$DEST/package.txt"
 }
 
 save_identity() {
   DEST="$1"
-  IDFILE="$(identity_file)"
-  DEVFILE="$(device_id_file)"
-  if [ -f "$IDFILE" ]; then
-    cp "$IDFILE" "$DEST/identity.json"
-  else
-    echo "{\"package\":\"$PKG\",\"android_id\":\"\",\"signature_spoof\":false}" > "$DEST/identity.json"
-  fi
-  AID="$(grep -o '"android_id"[[:space:]]*:[[:space:]]*"[^"]*"' "$DEST/identity.json" 2>/dev/null | head -1 | sed 's/.*"\([^"]*\)"$/\1/')"
-  if [ -n "$AID" ]; then
-    printf '%s' "$AID" > "$DEST/device_id.txt"
-    printf '%s' "$AID" > "$DEVFILE"
-    chmod 644 "$DEVFILE" 2>/dev/null
-  elif [ -f "$DEVFILE" ]; then
-    cp "$DEVFILE" "$DEST/device_id.txt"
-  fi
+  IDF="$(identity_file)"; DEV="$(device_id_file)"
+  if [ -f "$IDF" ]; then cp "$IDF" "$DEST/identity.json"
+  else echo "{\"package\":\"$PKG\",\"android_id\":\"\"}" > "$DEST/identity.json"; fi
+  AID="$(grep -o '"android_id"[[:space:]]*:[[:space:]]*"[^"]*"' "$DEST/identity.json" 2>/dev/null | sed 's/.*"\([^"]*\)"$/\1/')"
+  [ -n "$AID" ] && [ "$AID" != "0000000000000000" ] && printf '%s' "$AID" > "$DEST/device_id.txt" && printf '%s' "$AID" > "$DEV"
+  [ -f "$DEV" ] && [ ! -f "$DEST/device_id.txt" ] && cp "$DEV" "$DEST/device_id.txt"
 }
 
 restore_identity() {
-  BID="$1"
-  SRC="$BACKUP_ROOT/$PKG/$BID"
-  IDFILE="$(identity_file)"
-  DEVFILE="$(device_id_file)"
-  if [ -f "$SRC/identity.json" ]; then
-    mkdir -p "$CONFIG_DIR"
-    cp "$SRC/identity.json" "$IDFILE"
-    chmod 644 "$IDFILE" 2>/dev/null
-  fi
+  BID="$1"; SRC="$BACKUP_ROOT/$PKG/$BID"
+  IDF="$(identity_file)"; DEV="$(device_id_file)"
+  mkdir -p "$CONFIG_DIR"
+  [ -f "$SRC/identity.json" ] && cp "$SRC/identity.json" "$IDF" && chmod 644 "$IDF"
   if [ -f "$SRC/device_id.txt" ]; then
-    cp "$SRC/device_id.txt" "$DEVFILE"
-    chmod 644 "$DEVFILE" 2>/dev/null
-    if [ ! -f "$IDFILE" ]; then
-      mkdir -p "$CONFIG_DIR"
-      AID="$(cat "$SRC/device_id.txt")"
-      printf '{"package":"%s","android_id":"%s","signature_spoof":false}' "$PKG" "$AID" > "$IDFILE"
-    fi
+    cp "$SRC/device_id.txt" "$DEV"; chmod 644 "$DEV"
+    AID="$(cat "$SRC/device_id.txt")"
+    [ -n "$AID" ] && printf '{"package":"%s","android_id":"%s","signature_spoof":false}' "$PKG" "$AID" > "$IDF"
   fi
   date +%s > "$MODDIR/.virtus_sync" 2>/dev/null
 }
 
-fix_data_owner() {
-  DEST="$1"
+fix_owner() {
+  D="$1"
   UID="$(dumpsys package "$PKG" 2>/dev/null | awk '/userId=/{print $1; exit}' | sed 's/userId=//')"
-  [ -n "$UID" ] || return 0
-  chown -R "$UID:$UID" "$DEST" 2>/dev/null
-  restorecon -R "$DEST" 2>/dev/null
-  chmod -R u+rwX "$DEST" 2>/dev/null
+  [ -n "$UID" ] && chown -R "$UID:$UID" "$D" 2>/dev/null
+  restorecon -R "$D" 2>/dev/null
+  chmod -R u+rwX "$D" 2>/dev/null
+}
+
+backup_data_tree() {
+  SRC="$1"; DEST="$2"
+  am force-stop "$PKG" 2>/dev/null
+  sync
+  sleep 1
+  rm -rf "$DEST/data" 2>/dev/null
+  mkdir -p "$DEST/data"
+  (cd "$(dirname "$SRC")" && tar -cpf - "$(basename "$SRC")") | (cd "$DEST/data" && tar -xpf -) || return 1
+  FC="$(count_files "$DEST/data")"
+  [ "$FC" -gt 0 ] || return 1
+  return 0
+}
+
+backup_sdcard() {
+  SRC="$1"; DEST="$2"
+  rm -rf "$DEST/sdcard_data" 2>/dev/null
+  mkdir -p "$DEST/sdcard_data"
+  (cd "$(dirname "$SRC")" && tar -cpf - "$(basename "$SRC")") | (cd "$DEST/sdcard_data" && tar -xpf -) 2>/dev/null
+}
+
+restore_data_tree() {
+  ARCH="$1"; DEST="$2"
+  mkdir -p "$DEST"
+  rm -rf "$DEST"/* 2>/dev/null
+  if [ -d "$ARCH/data/$PKG" ]; then
+    cp -a "$ARCH/data/$PKG/." "$DEST/" || return 1
+  else
+    INNER="$(find "$ARCH/data" -maxdepth 2 -type d -name "$PKG" 2>/dev/null | head -1)"
+    [ -n "$INNER" ] && cp -a "$INNER/." "$DEST/" || return 1
+  fi
+  fix_owner "$DEST"
+  return 0
 }
 
 cmd_create() {
   NOTE="$ARG3"
-  SRC="$(find_app_data)" || {
-    log "app data not found: $PKG — install app & open once, then retry"
-    exit 1
-  }
-  mkdir -p "$BACKUP_ROOT/$PKG" "$CONFIG_DIR" 2>/dev/null
+  SRC="$(find_app_data)" || { log "data dir not found — open app & login first"; exit 1; }
+  FC="$(count_files "$SRC")"
+  [ "$FC" -gt 0 ] || { log "app data empty ($SRC) — login in app first"; exit 1; }
+  mkdir -p "$BACKUP_ROOT/$PKG" "$CONFIG_DIR"
   ID="$(date +%Y%m%d_%H%M%S)_$$"
   DEST="$BACKUP_ROOT/$PKG/$ID"
-  mkdir -p "$DEST/data" || exit 1
-  cp -a "$SRC/." "$DEST/data/" || { log "copy failed from $SRC"; exit 1; }
-  copy_apk "$DEST" || log "apk copy skipped"
+  mkdir -p "$DEST"
+  backup_data_tree "$SRC" "$DEST" || { log "backup data failed"; rm -rf "$DEST"; exit 1; }
+  SD="$(sdcard_app_dir)" && backup_sdcard "$SD" "$DEST"
+  copy_apk "$DEST"
   save_identity "$DEST"
   save_meta "$DEST" "$NOTE"
-  chmod -R 755 "$DEST" 2>/dev/null
+  FC2="$(count_files "$DEST/data")"
+  echo "$FC2" > "$DEST/files_count.txt"
+  log "backed up $FC2 data files from $SRC"
   echo "$ID"
   exit 0
 }
@@ -172,96 +161,68 @@ cmd_list() {
   [ -d "$BASE" ] || exit 0
   for d in "$BASE"/*; do
     [ -d "$d" ] || continue
-    [ -d "$d/data" ] || continue
     ID="$(basename "$d")"
     CREATED="$(cat "$d/created.txt" 2>/dev/null)"
     NOTE="$(cat "$d/note.txt" 2>/dev/null | tr '\n' ' ')"
     SIZE="$(cat "$d/size.txt" 2>/dev/null)"
-    MT="0"
-    [ -f "$d/base.apk" ] || [ -f "$d/${PKG}.apk" ] && MT="1"
-    AID=""
-    [ -f "$d/device_id.txt" ] && AID="$(cat "$d/device_id.txt" 2>/dev/null)"
-    [ -z "$AID" ] && [ -f "$d/identity.json" ] && AID="$(grep -o '"android_id"[[:space:]]*:[[:space:]]*"[^"]*"' "$d/identity.json" 2>/dev/null | head -1 | sed 's/.*"\([^"]*\)"$/\1/')"
-    echo "$ID|$CREATED|$NOTE|$SIZE|$MT|$AID"
+    FC="$(cat "$d/files_count.txt" 2>/dev/null)"
+    MT="0"; [ -f "$d/base.apk" ] && MT="1"
+    AID=""; [ -f "$d/device_id.txt" ] && AID="$(cat "$d/device_id.txt" 2>/dev/null)"
+    echo "$ID|$CREATED|$NOTE|$SIZE|$MT|$AID|$FC"
   done
   exit 0
 }
 
 cmd_restore() {
   ID="$ARG3"
-  SRC="$BACKUP_ROOT/$PKG/$ID/data"
-  [ -d "$SRC" ] || { log "backup not found: $ID"; exit 1; }
-  if ! pkg_installed; then
-    log "install app first: $PKG"
-    exit 1
-  fi
+  ARCH="$BACKUP_ROOT/$PKG/$ID"
+  [ -d "$ARCH/data" ] || { log "backup missing"; exit 1; }
+  FC="$(count_files "$ARCH/data")"
+  [ "$FC" -gt 0 ] || { log "backup data empty — recreate backup after login"; exit 1; }
+  pkg_installed || { log "install app first"; exit 1; }
   am force-stop "$PKG" 2>/dev/null
-  pm clear "$PKG" >/dev/null 2>&1 || true
-  sleep 1
-  DEST="$(read_data_dir)"
+  pm clear "$PKG" >/dev/null 2>&1
+  sleep 2
+  DEST="$(find_app_data)" || DEST="$(read_data_dir)"
   [ -z "$DEST" ] && DEST="/data/user/0/$PKG"
   mkdir -p "$DEST"
-  rm -rf "$DEST"/* 2>/dev/null
-  cp -a "$SRC/." "$DEST/" || { log "restore copy failed"; exit 1; }
-  fix_data_owner "$DEST"
+  restore_data_tree "$ARCH" "$DEST" || { log "restore failed"; exit 1; }
+  if [ -d "$ARCH/sdcard_data/$PKG" ]; then
+    SD="$(sdcard_app_dir)" || SD="/storage/emulated/0/Android/data/$PKG"
+    mkdir -p "$(dirname "$SD")"
+    rm -rf "$SD" 2>/dev/null
+    mkdir -p "$SD"
+    cp -a "$ARCH/sdcard_data/$PKG/." "$SD/" 2>/dev/null
+  fi
   restore_identity "$ID"
+  sync
+  log "restored $FC files to $DEST"
   echo "restored"
   exit 0
 }
 
 cmd_delete() {
-  ID="$ARG3"
-  rm -rf "$BACKUP_ROOT/$PKG/$ID"
-  rm -rf "$MT_ROOT/${PKG}_virtus_${ID}" 2>/dev/null
-  echo "deleted"
-  exit 0
+  rm -rf "$BACKUP_ROOT/$PKG/$ARG3"
+  echo "deleted"; exit 0
 }
 
 cmd_set_note() {
-  ID="$ARG3"
-  NOTE="$ARG4"
-  DEST="$BACKUP_ROOT/$PKG/$ID"
-  [ -d "$DEST" ] || { log "backup not found"; exit 1; }
-  printf '%s' "$NOTE" > "$DEST/note.txt"
-  echo "ok"
-  exit 0
+  printf '%s' "$ARG4" > "$BACKUP_ROOT/$PKG/$ARG3/note.txt"
+  echo "ok"; exit 0
 }
 
 cmd_reset() {
   am force-stop "$PKG" 2>/dev/null
   pm clear "$PKG" >/dev/null 2>&1
-  echo "reset"
-  exit 0
+  echo "reset"; exit 0
 }
 
 cmd_check() {
-  if ! pkg_installed; then
-    echo "not_installed"
-    exit 1
-  fi
-  SRC="$(find_app_data)" && echo "ok:$SRC" || echo "no_data"
-  exit 0
-}
-
-cmd_export_mt() {
-  ID="$ARG3"
-  SRC="$BACKUP_ROOT/$PKG/$ID"
-  [ -d "$SRC/data" ] || { log "backup missing"; exit 1; }
-  VER="$(cat "$SRC/version.txt" 2>/dev/null)"
-  [ -z "$VER" ] && VER="unknown"
-  MT_NAME="${PKG}_${VER}_virtus_${ID}"
-  DEST="$MT_ROOT/$MT_NAME"
-  mkdir -p "$DEST" "$MT_ROOT" 2>/dev/null || { log "cannot create MT2/Backup"; exit 1; }
-  rm -rf "$DEST"
-  mkdir -p "$DEST/data"
-  if [ -f "$SRC/base.apk" ]; then cp "$SRC/base.apk" "$DEST/base.apk"
-  elif [ -f "$SRC/${PKG}.apk" ]; then cp "$SRC/${PKG}.apk" "$DEST/${PKG}.apk"
-  else copy_apk "$DEST" || log "warning: no apk"; fi
-  cp -a "$SRC/data/." "$DEST/data/" || exit 1
-  cp "$SRC/note.txt" "$DEST/note.txt" 2>/dev/null
-  cp "$SRC/identity.json" "$DEST/identity.json" 2>/dev/null
-  cp "$SRC/device_id.txt" "$DEST/device_id.txt" 2>/dev/null
-  echo "$DEST"
+  pkg_installed || { echo "not_installed"; exit 1; }
+  SRC="$(find_app_data)" || { echo "no_data"; exit 1; }
+  FC="$(count_files "$SRC")"
+  SD="$(sdcard_app_dir)"
+  echo "ok:$SRC:files=$FC:sdcard=$([ -n "$SD" ] && echo yes || echo no)"
   exit 0
 }
 
@@ -276,6 +237,5 @@ case "$CMD" in
   set_note) cmd_set_note ;;
   reset) cmd_reset ;;
   check) cmd_check ;;
-  export_mt) cmd_export_mt ;;
-  *) log "usage: create|list|restore|delete|set_note|reset|check|export_mt <pkg> [note|id] [note]"; exit 1 ;;
+  *) log "usage: create|list|restore|delete|set_note|reset|check <pkg> ..."; exit 1 ;;
 esac

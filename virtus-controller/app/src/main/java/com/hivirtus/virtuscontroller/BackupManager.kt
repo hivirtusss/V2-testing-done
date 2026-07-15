@@ -6,7 +6,8 @@ data class BackupEntry(
     val createdAt: String,
     val sizeHuman: String,
     val mtReady: Boolean,
-    val androidId: String
+    val androidId: String,
+    val fileCount: Int = 0
 ) {
     val displayName: String
         get() = note.ifBlank { id }
@@ -30,7 +31,8 @@ object BackupManager {
                     note = p.getOrElse(2) { "" }.trim(),
                     sizeHuman = p.getOrElse(3) { "" }.trim(),
                     mtReady = p.getOrElse(4) { "0" }.trim() == "1",
-                    androidId = p.getOrElse(5) { "" }.trim()
+                    androidId = p.getOrElse(5) { "" }.trim(),
+                    fileCount = p.getOrElse(6) { "0" }.trim().toIntOrNull() ?: 0
                 )
             }
             .sortedByDescending { it.createdAt }

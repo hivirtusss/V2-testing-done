@@ -49,18 +49,26 @@ data class IdentityConfig(
         fun load(pkg: String): IdentityConfig {
             val path = configPath(pkg)
             val r = RootShell.run("cat '$path' 2>/dev/null")
-            return if (r.ok && r.stdout.isNotBlank()) fromJson(r.stdout, pkg)
-            else IdentityConfig(pkg, randomId(), false, "")
+            if (r.ok && r.stdout.isNotBlank()) return fromJson(r.stdout, pkg)
+            val devPath = "${ModulePaths.MODULE_DIR}/device_id_${pkg.replace('.', '_')}"
+            val d = RootShell.run("cat '$devPath' 2>/dev/null")
+            if (d.ok && d.stdout.length == 16) {
+                return IdentityConfig(pkg, d.stdout.trim(), false, "")
+            }
+            return IdentityConfig(pkg, randomId(), false, "")
         }
 
         fun save(config: IdentityConfig): RootShell.Result {
             val json = config.toJson().replace("'", "'\\''")
             val path = configPath(config.packageName)
+            val devPath = "${ModulePaths.MODULE_DIR}/device_id_${config.packageName.replace('.', '_')}"
+            val aid = config.androidId.replace("'", "'\\''")
             val cmd = """
                 mkdir -p '${ModulePaths.CONFIG_DIR}' && \
                 chmod 755 '${ModulePaths.CONFIG_DIR}' && \
                 printf '%s' '$json' > '$path' && \
-                chmod 644 '$path' && \
+                printf '%s' '$aid' > '$devPath' && \
+                chmod 644 '$path' '$devPath' && \
                 date +%s > '${ModulePaths.SYNC_FLAG}' && \
                 chmod 644 '${ModulePaths.SYNC_FLAG}'
             """.trimIndent().replace("\n", " ")
