@@ -56,4 +56,9 @@ object BackupManager {
     fun resetData(pkg: String): RootShell.Result {
         return RootShell.runScript(script(), "reset", pkg)
     }
+
+    fun checkData(pkg: String): RootShell.Result {
+        TargetAppRepository.ensureModuleDirs()
+        return RootShell.runScript(script(), "check", pkg, timeoutSec = 60)
+    }
 }

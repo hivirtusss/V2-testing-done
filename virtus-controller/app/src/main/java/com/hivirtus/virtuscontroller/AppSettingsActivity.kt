@@ -123,18 +123,24 @@ class AppSettingsActivity : AppCompatActivity() {
     private fun createBackup() {
         val note = binding.backupNoteInput.text.toString().trim()
         lifecycleScope.launch {
+            val check = withContext(Dispatchers.IO) { BackupManager.checkData(packageName) }
+            if (!check.ok || check.stdout.startsWith("not_installed")) {
+                toast("App not installed: $packageName")
+                return@launch
+            }
+            if (check.stdout.startsWith("no_data")) {
+                toast("Pehle app ek baar kholo (login/setup), phir backup banao")
+                return@launch
+            }
             toast("Creating backup...")
-            // Save current device ID into config before backup
             val id = binding.androidIdInput.text.toString().trim().lowercase()
             if (id.length == 16) {
                 withContext(Dispatchers.IO) {
-                    IdentityConfig.save(
-                        IdentityConfig(packageName, id, false, "")
-                    )
+                    IdentityConfig.save(IdentityConfig(packageName, id, false, ""))
                 }
             }
             val r = withContext(Dispatchers.IO) { BackupManager.create(packageName, note) }
-            if (r.ok) {
+            if (r.ok && r.stdout.isNotBlank()) {
                 toast(getString(R.string.backup_created))
                 binding.backupNoteInput.text?.clear()
                 loadBackups()
