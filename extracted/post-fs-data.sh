@@ -28,7 +28,6 @@ elif command -v setprop >/dev/null 2>&1; then
 fi
 
 sh "$MODDIR/refresh_pkglist.sh" "$MODDIR"
-sh "$MODDIR/merge_stealth_packages.sh" "$MODDIR"
 
 if [ ! -f "$TARGET" ]; then
   : > "$TARGET"
