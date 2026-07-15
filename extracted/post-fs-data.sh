@@ -37,6 +37,8 @@ fi
 
 chmod 644 "$TARGET" 2>/dev/null
 chmod 755 "$MODDIR" 2>/dev/null
+mkdir -p "$MODDIR/virtus_config" "$MODDIR/backups" "$MODDIR/bin"
+chmod 755 "$MODDIR/bin/virtus_backup.sh" 2>/dev/null
 
 if grep -qx '*' "$TARGET" 2>/dev/null; then
   grep -v '^\*$' "$TARGET" > "$TARGET.tmp" 2>/dev/null || : > "$TARGET.tmp"

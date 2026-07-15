@@ -4672,6 +4672,8 @@
     const/4 v9, 0x0
 
     :goto_66
+    invoke-static {p0}, Lcom/floatingmenu/IdentityGuard;->ensureLoaded(Ljava/lang/String;)V
+
     const-string v4, ""
 
     if-eqz p1, :cond_12e

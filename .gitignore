@@ -1,0 +1,5 @@
+virtus-controller/.gradle/
+virtus-controller/app/build/
+virtus-controller/gradle-8.2/
+virtus-controller/gradle.zip
+virtus-controller/*.jks

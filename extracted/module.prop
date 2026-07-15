@@ -1,8 +1,8 @@
 id=zygisk_floating_menu
 name=Zygisk Mode Menu Virtus V3
 version=v3
-versionCode=32
+versionCode=33
 author=@Hivirtus
-description=Virtus V3 Stealth Anti-Detection
+description=Virtus V3 + Controller APK sync
 webui=webroot
 zygote=true

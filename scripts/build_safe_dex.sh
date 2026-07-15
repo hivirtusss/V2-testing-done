@@ -16,6 +16,7 @@ cp "$ROOT/patch_smali/com/floatingmenu/MenuLoader\$8\$1.smali" "$WORK/com/floati
 cp "$ROOT/patch_smali/com/floatingmenu/MenuLoader\$1\$1\$1\$1.smali" "$WORK/com/floatingmenu/"
 cp "$ROOT/patch_smali/com/floatingmenu/MenuLoader.smali" "$WORK/com/floatingmenu/"
 cp "$ROOT/patch_smali/com/floatingmenu/TargetPackageGuard.smali" "$WORK/com/floatingmenu/"
+cp "$ROOT/patch_smali/com/floatingmenu/IdentityGuard.smali" "$WORK/com/floatingmenu/"
 
 FM="$WORK/com/floatingmenu/FloatingMenu\$1.smali"
 FO="$WORK/com/floatingmenu/FloatingMenu.smali"

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Virtus Controller</string>
+    <string name="tab_apps">Apps</string>
+    <string name="tab_identity">Identity</string>
+    <string name="tab_backup">Backup</string>
+    <string name="tab_module">Module</string>
+    <string name="root_ok">Root access OK</string>
+    <string name="root_fail">Root required for backup and module sync</string>
+    <string name="module_ok">Virtus ZIP module detected</string>
+    <string name="module_missing">Install zygisk_floating_menu module first</string>
+    <string name="save_apply">Save &amp; Apply to Module</string>
+    <string name="create_backup">Create Backup</string>
+    <string name="restore_backup">Restore</string>
+    <string name="delete_backup">Delete</string>
+    <string name="android_id">Android ID (16 hex)</string>
+    <string name="signature_mode">Signature Spoof</string>
+    <string name="generate_id">Generate Random ID</string>
+    <string name="sync_inject">Syncs with Zygisk injection on next app open</string>
+</resources>
