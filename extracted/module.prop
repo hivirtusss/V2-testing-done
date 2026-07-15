@@ -1,7 +1,7 @@
 id=zygisk_floating_menu
 name=Virtus v3 @Hivirtus
 version=v3
-versionCode=8
+versionCode=9
 author=@Hivirtus
 description=Virtus v3 Red Edition
 webui=webroot
