@@ -296,14 +296,11 @@
 
     invoke-interface {v0}, Landroid/content/SharedPreferences$Editor;->apply()V
 
-    sget-boolean v0, Lcom/floatingmenu/MenuLoader;->sIsTargetPackage:Z
-
-    if-eqz v0, :goto_147
-
     iget-object v0, p0, Lcom/floatingmenu/MenuLoader$1$1$1$1;->this$2:Lcom/floatingmenu/MenuLoader$1$1$1;
 
     iget-object v0, v0, Lcom/floatingmenu/MenuLoader$1$1$1;->val$activity:Landroid/app/Activity;
 
+    # invokes: Lcom/floatingmenu/MenuLoader;->dismissFloatingMenu(Landroid/app/Activity;)V
     invoke-static {v0}, Lcom/floatingmenu/MenuLoader;->access$700(Landroid/app/Activity;)V
 
     goto :goto_147

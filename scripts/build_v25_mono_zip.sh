@@ -23,4 +23,4 @@ echo "classes.dex: $(wc -c < "$STAGE/classes.dex") bytes (user base + mono patch
 
 ORIG_DEX=$(unzip -p "$SRC" classes.dex | md5sum | awk '{print $1}')
 NEW_DEX=$(md5sum "$STAGE/classes.dex" | awk '{print $1}')
-echo "dex changed: $ORIG_DEX -> $NEW_DEX (FloatingMenu\$6 + bubble keep patch)"
+echo "dex changed: $ORIG_DEX -> $NEW_DEX (expected — FloatingMenu\$6 only)"
