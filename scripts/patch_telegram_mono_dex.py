@@ -13,10 +13,12 @@ BAKSMALI = ROOT / "baksmali.jar"
 SMALI = ROOT / "smali.jar"
 F6 = ROOT / "user_smali/com/floatingmenu/FloatingMenu$6.smali"
 ML = ROOT / "user_smali/com/floatingmenu/MenuLoader$1$1$1$1.smali"
+ML_MAIN = ROOT / "user_smali/com/floatingmenu/MenuLoader.smali"
 
 PATCHES = (
     ("com/floatingmenu/FloatingMenu$6.smali", F6),
     ("com/floatingmenu/MenuLoader$1$1$1$1.smali", ML),
+    ("com/floatingmenu/MenuLoader.smali", ML_MAIN),
 )
 
 

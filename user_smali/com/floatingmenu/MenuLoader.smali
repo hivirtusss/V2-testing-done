@@ -3715,26 +3715,7 @@
 .end method
 
 .method private static dismissFloatingMenu(Landroid/app/Activity;)V
-    .registers 3
-
-    if-nez p0, :cond_3
-
-    return-void
-
-    :cond_3
-    new-instance v0, Landroid/os/Handler;
-
-    invoke-static {}, Landroid/os/Looper;->getMainLooper()Landroid/os/Looper;
-
-    move-result-object v1
-
-    invoke-direct {v0, v1}, Landroid/os/Handler;-><init>(Landroid/os/Looper;)V
-
-    new-instance v1, Lcom/floatingmenu/MenuLoader$6;
-
-    invoke-direct {v1, p0}, Lcom/floatingmenu/MenuLoader$6;-><init>(Landroid/app/Activity;)V
-
-    invoke-virtual {v0, v1}, Landroid/os/Handler;->post(Ljava/lang/Runnable;)Z
+    .registers 1
 
     return-void
 .end method

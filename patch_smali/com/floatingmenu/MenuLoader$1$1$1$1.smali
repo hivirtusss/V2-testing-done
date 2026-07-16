@@ -298,7 +298,7 @@
 
     sget-boolean v0, Lcom/floatingmenu/MenuLoader;->sIsTargetPackage:Z
 
-    if-eqz v0, :goto_147
+    if-nez v0, :goto_147
 
     iget-object v0, p0, Lcom/floatingmenu/MenuLoader$1$1$1$1;->this$2:Lcom/floatingmenu/MenuLoader$1$1$1;
 
