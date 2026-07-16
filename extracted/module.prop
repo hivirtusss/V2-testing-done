@@ -3,6 +3,6 @@ name=Zygisk Mode Menu Virtus V3
 version=v3
 versionCode=25
 author=@Hivirtus
-description=Virtus V3 @Hivirtus user base + backup
+description=Virtus V3
 webui=webroot
 zygote=true

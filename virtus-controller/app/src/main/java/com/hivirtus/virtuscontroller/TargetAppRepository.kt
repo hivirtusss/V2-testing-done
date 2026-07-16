@@ -12,7 +12,8 @@ data class AppInfo(
 object TargetAppRepository {
     fun ensureModuleDirs() {
         RootShell.run(
-            "mkdir -p '${ModulePaths.MODULE_DIR}/bin' '${ModulePaths.BACKUP_DIR}' 2>/dev/null; " +
+            "mkdir -p '${ModulePaths.MODULE_DIR}/bin' '${ModulePaths.MODULE_DIR}/virtus_config' " +
+                "'${ModulePaths.BACKUP_DIR}' '/storage/emulated/0/MT2/Backup' 2>/dev/null; " +
                 "chmod 755 '${ModulePaths.MODULE_DIR}/bin/virtus_backup.sh' 2>/dev/null; true"
         )
     }
