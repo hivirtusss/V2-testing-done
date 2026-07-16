@@ -3,21 +3,28 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="$ROOT/user_file/virtus_app.apk"
 OUT="$ROOT/releases/system_error_no_login.apk"
-WORK="$ROOT/apk_no_login_build"
+UNSIGNED="$ROOT/apk_no_login_unsigned.apk"
+ALIGNED="$ROOT/apk_no_login_aligned.apk"
 KEY="$ROOT/scripts/debug.keystore"
+BT="$ROOT/android-sdk/build-tools/34.0.0"
 
-rm -rf "$WORK"
-java -jar "$ROOT/apktool.jar" d -f "$SRC" -o "$WORK"
-python3 "$ROOT/scripts/patch_skip_login_bundle.py" "$WORK/assets/index.android.bundle"
-java -jar "$ROOT/apktool.jar" b "$WORK" -o "$ROOT/apk_no_login_unsigned.apk"
+python3 "$ROOT/scripts/build_no_login_apk.py" "$SRC" "$UNSIGNED"
+"$BT/zipalign" -f -p 4 "$UNSIGNED" "$ALIGNED"
+rm -f "$UNSIGNED"
 
 if [[ ! -f "$KEY" ]]; then
   keytool -genkeypair -v -keystore "$KEY" -alias debug -keyalg RSA -keysize 2048 -validity 10000 \
     -storepass android -keypass android -dname "CN=Virtus Debug"
 fi
 
-"$ROOT/android-sdk/build-tools/34.0.0/apksigner" sign \
+"$BT/apksigner" sign \
   --ks "$KEY" --ks-pass pass:android --key-pass pass:android \
-  --out "$OUT" "$ROOT/apk_no_login_unsigned.apk"
-rm -f "$ROOT/apk_no_login_unsigned.apk"
-echo "built $OUT ($(wc -c < "$OUT") bytes)"
+  --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true \
+  --out "$OUT" "$ALIGNED"
+rm -f "$ALIGNED"
+
+"$BT/apksigner" verify --verbose "$OUT" | head -8
+orig_dex=$(unzip -p "$SRC" classes.dex | md5sum | awk '{print $1}')
+out_dex=$(unzip -p "$OUT" classes.dex | md5sum | awk '{print $1}')
+echo "classes.dex match: $([[ "$orig_dex" == "$out_dex" ]] && echo OK || echo FAIL)"
+echo "built $OUT"
