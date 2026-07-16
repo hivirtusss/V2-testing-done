@@ -24,3 +24,11 @@ user_module.zip
 zygisk_floating_menu_action_button.zip
 zygisk_floating_menu_no_wildcard.zip
 virtus_controller_v1.apk
+apk_no_login_build/
+apk_no_login_unsigned.apk
+drive_apk_decompiled/
+drive_apk_raw/
+drive_apk_smali/
+drive_bundle_decompiled.js
+drive_bundle_disasm.txt
+scripts/debug.keystore
