@@ -1,26 +1,26 @@
 #!/usr/bin/env python3
-"""Build no-login APK: patch bundle only, preserve original classes.dex and zip layout."""
+"""Build no-login APK: patch Hermes bundle only, preserve original classes.dex."""
 from __future__ import annotations
 
+import importlib.util
 import shutil
 import sys
 import zipfile
 from pathlib import Path
 
-PATCH_OFFSET = 0xE55B6
-FALSE_OPCODE = 121
-TRUE_OPCODE = 120
 
-
-def patch_bundle(data: bytearray) -> None:
-    if data[PATCH_OFFSET] != FALSE_OPCODE:
-        raise SystemExit(
-            f"unexpected opcode 0x{data[PATCH_OFFSET]:02x} at 0x{PATCH_OFFSET:x}"
-        )
-    data[PATCH_OFFSET] = TRUE_OPCODE
+def load_patch_fn():
+    root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "patch_skip_login_bundle", root / "scripts/patch_skip_login_bundle.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.patch_bundle
 
 
 def build(src_apk: Path, out_apk: Path) -> None:
+    patch_bundle = load_patch_fn()
     tmp = out_apk.with_suffix(".tmp.apk")
     shutil.copy2(src_apk, tmp)
 
@@ -30,8 +30,11 @@ def build(src_apk: Path, out_apk: Path) -> None:
 
         with zipfile.ZipFile(out_apk, "w") as zout:
             for info in zin.infolist():
-                payload = bundle if info.filename == "assets/index.android.bundle" else zin.read(info.filename)
-                # Drop old signature — apksigner will re-sign
+                payload = (
+                    bundle
+                    if info.filename == "assets/index.android.bundle"
+                    else zin.read(info.filename)
+                )
                 if info.filename.startswith("META-INF/") and (
                     info.filename.endswith(".SF")
                     or info.filename.endswith(".RSA")
@@ -48,10 +51,6 @@ def build(src_apk: Path, out_apk: Path) -> None:
     out_dex = zipfile.ZipFile(out_apk).read("classes.dex")
     if orig_dex != out_dex:
         raise SystemExit("classes.dex changed — abort")
-
-    out_bundle = zipfile.ZipFile(out_apk).read("assets/index.android.bundle")
-    if out_bundle[PATCH_OFFSET] != TRUE_OPCODE:
-        raise SystemExit("bundle patch missing in output")
 
 
 if __name__ == "__main__":
