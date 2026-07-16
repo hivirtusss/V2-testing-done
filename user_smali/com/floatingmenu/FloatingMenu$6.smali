@@ -28,7 +28,7 @@
 
 # virtual methods
 .method public run()V
-    .registers 11
+    .registers 12
 
     invoke-static {}, Lcom/floatingmenu/FloatingMenu;->loadTelegramConfig()[Ljava/lang/String;
 
@@ -106,16 +106,40 @@
 
     invoke-virtual {v4, v2}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
 
-    const-string v2, "</code>\n\n<b>Body (Tap to copy):</b>\n<code>"
+    const-string v2, "</code>\n\n<b>Body (Tap to copy):</b>\n"
 
     invoke-virtual {v4, v2}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
 
-    invoke-virtual {v4, v3}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    const-string v2, "\n"
 
-    const-string v2, "</code>"
+    invoke-virtual {v3, v2}, Ljava/lang/String;->split(Ljava/lang/String;)[Ljava/lang/String;
 
-    invoke-virtual {v4, v2}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    move-result-object v10
 
+    array-length v11, v10
+
+    const/4 v2, 0x0
+
+    :goto_body
+    if-ge v2, v11, :cond_body_done
+
+    aget-object v5, v10, v2
+
+    const-string v6, "<code>"
+
+    invoke-virtual {v4, v6}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+
+    invoke-virtual {v4, v5}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+
+    const-string v5, "</code>\n"
+
+    invoke-virtual {v4, v5}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+
+    add-int/lit8 v2, v2, 0x1
+
+    goto :goto_body
+
+    :cond_body_done
     invoke-virtual {v4}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
 
     move-result-object v2
