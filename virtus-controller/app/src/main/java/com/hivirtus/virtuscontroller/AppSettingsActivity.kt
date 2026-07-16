@@ -96,7 +96,7 @@ class AppSettingsActivity : AppCompatActivity() {
         }
         AlertDialog.Builder(this)
             .setTitle(R.string.save)
-            .setMessage("Clear app data, apply Device ID?\nID backup ke sath bhi save hogi jab Create Backup karoge.")
+            .setMessage("Clear app data + apply new Android ID?\n(Android Faker style — target app dubara kholo)\nPhir login karo, force-stop, Create Backup.")
             .setPositiveButton(R.string.save) { _, _ ->
                 lifecycleScope.launch {
                     val cfg = IdentityConfig(packageName, id)
@@ -130,11 +130,6 @@ class AppSettingsActivity : AppCompatActivity() {
     private fun createBackup() {
         val note = binding.backupNoteInput.text.toString().trim()
         lifecycleScope.launch {
-            val check = withContext(Dispatchers.IO) { BackupManager.checkData(packageName) }
-            if (!check.ok) {
-                toast("Pehle target app kholo → login karo → force stop karo → phir Create Backup")
-                return@launch
-            }
             toast("Creating backup...")
             val id = binding.androidIdInput.text.toString().trim().lowercase()
             val androidId = if (id.length == 16) id else ""
@@ -157,8 +152,9 @@ class AppSettingsActivity : AppCompatActivity() {
                 val msg = when {
                     r.stderr.contains("not installed") || r.message.contains("not installed") ->
                         "App install nahi hai: $packageName"
-                    r.stderr.contains("empty") || r.message.contains("empty") ->
-                        "Login karo → app band karo (force stop) → phir Create Backup"
+                    r.stderr.contains("empty") || r.message.contains("empty") ||
+                        r.stderr.contains("no app data") || r.message.contains("no app data") ->
+                        "Save ID ke baad app dubara LOGIN karo → force stop → phir backup"
                     r.stderr.contains("not found") || r.message.contains("not found") ->
                         "Data folder nahi mila — target app kholo, login karo, band karo, phir try karo"
                     else -> "Failed: ${r.message.ifBlank { r.stderr }}"

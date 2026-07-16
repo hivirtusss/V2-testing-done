@@ -22,5 +22,7 @@ done
 
 mkdir -p "$MODDIR/bin"
 chmod 755 "$MODDIR/bin/virtus_backup.sh" 2>/dev/null
-# Clean legacy module clutter — backups live in VirtusBackup/ on sdcard
-rm -rf "$MODDIR/virtus_config" "$MODDIR/backups" 2>/dev/null || true
+mkdir -p "$MODDIR/virtus_config" 2>/dev/null
+chmod 777 "$MODDIR/virtus_config" 2>/dev/null || true
+# Clean legacy module backups — data lives on sdcard VirtusBackup/
+rm -rf "$MODDIR/backups" 2>/dev/null || true

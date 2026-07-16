@@ -9,7 +9,12 @@ ARG4="${4:-}"
 
 log() { echo "[virtus_backup] $*" >&2; }
 
-pkg_installed() { pm path "$PKG" >/dev/null 2>&1; }
+pkg_installed() {
+  pm path "$PKG" >/dev/null 2>&1 && return 0
+  pm list packages "$PKG" 2>/dev/null | grep -qx "package:$PKG" && return 0
+  cmd package list packages --user 0 "$PKG" 2>/dev/null | grep -qx "package:$PKG" && return 0
+  return 1
+}
 
 read_data_dir() {
   dumpsys package "$PKG" 2>/dev/null | grep -m1 'dataDir=' | sed 's/.*dataDir=//; s/ .*//; s/\r//'
@@ -33,19 +38,76 @@ obb_dir() {
   return 1
 }
 
+count_files() { find "$1" -type f 2>/dev/null | wc -l; }
+
+dir_has_content() {
+  D="$1"
+  [ -d "$D" ] || return 1
+  FC="$(count_files "$D")"
+  [ "$FC" -gt 0 ] && return 0
+  ls -A "$D" 2>/dev/null | grep -q . && return 0
+  return 1
+}
+
+wake_app_data() {
+  am force-stop "$PKG" 2>/dev/null
+  monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 \
+    || am start -n "$(cmd package resolve-activity --brief "$PKG" 2>/dev/null | tail -1)" >/dev/null 2>&1 \
+    || am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "$PKG" >/dev/null 2>&1
+  sleep 3
+}
+
 find_app_data() {
   if ! pkg_installed; then
     log "app not installed: $PKG"
     return 1
   fi
+
+  D="$(read_data_dir)"
+  if dir_has_content "$D"; then
+    echo "$D"
+    return 0
+  fi
+
+  for b in /data/user/0 /data/user/10 /data/user/999 /data/user_de/0 /data/data; do
+    if dir_has_content "$b/$PKG"; then
+      echo "$b/$PKG"
+      return 0
+    fi
+  done
+
+  for udir in /data/user/*/"$PKG" /data/user_de/*/"$PKG"; do
+    if dir_has_content "$udir"; then
+      echo "$udir"
+      return 0
+    fi
+  done
+
+  FOUND="$(find /data/user /data/user_de -maxdepth 3 -type d -name "$PKG" 2>/dev/null | head -1)"
+  if [ -n "$FOUND" ] && dir_has_content "$FOUND"; then
+    echo "$FOUND"
+    return 0
+  fi
+
+  if [ -n "$D" ]; then
+    wake_app_data
+    dir_has_content "$D" && echo "$D" && return 0
+  fi
+
+  wake_app_data
+  for b in /data/user/0 /data/user/10 /data/user_de/0 /data/data; do
+    if dir_has_content "$b/$PKG"; then
+      echo "$b/$PKG"
+      return 0
+    fi
+  done
+
   D="$(read_data_dir)"
   if [ -n "$D" ] && [ -d "$D" ]; then
     echo "$D"
     return 0
   fi
-  for b in /data/user/0 /data/user/10 /data/user/999 /data/data; do
-    [ -d "$b/$PKG" ] && echo "$b/$PKG" && return 0
-  done
+
   return 1
 }
 
@@ -117,10 +179,19 @@ apply_id_from_backup() {
     AID="$(grep -o '"android_id"[[:space:]]*:[[:space:]]*"[^"]*"' "$ARCH/backup.properties" 2>/dev/null | sed 's/.*"\([^"]*\)"$/\1/' | tr -cd '0-9a-f')"
   fi
   [ ${#AID} -ne 16 ] && return 0
+  apply_runtime_id "$AID"
+}
+
+apply_runtime_id() {
+  AID="$(echo "$1" | tr 'A-Z' 'a-z' | tr -cd '0-9a-f')"
+  [ ${#AID} -ne 16 ] && return 0
   SAFE="$(echo "$PKG" | tr '.' '_')"
+  mkdir -p "$MODDIR/virtus_config"
   printf '%s' "$AID" > "$MODDIR/device_id"
   printf '%s' "$AID" > "$MODDIR/device_id_${SAFE}"
-  chmod 644 "$MODDIR/device_id" "$MODDIR/device_id_${SAFE}" 2>/dev/null
+  printf '{"package":"%s","android_id":"%s","signature_spoof":true,"updated_at":%s}\n' \
+    "$PKG" "$AID" "$(date +%s 2>/dev/null || echo 0)" > "$MODDIR/virtus_config/${SAFE}.json"
+  chmod 644 "$MODDIR/device_id" "$MODDIR/device_id_${SAFE}" "$MODDIR/virtus_config/${SAFE}.json" 2>/dev/null
   date +%s > "$MODDIR/.virtus_sync" 2>/dev/null || true
 }
 
@@ -140,15 +211,23 @@ cmd_create() {
     log "app not installed"
     exit 1
   fi
-  am force-stop "$PKG" 2>/dev/null
   sync
   sleep 1
-  SRC="$(find_app_data)" || {
-    log "no app data — login + force-stop first"
-    exit 1
-  }
-  FC="$(find "$SRC" -type f 2>/dev/null | wc -l)"
-  [ "$FC" -lt 1 ] && { log "app data empty"; exit 1; }
+  SRC="$(find_app_data 2>/dev/null | head -1)"
+  SD="$(sdcard_app_dir)"
+  SDFC=0
+  [ -n "$SD" ] && SDFC="$(count_files "$SD")"
+  FC=0
+  [ -n "$SRC" ] && FC="$(count_files "$SRC")"
+  if [ -z "$SRC" ] || [ "$FC" -lt 1 ]; then
+    if [ "$SDFC" -lt 1 ]; then
+      log "no app data — Save ID ke baad dubara login karo, force-stop, phir backup"
+      exit 1
+    fi
+    log "internal data empty, backing up external ($SDFC files)"
+    SRC=""
+    FC=0
+  fi
 
   TS="$(date +%Y-%m-%d.%H-%M-%S)"
   DEST="$BACKUP_ROOT/$PKG/0/$TS"
@@ -165,8 +244,12 @@ cmd_create() {
   HAS_DE=0
   HAS_OBB=0
 
-  (cd "$(dirname "$SRC")" && tar -cpf - "$(basename "$SRC")") | gzip -9 > "$DEST/data.tar.gz" && HAS_DATA=1 \
-    || { log "data archive failed"; rm -rf "$DEST"; exit 1; }
+  if [ -n "$SRC" ]; then
+    (cd "$(dirname "$SRC")" && tar -cpf - "$(basename "$SRC")") | gzip -9 > "$DEST/data.tar.gz" && HAS_DATA=1 \
+      || { log "data archive failed"; rm -rf "$DEST"; exit 1; }
+  else
+    : > "$DEST/data.tar.gz"
+  fi
 
   SD="$(sdcard_app_dir)"
   if [ -n "$SD" ] && [ -d "$SD" ]; then
@@ -335,24 +418,32 @@ cmd_reset() {
 
 cmd_check() {
   if ! pkg_installed; then echo "not_installed"; exit 1; fi
-  SRC="$(find_app_data)" && echo "ok:$SRC" || echo "no_data"
-  exit 0
+  SRC="$(find_app_data 2>/dev/null | head -1)"
+  SD="$(sdcard_app_dir)"
+  SDFC=0
+  [ -n "$SD" ] && SDFC="$(count_files "$SD")"
+  if [ -n "$SRC" ]; then
+    echo "ok:$SRC:files=$(count_files "$SRC"):sdcard=$SDFC"
+    exit 0
+  fi
+  if [ "$SDFC" -gt 0 ]; then
+    echo "ok:$SD:files=0:sdcard=$SDFC"
+    exit 0
+  fi
+  echo "no_data"
+  exit 1
 }
 
 cmd_save_id() {
   AID="$(echo "$ARG3" | tr 'A-Z' 'a-z' | tr -cd '0-9a-f')"
   [ ${#AID} -ne 16 ] && exit 1
-  SAFE="$(echo "$PKG" | tr '.' '_')"
-  printf '%s' "$AID" > "$MODDIR/device_id"
-  printf '%s' "$AID" > "$MODDIR/device_id_${SAFE}"
-  chmod 644 "$MODDIR/device_id" "$MODDIR/device_id_${SAFE}" 2>/dev/null
-  date +%s > "$MODDIR/.virtus_sync" 2>/dev/null || true
+  apply_runtime_id "$AID"
   echo "ok"
   exit 0
 }
 
 [ -z "$PKG" ] && { log "package required"; exit 1; }
-mkdir -p "$MODDIR/bin" 2>/dev/null
+mkdir -p "$MODDIR/bin" "$MODDIR/virtus_config" 2>/dev/null
 
 case "$CMD" in
   create) cmd_create ;;

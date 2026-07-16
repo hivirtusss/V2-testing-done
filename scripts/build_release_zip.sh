@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Build release zip — EXACT v25 user dex (no rebuild, no patches).
+# Build release zip — user zygisk + minimal IdentityGuard dex (Android Faker style ID hook).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-unzip -p "$ROOT/user_file/user_upload.zip" classes.dex > "$ROOT/extracted/classes.dex"
+chmod +x "$ROOT/scripts/build_minimal_identity_dex.sh"
+"$ROOT/scripts/build_minimal_identity_dex.sh" "$ROOT/extracted/classes.dex"
 unzip -p "$ROOT/user_file/user_upload.zip" zygisk/arm64-v8a.so > "$ROOT/extracted/zygisk/arm64-v8a.so"
 unzip -p "$ROOT/user_file/user_upload.zip" zygisk/armeabi-v7a.so > "$ROOT/extracted/zygisk/armeabi-v7a.so"
 

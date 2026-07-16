@@ -285,12 +285,12 @@
     const/4 v0, 0x0
     if-eqz p0, :ret
     sget-boolean v1, Lcom/floatingmenu/MenuLoader;->sIsTargetPackage:Z
-    if-nez v1, :ret
+    if-eqz v1, :ret
     invoke-static {}, Lcom/floatingmenu/MenuLoader;->access$000()Ljava/lang/String;
     move-result-object v1
     invoke-static {v1}, Lcom/floatingmenu/IdentityGuard;->getSpoofedAndroidId(Ljava/lang/String;)Ljava/lang/String;
     move-result-object v1
-    if-nez v1, :ret
+    if-eqz v1, :ret
     invoke-virtual {p0}, Ljava/lang/reflect/Method;->getName()Ljava/lang/String;
     move-result-object v2
     const-string v3, "call"
