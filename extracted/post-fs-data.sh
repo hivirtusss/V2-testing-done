@@ -15,10 +15,8 @@ if grep -qx '*' "$TARGET" 2>/dev/null; then
   mv "$TARGET.tmp" "$TARGET"
 fi
 
+# Drop unsafe packages that crash when hooked (root tools / system UI)
 BLOCKED="me.weishu.kernelsu com.vvb2060.kernelsu com.rifsxd.ksunext me.rifsxds.ksunext com.sukisu.ultra com.topjohnwu.magisk me.bmax.apatch io.github.mmrl com.android.systemui com.android.settings com.android.vending com.google.android.gms com.google.android.gsf"
 for pkg in $BLOCKED; do
   grep -vx "$pkg" "$TARGET" > "$TARGET.tmp" 2>/dev/null && mv "$TARGET.tmp" "$TARGET"
 done
-
-mkdir -p "$MODDIR/virtus_config" "$MODDIR/bin"
-chmod 755 "$MODDIR/bin/virtus_backup.sh" 2>/dev/null
