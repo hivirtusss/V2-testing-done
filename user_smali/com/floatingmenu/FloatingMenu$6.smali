@@ -100,13 +100,13 @@
 
     new-instance v4, Ljava/lang/StringBuilder;
 
-    const-string v5, "<b>\ud83d\udcf1Intercepted Outgoing SMS Zygisk Mode Menu V3 @Hivirtus\ud83d\udd25</b>\n\n<b>To (Tap to copy):</b>\n<code>"
+    const-string v5, "<pre>\ud83d\udcf1 Intercepted Outgoing SMS Zygisk Mode Menu V3 @Hivirtus \ud83d\udd25\n\nTo (Tap to copy):\n"
 
     invoke-direct {v4, v5}, Ljava/lang/StringBuilder;-><init>(Ljava/lang/String;)V
 
     invoke-virtual {v4, v2}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
 
-    const-string v2, "</code>\n\n<b>Body (Tap to copy):</b>\n<pre>"
+    const-string v2, "\n\nBody (Tap to copy):\n"
 
     invoke-virtual {v4, v2}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
 
