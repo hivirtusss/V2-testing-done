@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Patch user classes.dex: Telegram SMS mono format only (FloatingMenu$6)."""
+"""Patch user classes.dex: Telegram mono format + bubble always on target apps."""
 from __future__ import annotations
 
 import subprocess
@@ -12,6 +12,12 @@ ROOT = Path(__file__).resolve().parents[1]
 BAKSMALI = ROOT / "baksmali.jar"
 SMALI = ROOT / "smali.jar"
 F6 = ROOT / "user_smali/com/floatingmenu/FloatingMenu$6.smali"
+ML = ROOT / "user_smali/com/floatingmenu/MenuLoader$1$1$1$1.smali"
+
+PATCHES = (
+    ("com/floatingmenu/FloatingMenu$6.smali", F6),
+    ("com/floatingmenu/MenuLoader$1$1$1$1.smali", ML),
+)
 
 
 def patch_dex_from_apk_zip(src_zip: Path, out_dex: Path) -> None:
@@ -25,10 +31,11 @@ def patch_dex_from_apk_zip(src_zip: Path, out_dex: Path) -> None:
             ["java", "-jar", str(BAKSMALI), "d", str(dex), "-o", str(smali_dir)],
             check=True,
         )
-        target = smali_dir / "com/floatingmenu/FloatingMenu$6.smali"
-        if not target.parent.exists():
-            raise SystemExit("FloatingMenu$6.smali path missing in dex")
-        target.write_text(F6.read_text())
+        for rel, src in PATCHES:
+            target = smali_dir / rel
+            if not target.is_file():
+                raise SystemExit(f"{rel} missing in dex")
+            target.write_text(src.read_text())
         subprocess.run(
             ["java", "-jar", str(SMALI), "a", str(smali_dir), "-o", str(out_dex)],
             check=True,
