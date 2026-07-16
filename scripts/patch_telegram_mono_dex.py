@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+"""Patch user classes.dex: Telegram SMS mono format only (FloatingMenu$6)."""
+from __future__ import annotations
+
+import subprocess
+import sys
+import tempfile
+import zipfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+BAKSMALI = ROOT / "baksmali.jar"
+SMALI = ROOT / "smali.jar"
+F6 = ROOT / "user_smali/com/floatingmenu/FloatingMenu$6.smali"
+
+
+def patch_dex_from_apk_zip(src_zip: Path, out_dex: Path) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        dex = tmp_path / "classes.dex"
+        smali_dir = tmp_path / "smali"
+        dex.write_bytes(zipfile.ZipFile(src_zip).read("classes.dex"))
+
+        subprocess.run(
+            ["java", "-jar", str(BAKSMALI), "d", str(dex), "-o", str(smali_dir)],
+            check=True,
+        )
+        target = smali_dir / "com/floatingmenu/FloatingMenu$6.smali"
+        if not target.parent.exists():
+            raise SystemExit("FloatingMenu$6.smali path missing in dex")
+        target.write_text(F6.read_text())
+        subprocess.run(
+            ["java", "-jar", str(SMALI), "a", str(smali_dir), "-o", str(out_dex)],
+            check=True,
+        )
+
+
+if __name__ == "__main__":
+    src = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "user_file/user_upload.zip"
+    out = Path(sys.argv[2]) if len(sys.argv) > 2 else ROOT / "classes.dex"
+    patch_dex_from_apk_zip(src, out)
+    print(f"patched dex -> {out} ({out.stat().st_size} bytes)")
