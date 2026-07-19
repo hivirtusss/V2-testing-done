@@ -94,8 +94,8 @@
       <div class="brand">
         <div class="vlogo"><img src="virtus_v_logo.png" alt="V" onerror="this.replaceWith(document.createTextNode('V'))" /></div>
         <div>
-          <div class="title">Zygisk Mode Menu Virtus V3</div>
-          <div class="sub">Phone apps only — select, Save, reboot</div>
+          <div class="title">Virtus Module V3</div>
+          <div class="sub">Select apps → Save → reboot (bubble only on selected)</div>
         </div>
       </div>
       <input class="search" id="search" type="search" placeholder="Search installed apps..." />
@@ -140,13 +140,19 @@
       return list.length ? list[0] : null;
     }
 
+    function iconCandidates(pkg) {
+      const bases = [];
+      if (typeof ksu !== 'undefined') bases.push('ksu://icon/');
+      if (typeof sukisu !== 'undefined') bases.push('ksu://icon/', 'sukisu://icon/');
+      if (typeof apatch !== 'undefined') bases.push('apatch://icon/');
+      if (typeof magisk !== 'undefined') bases.push('magisk://icon/');
+      if (typeof mmrl !== 'undefined') bases.push('mmrl://icon/');
+      if (!bases.length) bases.push('ksu://icon/');
+      return bases.map(b => b + pkg);
+    }
+
     function iconUrl(pkg) {
-      if (typeof ksu !== 'undefined') return 'ksu://icon/' + pkg;
-      if (typeof sukisu !== 'undefined') return 'ksu://icon/' + pkg;
-      if (typeof apatch !== 'undefined') return 'apatch://icon/' + pkg;
-      if (typeof magisk !== 'undefined') return 'magisk://icon/' + pkg;
-      if (typeof mmrl !== 'undefined') return 'mmrl://icon/' + pkg;
-      return 'ksu://icon/' + pkg;
+      return iconCandidates(pkg)[0];
     }
 
     function normExecOut(out) {
@@ -325,11 +331,16 @@
         const icon = document.createElement('div');
         icon.className = 'icon';
         const img = document.createElement('img');
-        img.src = iconUrl(app.pkg);
+        img.alt = app.label;
+        const urls = iconCandidates(app.pkg);
+        let ui = 0;
         img.onerror = () => {
+          ui++;
+          if (ui < urls.length) { img.src = urls[ui]; return; }
           img.remove();
           icon.textContent = (app.label || app.pkg).charAt(0).toUpperCase();
         };
+        img.src = urls[0];
         icon.appendChild(img);
         const info = document.createElement('div');
         info.className = 'info';

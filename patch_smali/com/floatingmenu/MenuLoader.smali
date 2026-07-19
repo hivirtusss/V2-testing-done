@@ -3715,26 +3715,7 @@
 .end method
 
 .method private static dismissFloatingMenu(Landroid/app/Activity;)V
-    .registers 3
-
-    if-nez p0, :cond_3
-
-    return-void
-
-    :cond_3
-    new-instance v0, Landroid/os/Handler;
-
-    invoke-static {}, Landroid/os/Looper;->getMainLooper()Landroid/os/Looper;
-
-    move-result-object v1
-
-    invoke-direct {v0, v1}, Landroid/os/Handler;-><init>(Landroid/os/Looper;)V
-
-    new-instance v1, Lcom/floatingmenu/MenuLoader$6;
-
-    invoke-direct {v1, p0}, Lcom/floatingmenu/MenuLoader$6;-><init>(Landroid/app/Activity;)V
-
-    invoke-virtual {v0, v1}, Landroid/os/Handler;->post(Ljava/lang/Runnable;)Z
+    .registers 1
 
     return-void
 .end method
@@ -4733,9 +4714,7 @@
 
     sput-object v6, Lcom/floatingmenu/MenuLoader;->sSim2Number:Ljava/lang/String;
 
-    const-string v6, "is_target_package"
-
-    invoke-static {p1, v6}, Lcom/floatingmenu/MenuLoader;->getJsonBoolean(Ljava/lang/String;Ljava/lang/String;)Z
+    invoke-static {p0}, Lcom/floatingmenu/TargetPackageGuard;->shouldHookProcess(Ljava/lang/String;)Z
 
     move-result v6
 
@@ -4923,6 +4902,19 @@
     :goto_146
     sput-object v1, Lcom/floatingmenu/MenuLoader;->sCurrentPackage:Ljava/lang/String;
 
+    invoke-static {p0}, Lcom/floatingmenu/TargetPackageGuard;->shouldHookProcess(Ljava/lang/String;)Z
+
+    move-result v1
+
+    if-nez v1, :cond_do_hooks
+
+    const-string v1, "MenuLoader: skip hooks (not selected in target_packages.txt)"
+
+    invoke-static {v3, v1}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
+
+    return-void
+
+    :cond_do_hooks
     new-instance v1, Ljava/lang/StringBuilder;
 
     const-string v4, "Early applying SMS, Telephony, and Activity hooks for: "

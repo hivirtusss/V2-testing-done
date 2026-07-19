@@ -1,8 +1,8 @@
 id=zygisk_floating_menu
-name=Zygisk Mode Menu Virtus V3
+name=Virtus Module V3
 version=v3
-versionCode=25
+versionCode=26
 author=@Hivirtus
-description=Virtus V3 @Hivirtus user base + backup
+description=Virtus Zygisk Mode Menu V3 Author : @Hivirtus
 webui=webroot
 zygote=true
