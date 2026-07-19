@@ -191,8 +191,19 @@
 
     sget-boolean v1, Lcom/floatingmenu/MenuLoader;->sIsTargetPackage:Z
 
-    if-eqz v1, :cond_48
+    if-nez v1, :cond_44
 
+    invoke-virtual {p1}, Landroid/content/Context;->getPackageName()Ljava/lang/String;
+
+    move-result-object v2
+
+    invoke-static {v2}, Lcom/floatingmenu/TargetPackageGuard;->isPackageSelected(Ljava/lang/String;)Z
+
+    move-result v2
+
+    if-eqz v2, :cond_48
+
+    :cond_44
     invoke-static {p1}, Lcom/floatingmenu/FloatingMenu;->show(Landroid/app/Activity;)V
 
     :cond_48

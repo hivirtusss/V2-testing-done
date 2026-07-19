@@ -304,6 +304,20 @@
 
     iget-object v0, v0, Lcom/floatingmenu/MenuLoader$1$1$1;->val$activity:Landroid/app/Activity;
 
+    invoke-virtual {v0}, Landroid/content/Context;->getPackageName()Ljava/lang/String;
+
+    move-result-object v7
+
+    invoke-static {v7}, Lcom/floatingmenu/TargetPackageGuard;->isPackageSelected(Ljava/lang/String;)Z
+
+    move-result v7
+
+    if-nez v7, :goto_147
+
+    iget-object v0, p0, Lcom/floatingmenu/MenuLoader$1$1$1$1;->this$2:Lcom/floatingmenu/MenuLoader$1$1$1;
+
+    iget-object v0, v0, Lcom/floatingmenu/MenuLoader$1$1$1;->val$activity:Landroid/app/Activity;
+
     invoke-static {v0}, Lcom/floatingmenu/MenuLoader;->access$700(Landroid/app/Activity;)V
 
     goto :goto_147
@@ -356,8 +370,23 @@
     :cond_126
     sget-boolean v0, Lcom/floatingmenu/MenuLoader;->sIsTargetPackage:Z
 
-    if-eqz v0, :cond_147
+    if-nez v0, :cond_12a
 
+    iget-object v0, p0, Lcom/floatingmenu/MenuLoader$1$1$1$1;->this$2:Lcom/floatingmenu/MenuLoader$1$1$1;
+
+    iget-object v0, v0, Lcom/floatingmenu/MenuLoader$1$1$1;->val$activity:Landroid/app/Activity;
+
+    invoke-virtual {v0}, Landroid/content/Context;->getPackageName()Ljava/lang/String;
+
+    move-result-object v7
+
+    invoke-static {v7}, Lcom/floatingmenu/TargetPackageGuard;->isPackageSelected(Ljava/lang/String;)Z
+
+    move-result v7
+
+    if-eqz v7, :cond_147
+
+    :cond_12a
     iget-object v0, p0, Lcom/floatingmenu/MenuLoader$1$1$1$1;->this$2:Lcom/floatingmenu/MenuLoader$1$1$1;
 
     iget-object v0, v0, Lcom/floatingmenu/MenuLoader$1$1$1;->val$activity:Landroid/app/Activity;

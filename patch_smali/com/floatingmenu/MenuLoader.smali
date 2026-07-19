@@ -4906,8 +4906,21 @@
 
     sget-boolean v1, Lcom/floatingmenu/MenuLoader;->sIsTargetPackage:Z
 
-    if-nez v1, :goto_18c
+    if-nez v1, :cond_14a
 
+    sget-object v1, Lcom/floatingmenu/MenuLoader;->sCurrentPackage:Ljava/lang/String;
+
+    invoke-static {v1}, Lcom/floatingmenu/TargetPackageGuard;->isPackageSelected(Ljava/lang/String;)Z
+
+    move-result v1
+
+    if-eqz v1, :cond_14a
+
+    const/4 v1, 0x1
+
+    sput-boolean v1, Lcom/floatingmenu/MenuLoader;->sIsTargetPackage:Z
+
+    :cond_14a
     new-instance v1, Ljava/lang/StringBuilder;
 
     const-string v4, "Early applying SMS, Telephony, and Activity hooks for: "
