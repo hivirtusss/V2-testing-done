@@ -26,6 +26,7 @@ FM="$WORK/com/floatingmenu/FloatingMenu\$1.smali"
 FO="$WORK/com/floatingmenu/FloatingMenu.smali"
 python3 "$ROOT/scripts/patch_logo.py" "$FM" "$ROOT/tools/virtus_v_logo.b64"
 python3 "$ROOT/scripts/patch_bubble_drag.py" "$FM"
+python3 "$ROOT/scripts/patch_bubble_screen_size.py" "$FM"
 
 apply_red_theme() {
   local file="$1"

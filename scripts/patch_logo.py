@@ -16,19 +16,15 @@ text, n = re.subn(
 if n != 1:
     sys.exit(f"logo replace failed ({n})")
 
-# Keep FIT_CENTER so the full logo stays visible and centered like the menu icon.
+# Keep FIT_CENTER; restore 8dp inset so logo scales cleanly inside the bubble.
 text = re.sub(
-    r"const/4 v8, 0x2\n\n    const/high16 v7, 0x41000000    # 8\.0f\n\n    :try_start_8b",
-    "const/4 v8, 0x2\n\n    const/4 v7, 0x0\n\n    :try_start_8b",
+    r"const/4 v8, 0x2\n\n    const/(?:4 v7, 0x0|high16 v7, 0x41000000    # 8\.0f)\n\n    (:try_start_8[a-z0-9]+)",
+    r"const/4 v8, 0x2\n\n    const/high16 v7, 0x41000000    # 8.0f\n\n    \1",
     text,
     count=1,
 )
 
-text = text.replace(
-    "const/high16 v5, 0x425c0000    # 55.0f",
-    "const/high16 v5, 0x42780000    # 62.0f",
-    1,
-)
+# Bubble diameter is set in patch_bubble_screen_size.py (screen width); do not force 62dp here.
 
 text = text.replace(
     "    move-result v7\n\n    invoke-virtual {v4, v7, v11}, Landroid/graphics/drawable/GradientDrawable;->setStroke(II)V",
