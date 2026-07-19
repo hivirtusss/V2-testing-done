@@ -4564,6 +4564,21 @@
 
     invoke-static {v3, v2}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
 
+    invoke-static {}, Lcom/floatingmenu/TargetPackageGuard;->reload()V
+
+    invoke-static {p0}, Lcom/floatingmenu/TargetPackageGuard;->shouldHookProcess(Ljava/lang/String;)Z
+
+    move-result v2
+
+    if-nez v2, :cond_init_go
+
+    const-string v2, "MenuLoader: early exit — process not in WebUI target list (no hooks)"
+
+    invoke-static {v3, v2}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
+
+    return-void
+
+    :cond_init_go
     const/4 v2, 0x0
 
     const/4 v4, 0x1
