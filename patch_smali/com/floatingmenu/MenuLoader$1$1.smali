@@ -110,7 +110,7 @@
     :catchall_17
     move-exception p1
 
-    const-string v0, "ZygiskMenu Virtus v3"
+    const-string v0, "ZygiskMenu @Hivirtus"
 
     const-string v1, "Failed to send foreground none broadcast: "
 
@@ -137,7 +137,7 @@
 
     move-result-object v0
 
-    const-string v1, "ZygiskMenu Virtus v3"
+    const-string v1, "ZygiskMenu @Hivirtus"
 
     invoke-static {v1, v0}, Landroid/util/Log;->d(Ljava/lang/String;Ljava/lang/String;)I
 
@@ -189,29 +189,13 @@
 
     move-result-object v0
 
-    invoke-virtual {p1}, Landroid/content/Context;->getPackageName()Ljava/lang/String;
+    sget-boolean v1, Lcom/floatingmenu/MenuLoader;->sIsTargetPackage:Z
 
-    move-result-object v1
+    if-eqz v1, :cond_48
 
-    invoke-static {v1}, Lcom/floatingmenu/TargetPackageGuard;->isBlockedPackage(Ljava/lang/String;)Z
-
-    move-result v2
-
-    if-nez v2, :cond_50
-
-    invoke-static {v1}, Lcom/floatingmenu/TargetPackageGuard;->isPackageSelected(Ljava/lang/String;)Z
-
-    move-result v1
-
-    if-eqz v1, :cond_show_bubble
-
-    goto :goto_50
-
-    :cond_show_bubble
     invoke-static {p1}, Lcom/floatingmenu/FloatingMenu;->show(Landroid/app/Activity;)V
 
-    :cond_50
-    :goto_50
+    :cond_48
     new-instance v1, Ljava/lang/Thread;
 
     new-instance v2, Lcom/floatingmenu/MenuLoader$1$1$1;

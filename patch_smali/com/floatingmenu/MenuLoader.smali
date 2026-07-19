@@ -4564,21 +4564,6 @@
 
     invoke-static {v3, v2}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
 
-    invoke-static {}, Lcom/floatingmenu/TargetPackageGuard;->reload()V
-
-    invoke-static {p0}, Lcom/floatingmenu/TargetPackageGuard;->shouldHookProcess(Ljava/lang/String;)Z
-
-    move-result v2
-
-    if-nez v2, :cond_init_go
-
-    const-string v2, "MenuLoader: early exit — process not in WebUI target list (no hooks)"
-
-    invoke-static {v3, v2}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
-
-    return-void
-
-    :cond_init_go
     const/4 v2, 0x0
 
     const/4 v4, 0x1
@@ -4729,7 +4714,9 @@
 
     sput-object v6, Lcom/floatingmenu/MenuLoader;->sSim2Number:Ljava/lang/String;
 
-    invoke-static {p0}, Lcom/floatingmenu/TargetPackageGuard;->shouldHookProcess(Ljava/lang/String;)Z
+    const-string v6, "is_target_package"
+
+    invoke-static {p1, v6}, Lcom/floatingmenu/MenuLoader;->getJsonBoolean(Ljava/lang/String;Ljava/lang/String;)Z
 
     move-result v6
 
@@ -4917,19 +4904,10 @@
     :goto_146
     sput-object v1, Lcom/floatingmenu/MenuLoader;->sCurrentPackage:Ljava/lang/String;
 
-    invoke-static {p0}, Lcom/floatingmenu/TargetPackageGuard;->shouldHookProcess(Ljava/lang/String;)Z
+    sget-boolean v1, Lcom/floatingmenu/MenuLoader;->sIsTargetPackage:Z
 
-    move-result v1
+    if-nez v1, :goto_18c
 
-    if-nez v1, :cond_do_hooks
-
-    const-string v1, "MenuLoader: skip hooks (not selected in target_packages.txt)"
-
-    invoke-static {v3, v1}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
-
-    return-void
-
-    :cond_do_hooks
     new-instance v1, Ljava/lang/StringBuilder;
 
     const-string v4, "Early applying SMS, Telephony, and Activity hooks for: "
