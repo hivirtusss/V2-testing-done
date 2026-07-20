@@ -51,7 +51,7 @@ def patch_menu_loader(path: Path) -> None:
 
     move-result v10
 
-    if-eqz v10, :cond_stealth_pm_skip
+    if-nez v10, :cond_stealth_pm_skip
 
     const-string v0, "package\""""
     if pm_head not in text:
@@ -88,7 +88,7 @@ def patch_menu_loader(path: Path) -> None:
 
     move-result v5
 
-    if-eqz v5, :cond_stealth_build_skip
+    if-nez v5, :cond_stealth_build_skip
 
     const-string v0, "ZygiskMenu @Hivirtus\""""
     if spoof_head not in text:
@@ -139,7 +139,7 @@ def patch_menu_loader(path: Path) -> None:
 
     move-result v1
 
-    if-eqz v1, :cond_18c
+    if-nez v1, :cond_18c
 
     invoke-static {}, Lcom/floatingmenu/MenuLoader;->applyPackageManagerHooks()V
 
