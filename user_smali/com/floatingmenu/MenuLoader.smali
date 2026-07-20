@@ -4934,14 +4934,6 @@
 
     invoke-static {v1, v2}, Lcom/floatingmenu/MenuLoader;->applyActivityHooks(Ljava/lang/Class;Ljava/lang/Object;)V
 
-    sget-object v14, Lcom/floatingmenu/MenuLoader;->sCurrentPackage:Ljava/lang/String;
-
-    invoke-static {v14}, Lcom/floatingmenu/MenuLoader;->isSensitiveApp(Ljava/lang/String;)Z
-
-    move-result v14
-
-    if-eqz v14, :cond_18c
-
     sget-boolean v1, Lcom/floatingmenu/MenuLoader;->sIamNoRoot:Z
 
     if-eqz v1, :cond_18c

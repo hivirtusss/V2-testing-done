@@ -1546,6 +1546,8 @@
     .catch Ljava/lang/Exception; {:try_start_62e .. :try_end_631} :catch_c3a
 
     :try_start_631
+    invoke-virtual {v10, v3}, Landroid/view/ViewGroup;->addView(Landroid/view/View;)V
+
     new-instance v2, Landroid/widget/Switch;
 
     iget-object v1, v15, Lcom/floatingmenu/FloatingMenu$1;->val$activity:Landroid/app/Activity;
@@ -1585,6 +1587,8 @@
     .catch Ljava/lang/Exception; {:try_start_655 .. :try_end_658} :catch_c3a
 
     :try_start_658
+    invoke-virtual {v10, v2}, Landroid/view/ViewGroup;->addView(Landroid/view/View;)V
+
     new-instance v1, Lcom/floatingmenu/FloatingMenu$1$1;
 
     invoke-direct {v1, v15, v6}, Lcom/floatingmenu/FloatingMenu$1$1;-><init>(Lcom/floatingmenu/FloatingMenu$1;Landroid/widget/LinearLayout;)V

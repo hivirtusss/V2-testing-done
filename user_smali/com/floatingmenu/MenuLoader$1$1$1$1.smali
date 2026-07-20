@@ -134,11 +134,32 @@
     sput-object v4, Lcom/floatingmenu/MenuLoader;->sSimCountry:Ljava/lang/String;
 
     :cond_53
-    const/4 v4, 0x0
+    array-length v4, v0
+
+    const/16 v9, 0x8
+
+    if-lt v4, v9, :cond_60
+
+    aget-object v4, v0, v10
+
+    invoke-virtual {v5, v4}, Ljava/lang/String;->equalsIgnoreCase(Ljava/lang/String;)Z
+
+    move-result v4
 
     sput-boolean v4, Lcom/floatingmenu/MenuLoader;->sIamNotDeveloper:Z
 
-    const/4 v4, 0x0
+    :cond_60
+    array-length v4, v0
+
+    const/16 v10, 0x9
+
+    if-lt v4, v10, :cond_6d
+
+    aget-object v4, v0, v9
+
+    invoke-virtual {v5, v4}, Ljava/lang/String;->equalsIgnoreCase(Ljava/lang/String;)Z
+
+    move-result v4
 
     sput-boolean v4, Lcom/floatingmenu/MenuLoader;->sIamNoRoot:Z
 
@@ -246,7 +267,7 @@
 
     const-string v5, "is_licensed"
 
-    if-eqz v0, :cond_f9
+    if-eqz v0, :cond_fd
 
     iget-object v0, p0, Lcom/floatingmenu/MenuLoader$1$1$1$1;->this$2:Lcom/floatingmenu/MenuLoader$1$1$1;
 
@@ -277,17 +298,18 @@
 
     sget-boolean v0, Lcom/floatingmenu/MenuLoader;->sIsTargetPackage:Z
 
-    if-nez v0, :goto_147
+    if-nez v0, :cond_14b
 
     iget-object v0, p0, Lcom/floatingmenu/MenuLoader$1$1$1$1;->this$2:Lcom/floatingmenu/MenuLoader$1$1$1;
 
     iget-object v0, v0, Lcom/floatingmenu/MenuLoader$1$1$1;->val$activity:Landroid/app/Activity;
 
+    # invokes: Lcom/floatingmenu/MenuLoader;->dismissFloatingMenu(Landroid/app/Activity;)V
     invoke-static {v0}, Lcom/floatingmenu/MenuLoader;->access$700(Landroid/app/Activity;)V
 
-    goto :goto_147
+    goto :goto_14b
 
-    :cond_f9
+    :cond_fd
     iget-object v0, p0, Lcom/floatingmenu/MenuLoader$1$1$1$1;->val$globalStatus:Ljava/lang/String;
 
     const-string v6, "active"
@@ -296,7 +318,7 @@
 
     move-result v0
 
-    if-eqz v0, :cond_132
+    if-eqz v0, :cond_136
 
     iget-object v0, p0, Lcom/floatingmenu/MenuLoader$1$1$1$1;->this$2:Lcom/floatingmenu/MenuLoader$1$1$1;
 
@@ -306,7 +328,7 @@
 
     move-result v0
 
-    if-nez v0, :cond_126
+    if-nez v0, :cond_12a
 
     iget-object v0, p0, Lcom/floatingmenu/MenuLoader$1$1$1$1;->this$2:Lcom/floatingmenu/MenuLoader$1$1$1;
 
@@ -332,10 +354,10 @@
 
     invoke-interface {v0}, Landroid/content/SharedPreferences$Editor;->apply()V
 
-    :cond_126
+    :cond_12a
     sget-boolean v0, Lcom/floatingmenu/MenuLoader;->sIsTargetPackage:Z
 
-    if-eqz v0, :cond_147
+    if-eqz v0, :cond_14b
 
     iget-object v0, p0, Lcom/floatingmenu/MenuLoader$1$1$1$1;->this$2:Lcom/floatingmenu/MenuLoader$1$1$1;
 
@@ -343,9 +365,9 @@
 
     invoke-static {v0}, Lcom/floatingmenu/FloatingMenu;->show(Landroid/app/Activity;)V
 
-    goto :goto_147
+    goto :goto_14b
 
-    :cond_132
+    :cond_136
     iget-object v0, p0, Lcom/floatingmenu/MenuLoader$1$1$1$1;->this$2:Lcom/floatingmenu/MenuLoader$1$1$1;
 
     iget-object v0, v0, Lcom/floatingmenu/MenuLoader$1$1$1;->val$prefs:Landroid/content/SharedPreferences;
@@ -368,7 +390,7 @@
 
     goto :goto_ea
 
-    :cond_147
-    :goto_147
+    :cond_14b
+    :goto_14b
     return-void
 .end method

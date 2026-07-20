@@ -130,9 +130,17 @@
 
     move-result-object v8
 
-    const/4 v9, 0x0
+    iget-object p1, p0, Lcom/floatingmenu/FloatingMenu$1$3;->val$switchDev:Landroid/widget/Switch;
 
-    const/4 v10, 0x0
+    invoke-static {p1}, Lcom/floatingmenu/b;->h(Landroid/widget/Switch;)Z
+
+    move-result v9
+
+    iget-object p1, p0, Lcom/floatingmenu/FloatingMenu$1$3;->val$switchNoRoot:Landroid/widget/Switch;
+
+    invoke-static {p1}, Lcom/floatingmenu/b;->h(Landroid/widget/Switch;)Z
+
+    move-result v10
 
     iget-object p1, p0, Lcom/floatingmenu/FloatingMenu$1$3;->this$0:Lcom/floatingmenu/FloatingMenu$1;
 
