@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Patch user classes.dex: Telegram mono format + bubble always on target apps."""
+"""Patch user classes.dex: telegram mono + minimal crash fix (no full MenuLoader replace)."""
 from __future__ import annotations
 
 import subprocess
@@ -12,18 +12,10 @@ ROOT = Path(__file__).resolve().parents[1]
 BAKSMALI = ROOT / "baksmali.jar"
 SMALI = ROOT / "smali.jar"
 F6 = ROOT / "user_smali/com/floatingmenu/FloatingMenu$6.smali"
-ML = ROOT / "user_smali/com/floatingmenu/MenuLoader$1$1$1$1.smali"
-ML_MAIN = ROOT / "user_smali/com/floatingmenu/MenuLoader.smali"
-
-PATCHES = (
-    ("com/floatingmenu/FloatingMenu$6.smali", F6),
-    ("com/floatingmenu/MenuLoader$1$1$1$1.smali", ML),
-    ("com/floatingmenu/MenuLoader$19.smali", ROOT / "user_smali/com/floatingmenu/MenuLoader$19.smali"),
-    ("com/floatingmenu/MenuLoader.smali", ML_MAIN),
-)
+APPLY_FIX = ROOT / "scripts/apply_minimal_crash_fix.py"
 
 
-def patch_dex_from_apk_zip(src_zip: Path, out_dex: Path) -> None:
+def patch_dex_from_apk_zip(src_zip: Path, out_dex: Path, *, minimal_fix: bool = True) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         dex = tmp_path / "classes.dex"
@@ -34,11 +26,14 @@ def patch_dex_from_apk_zip(src_zip: Path, out_dex: Path) -> None:
             ["java", "-jar", str(BAKSMALI), "d", str(dex), "-o", str(smali_dir)],
             check=True,
         )
-        for rel, src in PATCHES:
-            target = smali_dir / rel
-            if not target.is_file():
-                raise SystemExit(f"{rel} missing in dex")
-            target.write_text(src.read_text())
+        if F6.is_file():
+            target = smali_dir / "com/floatingmenu/FloatingMenu$6.smali"
+            target.write_text(F6.read_text())
+        if minimal_fix:
+            subprocess.run(
+                [sys.executable, str(APPLY_FIX), str(smali_dir)],
+                check=True,
+            )
         subprocess.run(
             ["java", "-jar", str(SMALI), "a", str(smali_dir), "-o", str(out_dex)],
             check=True,
@@ -46,7 +41,8 @@ def patch_dex_from_apk_zip(src_zip: Path, out_dex: Path) -> None:
 
 
 if __name__ == "__main__":
-    src = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "user_file/user_upload.zip"
+    src = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "user_file/user_working.zip"
     out = Path(sys.argv[2]) if len(sys.argv) > 2 else ROOT / "classes.dex"
-    patch_dex_from_apk_zip(src, out)
+    pure = "--pure" in sys.argv
+    patch_dex_from_apk_zip(src, out, minimal_fix=not pure)
     print(f"patched dex -> {out} ({out.stat().st_size} bytes)")

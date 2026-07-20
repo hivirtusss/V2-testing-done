@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build flash zip from user's working Drive base + banking crash fix + telegram mono.
+# Build flash zip from user's working Drive base + minimal crash fix + telegram mono.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="${1:-$ROOT/user_file/user_working.zip}"
@@ -20,3 +20,4 @@ rm -f "$OUT"
 zip -qr "$OUT" .
 echo "built $OUT ($(wc -c < "$OUT") bytes)"
 echo "classes.dex: $(wc -c < "$STAGE/classes.dex") bytes"
+md5sum "$STAGE/classes.dex"
