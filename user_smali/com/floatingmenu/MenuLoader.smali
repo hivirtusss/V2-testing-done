@@ -729,6 +729,8 @@
 .method private static applyPackageManagerHooks()V
     .registers 11
 
+    return-void
+
     sget-object v10, Lcom/floatingmenu/MenuLoader;->sCurrentPackage:Ljava/lang/String;
 
     invoke-static {v10}, Lcom/floatingmenu/MenuLoader;->isSensitiveApp(Ljava/lang/String;)Z
@@ -5656,6 +5658,8 @@
 
 .method private static spoofBuildFields()V
     .registers 5
+
+    return-void
 
     sget-object v4, Lcom/floatingmenu/MenuLoader;->sCurrentPackage:Ljava/lang/String;
 

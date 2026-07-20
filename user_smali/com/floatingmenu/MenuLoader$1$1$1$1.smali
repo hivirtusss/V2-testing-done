@@ -134,32 +134,11 @@
     sput-object v4, Lcom/floatingmenu/MenuLoader;->sSimCountry:Ljava/lang/String;
 
     :cond_53
-    array-length v4, v0
-
-    const/16 v9, 0x8
-
-    if-lt v4, v9, :cond_60
-
-    aget-object v4, v0, v10
-
-    invoke-virtual {v5, v4}, Ljava/lang/String;->equalsIgnoreCase(Ljava/lang/String;)Z
-
-    move-result v4
+    const/4 v4, 0x0
 
     sput-boolean v4, Lcom/floatingmenu/MenuLoader;->sIamNotDeveloper:Z
 
-    :cond_60
-    array-length v4, v0
-
-    const/16 v10, 0x9
-
-    if-lt v4, v10, :cond_6d
-
-    aget-object v4, v0, v9
-
-    invoke-virtual {v5, v4}, Ljava/lang/String;->equalsIgnoreCase(Ljava/lang/String;)Z
-
-    move-result v4
+    const/4 v4, 0x0
 
     sput-boolean v4, Lcom/floatingmenu/MenuLoader;->sIamNoRoot:Z
 

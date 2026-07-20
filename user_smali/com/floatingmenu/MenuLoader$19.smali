@@ -20,11 +20,5 @@
 .method public run()V
     .registers 1
 
-    # invokes: Lcom/floatingmenu/MenuLoader;->applyPackageManagerHooks()V
-    invoke-static {}, Lcom/floatingmenu/MenuLoader;->access$4300()V
-
-    # invokes: Lcom/floatingmenu/MenuLoader;->spoofBuildFields()V
-    invoke-static {}, Lcom/floatingmenu/MenuLoader;->access$4400()V
-
     return-void
 .end method

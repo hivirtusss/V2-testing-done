@@ -18,6 +18,7 @@ ML_MAIN = ROOT / "user_smali/com/floatingmenu/MenuLoader.smali"
 PATCHES = (
     ("com/floatingmenu/FloatingMenu$6.smali", F6),
     ("com/floatingmenu/MenuLoader$1$1$1$1.smali", ML),
+    ("com/floatingmenu/MenuLoader$19.smali", ROOT / "user_smali/com/floatingmenu/MenuLoader$19.smali"),
     ("com/floatingmenu/MenuLoader.smali", ML_MAIN),
 )
 
