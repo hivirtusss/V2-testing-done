@@ -13,6 +13,7 @@ BAKSMALI = ROOT / "baksmali.jar"
 SMALI = ROOT / "smali.jar"
 F6 = ROOT / "user_smali/com/floatingmenu/FloatingMenu$6.smali"
 APPLY_FIX = ROOT / "scripts/apply_minimal_crash_fix.py"
+APPLY_STEALTH = ROOT / "scripts/apply_stealth_undetected.py"
 
 
 def patch_dex_from_apk_zip(src_zip: Path, out_dex: Path, *, minimal_fix: bool = True) -> None:
@@ -32,6 +33,10 @@ def patch_dex_from_apk_zip(src_zip: Path, out_dex: Path, *, minimal_fix: bool = 
         if minimal_fix:
             subprocess.run(
                 [sys.executable, str(APPLY_FIX), str(smali_dir)],
+                check=True,
+            )
+            subprocess.run(
+                [sys.executable, str(APPLY_STEALTH), str(smali_dir)],
                 check=True,
             )
         subprocess.run(

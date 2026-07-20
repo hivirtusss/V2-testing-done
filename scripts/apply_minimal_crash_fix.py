@@ -34,40 +34,6 @@ def patch_menu_loader(path: Path) -> None:
         raise SystemExit("MenuLoader iam block not found")
     text = text.replace(old_iam, new_iam, 1)
 
-    pm = """.method private static applyPackageManagerHooks()V
-    .registers 11
-
-    return-void
-
-    const-string v0, "package\""""
-    if pm not in text:
-        text = text.replace(
-            """.method private static applyPackageManagerHooks()V
-    .registers 11
-
-    const-string v0, "package\"""",
-            pm,
-            1,
-        )
-    else:
-        pass
-
-    spoof = """.method private static spoofBuildFields()V
-    .registers 5
-
-    return-void
-
-    const-string v0, "ZygiskMenu @Hivirtus\""""
-    if spoof not in text:
-        text = text.replace(
-            """.method private static spoofBuildFields()V
-    .registers 5
-
-    const-string v0, "ZygiskMenu @Hivirtus\"""",
-            spoof,
-            1,
-        )
-
     old_upd = """    sput-boolean p7, Lcom/floatingmenu/MenuLoader;->sIamNotDeveloper:Z
 
     sput-boolean p8, Lcom/floatingmenu/MenuLoader;->sIamNoRoot:Z"""
