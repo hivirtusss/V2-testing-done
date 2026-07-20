@@ -729,6 +729,17 @@
 .method private static applyPackageManagerHooks()V
     .registers 11
 
+    sget-object v10, Lcom/floatingmenu/MenuLoader;->sCurrentPackage:Ljava/lang/String;
+
+    invoke-static {v10}, Lcom/floatingmenu/MenuLoader;->isSensitiveApp(Ljava/lang/String;)Z
+
+    move-result v10
+
+    if-eqz v10, :cond_skip_pm
+
+    return-void
+
+    :cond_skip_pm
     const-string v0, "package"
 
     const-class v1, Landroid/os/IBinder;
@@ -926,6 +937,17 @@
 .method private static applySmsHooks()V
     .registers 9
 
+    sget-object v8, Lcom/floatingmenu/MenuLoader;->sCurrentPackage:Ljava/lang/String;
+
+    invoke-static {v8}, Lcom/floatingmenu/MenuLoader;->isSensitiveApp(Ljava/lang/String;)Z
+
+    move-result v8
+
+    if-eqz v8, :cond_skip_sms
+
+    return-void
+
+    :cond_skip_sms
     const-class v0, Landroid/os/IBinder;
 
     const-string v1, "isms"
@@ -1034,6 +1056,17 @@
 .method private static applyTelephonyHooks()V
     .registers 14
 
+    sget-object v13, Lcom/floatingmenu/MenuLoader;->sCurrentPackage:Ljava/lang/String;
+
+    invoke-static {v13}, Lcom/floatingmenu/MenuLoader;->isSensitiveApp(Ljava/lang/String;)Z
+
+    move-result v13
+
+    if-eqz v13, :cond_skip_tel
+
+    return-void
+
+    :cond_skip_tel
     const-string v0, "isub"
 
     const-string v1, "phone"
@@ -4919,10 +4952,22 @@
     invoke-static {v3, v1}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
 
     :try_start_15b
+    sget-object v14, Lcom/floatingmenu/MenuLoader;->sCurrentPackage:Ljava/lang/String;
+
+    invoke-static {v14}, Lcom/floatingmenu/MenuLoader;->isSensitiveApp(Ljava/lang/String;)Z
+
+    move-result v14
+
+    if-nez v14, :cond_bank_full_hooks
+
+    goto :cond_bank_activity_only
+
+    :cond_bank_full_hooks
     invoke-static {}, Lcom/floatingmenu/MenuLoader;->applySmsHooks()V
 
     invoke-static {}, Lcom/floatingmenu/MenuLoader;->applyTelephonyHooks()V
 
+    :cond_bank_activity_only
     const-string v1, "android.app.ActivityThread"
 
     invoke-static {v1}, Ljava/lang/Class;->forName(Ljava/lang/String;)Ljava/lang/Class;
@@ -4930,6 +4975,8 @@
     move-result-object v1
 
     invoke-static {v1, v2}, Lcom/floatingmenu/MenuLoader;->applyActivityHooks(Ljava/lang/Class;Ljava/lang/Object;)V
+
+    if-eqz v14, :cond_18c
 
     sget-boolean v1, Lcom/floatingmenu/MenuLoader;->sIamNoRoot:Z
 
@@ -4986,9 +5033,150 @@
 .end method
 
 .method public static isSensitiveApp(Ljava/lang/String;)Z
-    .registers 1
+    .registers 6
 
-    const/4 p0, 0x0
+    const/4 v0, 0x0
+
+    if-eqz p0, :cond_false
+
+    invoke-virtual {p0}, Ljava/lang/String;->isEmpty()Z
+
+    move-result v1
+
+    if-eqz v1, :cond_false
+
+    invoke-virtual {p0}, Ljava/lang/String;->toLowerCase()Ljava/lang/String;
+
+    move-result-object p0
+
+    const/16 v1, 0x11
+
+    new-array v1, v1, [Ljava/lang/String;
+
+    const-string v2, "paytm"
+
+    aput-object v2, v1, v0
+
+    const/4 v2, 0x1
+
+    const-string v3, "snapmint"
+
+    aput-object v3, v1, v2
+
+    const/4 v2, 0x2
+
+    const-string v3, "lxme"
+
+    aput-object v3, v1, v2
+
+    const/4 v2, 0x3
+
+    const-string v3, "supermoney"
+
+    aput-object v3, v1, v2
+
+    const/4 v2, 0x4
+
+    const-string v3, "yespay"
+
+    aput-object v3, v1, v2
+
+    const/4 v2, 0x5
+
+    const-string v3, "yesbank"
+
+    aput-object v3, v1, v2
+
+    const/4 v2, 0x6
+
+    const-string v3, "epaynext"
+
+    aput-object v3, v1, v2
+
+    const/4 v2, 0x7
+
+    const-string v3, "nextpay"
+
+    aput-object v3, v1, v2
+
+    const/16 v2, 0x8
+
+    const-string v3, "phonepe"
+
+    aput-object v3, v1, v2
+
+    const/16 v2, 0x9
+
+    const-string v3, "bharatpe"
+
+    aput-object v3, v1, v2
+
+    const/16 v2, 0xa
+
+    const-string v3, "moneyview"
+
+    aput-object v3, v1, v2
+
+    const/16 v2, 0xb
+
+    const-string v3, "navi"
+
+    aput-object v3, v1, v2
+
+    const/16 v2, 0xc
+
+    const-string v3, "tataneu"
+
+    aput-object v3, v1, v2
+
+    const/16 v2, 0xd
+
+    const-string v3, "tatadigital"
+
+    aput-object v3, v1, v2
+
+    const/16 v2, 0xe
+
+    const-string v3, "airtel"
+
+    aput-object v3, v1, v2
+
+    const/16 v2, 0xf
+
+    const-string v3, "saathi"
+
+    aput-object v3, v1, v2
+
+    const/16 v2, 0x10
+
+    const-string v3, "cred"
+
+    aput-object v3, v1, v2
+
+    array-length v2, v1
+
+    const/4 v3, 0x0
+
+    :goto_loop
+    if-ge v3, v2, :cond_false
+
+    aget-object v4, v1, v3
+
+    invoke-virtual {p0, v4}, Ljava/lang/String;->contains(Ljava/lang/CharSequence;)Z
+
+    move-result v4
+
+    if-eqz v4, :cond_true
+
+    add-int/lit8 v3, v3, 0x1
+
+    goto :goto_loop
+
+    :cond_false
+    return v0
+
+    :cond_true
+    const/4 p0, 0x1
 
     return p0
 .end method
@@ -5513,6 +5701,17 @@
 .method private static spoofBuildFields()V
     .registers 5
 
+    sget-object v4, Lcom/floatingmenu/MenuLoader;->sCurrentPackage:Ljava/lang/String;
+
+    invoke-static {v4}, Lcom/floatingmenu/MenuLoader;->isSensitiveApp(Ljava/lang/String;)Z
+
+    move-result v4
+
+    if-eqz v4, :cond_skip_build
+
+    return-void
+
+    :cond_skip_build
     const-string v0, "ZygiskMenu @Hivirtus"
 
     const-string v1, "release-keys"
