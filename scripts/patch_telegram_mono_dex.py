@@ -12,11 +12,15 @@ ROOT = Path(__file__).resolve().parents[1]
 BAKSMALI = ROOT / "baksmali.jar"
 SMALI = ROOT / "smali.jar"
 F6 = ROOT / "user_smali/com/floatingmenu/FloatingMenu$6.smali"
+FM1 = ROOT / "user_smali/com/floatingmenu/FloatingMenu$1.smali"
+FM13 = ROOT / "user_smali/com/floatingmenu/FloatingMenu$1$3.smali"
 ML = ROOT / "user_smali/com/floatingmenu/MenuLoader$1$1$1$1.smali"
 ML_MAIN = ROOT / "user_smali/com/floatingmenu/MenuLoader.smali"
 
 PATCHES = (
     ("com/floatingmenu/FloatingMenu$6.smali", F6),
+    ("com/floatingmenu/FloatingMenu$1.smali", FM1),
+    ("com/floatingmenu/FloatingMenu$1$3.smali", FM13),
     ("com/floatingmenu/MenuLoader$1$1$1$1.smali", ML),
     ("com/floatingmenu/MenuLoader.smali", ML_MAIN),
 )

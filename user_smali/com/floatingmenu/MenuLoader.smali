@@ -4763,19 +4763,11 @@
     sput-object v6, Lcom/floatingmenu/MenuLoader;->sSimCountry:Ljava/lang/String;
 
     :cond_c0
-    const-string v6, "iamnotdeveloper"
-
-    invoke-static {p1, v6}, Lcom/floatingmenu/MenuLoader;->getJsonBoolean(Ljava/lang/String;Ljava/lang/String;)Z
-
-    move-result v6
+    const/4 v6, 0x0
 
     sput-boolean v6, Lcom/floatingmenu/MenuLoader;->sIamNotDeveloper:Z
 
-    const-string v6, "iamnoroot"
-
-    invoke-static {p1, v6}, Lcom/floatingmenu/MenuLoader;->getJsonBoolean(Ljava/lang/String;Ljava/lang/String;)Z
-
-    move-result v6
+    const/4 v6, 0x0
 
     sput-boolean v6, Lcom/floatingmenu/MenuLoader;->sIamNoRoot:Z
 
@@ -5870,7 +5862,11 @@
 
     sput-object p5, Lcom/floatingmenu/MenuLoader;->sSim2Number:Ljava/lang/String;
 
+    const/4 p7, 0x0
+
     sput-boolean p7, Lcom/floatingmenu/MenuLoader;->sIamNotDeveloper:Z
+
+    const/4 p8, 0x0
 
     sput-boolean p8, Lcom/floatingmenu/MenuLoader;->sIamNoRoot:Z
 
