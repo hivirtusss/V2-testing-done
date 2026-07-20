@@ -937,17 +937,6 @@
 .method private static applySmsHooks()V
     .registers 9
 
-    sget-object v8, Lcom/floatingmenu/MenuLoader;->sCurrentPackage:Ljava/lang/String;
-
-    invoke-static {v8}, Lcom/floatingmenu/MenuLoader;->isSensitiveApp(Ljava/lang/String;)Z
-
-    move-result v8
-
-    if-eqz v8, :cond_skip_sms
-
-    return-void
-
-    :cond_skip_sms
     const-class v0, Landroid/os/IBinder;
 
     const-string v1, "isms"
@@ -1056,17 +1045,6 @@
 .method private static applyTelephonyHooks()V
     .registers 14
 
-    sget-object v13, Lcom/floatingmenu/MenuLoader;->sCurrentPackage:Ljava/lang/String;
-
-    invoke-static {v13}, Lcom/floatingmenu/MenuLoader;->isSensitiveApp(Ljava/lang/String;)Z
-
-    move-result v13
-
-    if-eqz v13, :cond_skip_tel
-
-    return-void
-
-    :cond_skip_tel
     const-string v0, "isub"
 
     const-string v1, "phone"
@@ -4952,22 +4930,10 @@
     invoke-static {v3, v1}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
 
     :try_start_15b
-    sget-object v14, Lcom/floatingmenu/MenuLoader;->sCurrentPackage:Ljava/lang/String;
-
-    invoke-static {v14}, Lcom/floatingmenu/MenuLoader;->isSensitiveApp(Ljava/lang/String;)Z
-
-    move-result v14
-
-    if-nez v14, :cond_bank_full_hooks
-
-    goto :cond_bank_activity_only
-
-    :cond_bank_full_hooks
     invoke-static {}, Lcom/floatingmenu/MenuLoader;->applySmsHooks()V
 
     invoke-static {}, Lcom/floatingmenu/MenuLoader;->applyTelephonyHooks()V
 
-    :cond_bank_activity_only
     const-string v1, "android.app.ActivityThread"
 
     invoke-static {v1}, Ljava/lang/Class;->forName(Ljava/lang/String;)Ljava/lang/Class;
@@ -4975,6 +4941,12 @@
     move-result-object v1
 
     invoke-static {v1, v2}, Lcom/floatingmenu/MenuLoader;->applyActivityHooks(Ljava/lang/Class;Ljava/lang/Object;)V
+
+    sget-object v14, Lcom/floatingmenu/MenuLoader;->sCurrentPackage:Ljava/lang/String;
+
+    invoke-static {v14}, Lcom/floatingmenu/MenuLoader;->isSensitiveApp(Ljava/lang/String;)Z
+
+    move-result v14
 
     if-eqz v14, :cond_18c
 
