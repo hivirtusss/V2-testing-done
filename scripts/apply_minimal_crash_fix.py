@@ -31,6 +31,8 @@ def patch_menu_loader(path: Path) -> None:
 
     sput-boolean v6, Lcom/floatingmenu/MenuLoader;->sIamNoRoot:Z"""
     if old_iam not in text:
+        if "sIamNotDeveloper:Z" in text and "getJsonBoolean" not in text.split("sIamNotDeveloper")[0][-500:]:
+            return
         raise SystemExit("MenuLoader iam block not found")
     text = text.replace(old_iam, new_iam, 1)
 
