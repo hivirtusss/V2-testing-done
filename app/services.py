@@ -6,7 +6,12 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import Device, MonitorProfile, SMSMessage, get_or_create_device
-from app.firebase_client import fetch_firebase_devices, is_device_online, normalize_firebase_url
+from app.firebase_client import (
+    fetch_firebase_device_live,
+    fetch_firebase_devices,
+    is_device_online,
+    normalize_firebase_url,
+)
 
 
 def normalize_phone(number: str) -> str:
@@ -362,39 +367,54 @@ def search_devices(db: Session, deviceid: str, limit: int = 10) -> list[Device]:
     return partial
 
 
+def _meta_from_remote(remote: dict, phone_fallback: str | None = None) -> dict:
+    raw = remote.get("raw") or {}
+    battery = (
+        remote.get("battery")
+        or remote.get("battery_level")
+        or raw.get("battery")
+        or raw.get("battery_level")
+    )
+    sims = remote.get("sims") or []
+    meta: dict = {
+        "battery": battery,
+        "model": remote.get("model") or raw.get("model") or raw.get("device_model") or "Unknown",
+        "sims": sims,
+        "online": is_device_online(remote),
+        "synced_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if not meta["sims"] and phone_fallback:
+        meta["sims"] = [
+            {"slot": 1, "index": 0, "carrier": "SIM 1", "number": phone_fallback},
+            {"slot": 2, "index": 1, "carrier": "SIM 2", "number": "N/A"},
+        ]
+    return meta
+
+
+def apply_remote_to_device(db: Session, device: Device, remote: dict) -> Device:
+    if remote.get("phone_number"):
+        device.phone_number = normalize_phone(remote["phone_number"])
+    device.device_meta = json.dumps(_meta_from_remote(remote, device.phone_number))
+    device.last_seen = datetime.now(timezone.utc)
+    device.is_active = is_device_online(remote)
+    db.commit()
+    db.refresh(device)
+    return device
+
+
 async def sync_device_from_firebase(db: Session, device: Device) -> Device:
     if not device.firebase_source_url:
         return device
 
-    remote_devices = await fetch_firebase_devices(device.firebase_source_url)
-    if not remote_devices:
+    remote = await fetch_firebase_device_live(
+        device.firebase_source_url,
+        firebase_key=device.firebase_key,
+        device_name=device.name,
+    )
+    if not remote:
         return device
 
-    remote = remote_devices[0]
-    for item in remote_devices:
-        if item["firebase_key"] == device.firebase_key or item["name"] == device.name:
-            remote = item
-            break
-
-    if remote.get("phone_number"):
-        device.phone_number = normalize_phone(remote["phone_number"])
-
-    meta = {
-        "battery": remote.get("battery") or "98",
-        "model": remote.get("model") or "Unknown",
-        "sims": remote.get("sims") or [],
-    }
-    if not meta["sims"] and device.phone_number:
-        meta["sims"] = [
-            {"slot": 1, "index": 0, "carrier": "SIM 1", "number": device.phone_number},
-            {"slot": 2, "index": 1, "carrier": "SIM 2", "number": "N/A"},
-        ]
-    device.device_meta = json.dumps(meta)
-    device.last_seen = datetime.now(timezone.utc)
-    device.is_active = True
-    db.commit()
-    db.refresh(device)
-    return device
+    return apply_remote_to_device(db, device, remote)
 
 
 def get_all_firebase_urls(db: Session) -> list[str]:
@@ -466,12 +486,7 @@ async def find_device_across_all_databases(db: Session, deviceid: str) -> Device
                     firebase_key=firebase_key,
                     phone_number=remote.get("phone_number"),
                 )
-                meta = {
-                    "battery": remote.get("battery") or "98",
-                    "model": remote.get("model") or "Unknown",
-                    "sims": remote.get("sims") or [],
-                }
-                device.device_meta = json.dumps(meta)
+                apply_remote_to_device(db, device, remote)
                 found_device = device
                 return
 
@@ -510,21 +525,13 @@ async def show_device_by_id(
 
     if device.firebase_source_url:
         device = await sync_device_from_firebase(db, device)
-    elif not device.device_meta:
-        default_meta = {
-            "battery": "98",
-            "model": "Unknown",
-            "sims": [
-                {
-                    "slot": 1,
-                    "index": 0,
-                    "carrier": "SIM 1",
-                    "number": device.phone_number or "Unknown",
-                },
-                {"slot": 2, "index": 1, "carrier": "SIM 2", "number": "N/A"},
-            ],
-        }
-        device.device_meta = json.dumps(default_meta)
+    elif not device.device_meta and device.phone_number:
+        device.device_meta = json.dumps(
+            _meta_from_remote(
+                {"model": "Unknown", "sims": [], "raw": {}},
+                device.phone_number,
+            )
+        )
 
     profile.active_device_id = device.id
     device.owner_telegram_id = telegram_user_id
@@ -656,16 +663,9 @@ async def connect_firebase_url(
         if is_device_online(remote):
             online_count += 1
 
-        meta = {
-            "battery": remote.get("battery") or "98",
-            "model": remote.get("model") or "Unknown",
-            "sims": remote.get("sims") or [],
-        }
         device = db.query(Device).filter(Device.name == device_id).first()
         if device:
-            device.device_meta = json.dumps(meta)
-            if remote.get("phone_number"):
-                device.phone_number = normalize_phone(remote["phone_number"])
+            apply_remote_to_device(db, device, remote)
 
     if online_count == 0:
         online_count = len(remote_devices)
@@ -690,6 +690,15 @@ async def resync_firebase_devices(db: Session, telegram_user_id: int) -> list[De
 
 
 def device_status(device: Device) -> str:
+    if device.device_meta:
+        try:
+            meta = json.loads(device.device_meta)
+            if meta.get("online") is True:
+                return "online"
+            if meta.get("online") is False:
+                return "offline"
+        except (json.JSONDecodeError, TypeError):
+            pass
     if not device.is_active:
         return "inactive"
     if not device.last_seen:

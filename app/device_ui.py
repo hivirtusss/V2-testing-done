@@ -121,10 +121,13 @@ def get_inject_key(profile: MonitorProfile | None, device: Device) -> str:
 
 def get_battery(device: Device) -> str:
     meta = get_device_meta(device)
-    battery = meta.get("battery")
-    if battery is not None:
-        return f"{battery}%" if "%" not in str(battery) else str(battery)
-    return meta.get("battery_level", "98%")
+    battery = meta.get("battery") or meta.get("battery_level")
+    if battery is None:
+        return "N/A"
+    text = str(battery).strip()
+    if not text or text.lower() in {"unknown", "n/a", "na", "null", "none"}:
+        return "N/A"
+    return f"{text}%" if "%" not in text else text
 
 
 def get_model_name(device: Device) -> str:
@@ -177,7 +180,6 @@ def device_set_keyboard(device: Device) -> InlineKeyboardMarkup:
         ]
         for sim in get_active_sims(device)
     ]
-    rows.append([InlineKeyboardButton("📋 COPY CODE", callback_data=f"copy:{device.name}")])
     return InlineKeyboardMarkup(rows)
 
 

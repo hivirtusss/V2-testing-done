@@ -66,6 +66,7 @@ from app.services import (
     set_user_phone,
     start_monitoring,
     stop_monitoring,
+    sync_device_from_firebase,
 )
 
 logger = logging.getLogger(__name__)
@@ -1232,18 +1233,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     db: Session = SessionLocal()
 
     try:
-        if data.startswith("copy:"):
-            await query.answer()
-            _, device_name = data.split(":", 1)
-            await query.message.reply_text(f"`{device_name}`", parse_mode="Markdown")
-            return
-
         if data.startswith("sim:"):
             _, device_id, sim_index = data.split(":")
             device = db.query(Device).filter(Device.id == int(device_id)).first()
             if not device:
                 await query.answer("Device nahi mili", show_alert=True)
                 return
+            if device.firebase_source_url:
+                device = await sync_device_from_firebase(db, device)
             profile = select_sim_slot(db, user.id, int(sim_index))
             await sync_profile_to_firebase(profile, device)
             await query.answer(f"SIM {int(sim_index) + 1} selected")

@@ -144,6 +144,57 @@ def _build_device_record(key: str, value: dict, prefix: str) -> dict:
     }
 
 
+async def fetch_firebase_device_live(
+    firebase_url: str,
+    *,
+    firebase_key: str | None = None,
+    device_name: str | None = None,
+) -> dict | None:
+    """Fetch one device node live from Firebase (battery, sims, online)."""
+    base_url = normalize_firebase_url(firebase_url)
+    candidates: list[str] = []
+    if firebase_key:
+        candidates.append(firebase_key.strip("/"))
+    if device_name:
+        name = device_name.strip("/")
+        candidates.append(name)
+        for path in DEVICE_PATHS:
+            candidates.append(f"{path}/{name}")
+
+    seen: set[str] = set()
+    for path in candidates:
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        try:
+            data = _fetch_json(f"{base_url}/{path}.json")
+        except httpx.HTTPError:
+            continue
+        if not isinstance(data, dict):
+            continue
+        if _looks_like_device(data) or any(
+            field in data for field in ("battery", "battery_level", "phone", "phone_number", "sims")
+        ):
+            if "/" in path:
+                prefix, key = path.rsplit("/", 1)
+                prefix = f"{prefix}/"
+            else:
+                prefix, key = "", path
+            return _build_device_record(key, data, prefix=prefix)
+
+    all_devices = await fetch_firebase_devices(firebase_url)
+    query = (device_name or "").strip().lower()
+    key_query = (firebase_key or "").strip().lower()
+    for item in all_devices:
+        item_key = str(item.get("firebase_key") or "").lower()
+        item_name = str(item.get("name") or "").lower()
+        if key_query and (item_key == key_query or item_key.endswith(f"/{key_query}")):
+            return item
+        if query and (item_name == query or item_name.endswith(query) or query in item_key):
+            return item
+    return None
+
+
 async def fetch_firebase_devices(firebase_url: str) -> list[dict]:
     base_url = normalize_firebase_url(firebase_url)
     parsed = urlparse(base_url)
