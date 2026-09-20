@@ -9,3 +9,12 @@ __pycache__/
 venv/
 *.egg-info/
 .pytest_cache/
+apktool
+apktool.jar
+jadx/
+apk/astik.apk
+apk/astik_decompiled/
+apk/jadx_out/
+apk/virtus.keystore
+apk/virtus_unsigned.apk
+apk/virtus_decompiled/build/

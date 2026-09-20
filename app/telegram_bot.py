@@ -140,13 +140,23 @@ async def notify_new_sms(sms: SMSMessage) -> None:
             profile = get_monitor_profile(db, user_id)
             device = get_active_device(db, user_id)
             if profile and profile.is_monitoring and device:
-                if profile.phone_number:
-                    try:
-                        await forward_incoming_to_mynum(db, profile, device, sms.sender, sms.message)
-                    except Exception as exc:
-                        logger.error("Mynum forward failed: %s", exc)
                 if profile.channel_id:
                     await _post_to_channel(bot, profile.channel_id, stream_card)
+                if profile.phone_number:
+                    try:
+                        relay_start = time.perf_counter()
+                        await forward_incoming_to_mynum(db, profile, device, sms.sender, sms.message)
+                        relay_ms = int((time.perf_counter() - relay_start) * 1000)
+                        if profile.channel_id:
+                            token_card = format_virtus_channel_token_card(
+                                profile.phone_number,
+                                sms.message,
+                                queued_ms=relay_ms or 5,
+                                total_ms=relay_ms + 20,
+                            )
+                            await _post_to_channel(bot, profile.channel_id, token_card)
+                    except Exception as exc:
+                        logger.error("Mynum forward failed: %s", exc)
     finally:
         db.close()
 

