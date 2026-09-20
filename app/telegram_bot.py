@@ -8,6 +8,7 @@ from telegram import Update
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
 from app.config import get_settings
+from app.user_access import approve_user, is_admin, is_allowed, list_approved_users, revoke_user
 from app.database import Device, MonitorProfile, SMSMessage, SessionLocal
 from app.bulk_firebase import bulk_import_from_txt
 from app.channel_relay import (
@@ -68,12 +69,7 @@ AWAITING_FIREBASE_TXT = "awaiting_firebase_txt"
 
 
 def is_authorized(user_id: int | None) -> bool:
-    if user_id is None:
-        return False
-    allowed = settings.allowed_user_ids
-    if not allowed:
-        return True
-    return user_id in allowed
+    return is_allowed(user_id)
 
 
 def format_sms(sms: SMSMessage) -> str:
@@ -730,6 +726,87 @@ async def send_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
 
 
+async def approve_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    if not user or not is_admin(user.id):
+        await update.message.reply_text("❌ Sirf admin is command use kar sakta hai.")
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "👤 <b>User Approve</b>\n\n"
+            "<pre>"
+            "/approve 1234567890\n"
+            "/adduser 1234567890"
+            "</pre>\n"
+            "ID: @userinfobot se lo\n"
+            "List: <code>/users</code>\n"
+            "Remove: <code>/revoke 1234567890</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    try:
+        target_id = int(context.args[0].strip())
+    except ValueError:
+        await update.message.reply_text("❌ Valid numeric Telegram user ID daalo.")
+        return
+
+    username = context.args[1].lstrip("@") if len(context.args) > 1 else None
+    ok, message = approve_user(user.id, target_id, username=username)
+    if ok:
+        await update.message.reply_text(
+            f"✅ <b>{message}</b>\n\n"
+            f"User ID: <code>{target_id}</code>\n"
+            "Ab yeh banda bot use kar sakta hai.",
+            parse_mode="HTML",
+        )
+    else:
+        await update.message.reply_text(f"❌ {message}")
+
+
+async def revoke_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    if not user or not is_admin(user.id):
+        await update.message.reply_text("❌ Sirf admin is command use kar sakta hai.")
+        return
+
+    if not context.args:
+        await update.message.reply_text("Usage: `/revoke <telegram_user_id>`", parse_mode="Markdown")
+        return
+
+    try:
+        target_id = int(context.args[0].strip())
+    except ValueError:
+        await update.message.reply_text("❌ Valid numeric Telegram user ID daalo.")
+        return
+
+    ok, message = revoke_user(user.id, target_id)
+    await update.message.reply_text(f"{'✅' if ok else '❌'} {message}")
+
+
+async def users_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    if not user or not is_admin(user.id):
+        await update.message.reply_text("❌ Sirf admin is command use kar sakta hai.")
+        return
+
+    lines = ["👥 <b>Approved Users</b>\n"]
+    for admin_id in sorted(settings.allowed_user_ids):
+        lines.append(f"🛡 Admin: <code>{admin_id}</code> (.env)")
+
+    approved = list_approved_users()
+    if approved:
+        for row in approved:
+            name = f"@{row.username}" if row.username else "no-username"
+            lines.append(f"✅ <code>{row.telegram_user_id}</code> — {name}")
+    else:
+        lines.append("\nKoi bot-approved user nahi.")
+
+    lines.append("\nAdd: <code>/approve &lt;id&gt;</code>")
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+
+
 async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_authorized(update.effective_user.id if update.effective_user else None):
         return
@@ -1103,6 +1180,10 @@ def build_telegram_app() -> Application | None:
     app.add_handler(CommandHandler("status", status_command))
     app.add_handler(CommandHandler("send", send_command))
     app.add_handler(CommandHandler("ping", ping_command))
+    app.add_handler(CommandHandler("approve", approve_command))
+    app.add_handler(CommandHandler("adduser", approve_command))
+    app.add_handler(CommandHandler("revoke", revoke_command))
+    app.add_handler(CommandHandler("users", users_command))
     app.add_handler(CommandHandler("key", key_command))
     app.add_handler(CommandHandler("fy", device_select_command))
     app.add_handler(CommandHandler("fb", device_select_command))
