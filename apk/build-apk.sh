@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$ROOT"
+
+APKTOOL="${APKTOOL:-/workspace/apktool.jar}"
+SIGNER="${SIGNER:-$ROOT/uber-apk-signer.jar}"
+
+echo "Building Virtus SMS Module APK..."
+java -jar "$APKTOOL" b virtus_decompiled -o virtus-unsigned.apk
+
+if [ ! -f "$SIGNER" ]; then
+  echo "Downloading uber-apk-signer..."
+  curl -fsSL -o "$SIGNER" \
+    "https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar"
+fi
+
+java -jar "$SIGNER" \
+  --apks virtus-unsigned.apk \
+  --ks virtus.keystore \
+  --ksAlias virtus \
+  --ksPass virtus123 \
+  --ksKeyPass virtus123 \
+  --allowResign \
+  --overwrite
+
+cp virtus-unsigned.apk virtus-sms-module.apk
+echo "Done: $ROOT/virtus-sms-module.apk (v2/v3 signed + zipaligned)"
