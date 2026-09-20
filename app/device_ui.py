@@ -7,7 +7,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from app.database import Device, MonitorProfile
 
 STARTUP_TEST_SENDER = "BABY"
-STARTUP_TEST_MESSAGE = "hello baby aau kya?"
+STARTUP_TEST_MESSAGE = "Chacha Ji Pani Pila Do"
 
 
 def format_addchannel_card(channel_id: str, sim_slot: int = 1) -> str:
@@ -330,7 +330,7 @@ def format_monitoring_card(
         f"📢 Channel: {channel} (last / addchannel only)\n"
         f"⏱ Auto-stop in {auto_stop} minutes\n"
         f"📦 Ignored {ignored_sms} old SMS (only NEW after this moment)\n"
-        f"✅ Test inject OK: {test_msg}"
+        f"✅ Test SMS sent: {test_msg}"
         "</pre>"
     )
 
