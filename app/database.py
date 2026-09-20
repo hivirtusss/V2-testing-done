@@ -72,6 +72,38 @@ class OutboundSMS(Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class LicenseKey(Base):
+    __tablename__ = "license_keys"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    max_devices: Mapped[int] = mapped_column(Integer, default=2)
+    created_by: Mapped[int] = mapped_column(Integer, index=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    devices: Mapped[list["LicenseKeyDevice"]] = relationship(back_populates="license_key")
+
+
+class LicenseKeyDevice(Base):
+    __tablename__ = "license_key_devices"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    license_key_id: Mapped[int] = mapped_column(ForeignKey("license_keys.id"), index=True)
+    device_id: Mapped[str] = mapped_column(String(128), index=True)
+    telegram_user_id: Mapped[int] = mapped_column(Integer, index=True)
+    apk_attached_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    registered_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    license_key: Mapped["LicenseKey"] = relationship(back_populates="devices")
+
+
 class SMSMessage(Base):
     __tablename__ = "sms_messages"
 

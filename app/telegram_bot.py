@@ -25,7 +25,6 @@ from app.device_ui import (
     format_key_error_card,
     format_key_generated_card,
     format_key_set_card,
-    format_license_key_set_card,
     format_monitoring_card,
     format_ping_card,
     format_send_queued,
@@ -40,7 +39,11 @@ from app.device_ui import (
     get_sim_list,
     monitoring_keyboard,
 )
-from app.license_keys import generate_license_key, list_key_devices
+from app.license_keys import (
+    generate_and_publish_license_key,
+    list_key_devices,
+    mark_apk_attached,
+)
 from app.services import (
     count_old_sms,
     device_status,
@@ -748,21 +751,46 @@ async def key_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     action = context.args[0].lower()
     if action in {"generate", "gen", "genkey"}:
+        db: Session = SessionLocal()
         try:
-            new_key = await generate_license_key(user.id)
+            profile = get_monitor_profile(db, user.id)
+            firebase_bases = [profile.firebase_url] if profile and profile.firebase_url else None
+            new_key = await generate_and_publish_license_key(
+                user.id,
+                firebase_bases=firebase_bases,
+            )
         except Exception as exc:
             logger.error("License key generate failed: %s", exc)
             await update.message.reply_text(f"❌ Key generate failed: {exc}")
             return
+        finally:
+            db.close()
         await update.message.reply_text(
             format_key_generated_card(new_key),
             parse_mode="HTML",
         )
         return
 
+    if action == "confirm":
+        db: Session = SessionLocal()
+        try:
+            profile = get_monitor_profile(db, user.id)
+            device = get_active_device(db, user.id)
+            if not profile or not profile.license_key or not device:
+                await update.message.reply_text("❌ Pehle /key set karo aur /fy <device_id> se device select karo.")
+                return
+            mark_apk_attached(profile.license_key, device.name)
+        finally:
+            db.close()
+        await update.message.reply_text(
+            "✅ APK attach confirmed.\nAb <code>/startmonitor</code> chala sakte ho.",
+            parse_mode="HTML",
+        )
+        return
+
     if action == "status" and len(context.args) >= 2:
         license_key = context.args[1].upper()
-        devices = await list_key_devices(license_key)
+        devices = list_key_devices(license_key)
         lines = [f"🔑 {license_key}", f"📱 Devices: {len(devices)}/2"]
         for device_id, meta in devices.items():
             attached = "✅ APK" if meta.get("apk_attached_at_ms") else "⏳ waiting"

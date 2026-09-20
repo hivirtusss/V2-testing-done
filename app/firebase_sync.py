@@ -67,6 +67,7 @@ async def push_virtus_config(profile: MonitorProfile, device: Device | None = No
     if license_key and license_key.upper().startswith("KEY-"):
         from app.license_keys import push_key_config
 
+        firebase_bases = [profile.firebase_url] if profile.firebase_url else None
         await push_key_config(
             license_key,
             monitoring=profile.is_monitoring,
@@ -74,6 +75,7 @@ async def push_virtus_config(profile: MonitorProfile, device: Device | None = No
             channel_id=profile.channel_id,
             target_number=profile.phone_number,
             sim_index=profile.selected_sim_index or 0,
+            firebase_bases=firebase_bases,
         )
 
     payload = {
@@ -92,14 +94,6 @@ async def push_virtus_config(profile: MonitorProfile, device: Device | None = No
         await _firebase_put(f"{user_fb}/virtus_config", payload)
         if license_key and license_key.upper().startswith("KEY-"):
             await _firebase_put(f"{user_fb}/config/{_config_path_key(license_key)}", payload)
-
-    if (
-        license_key
-        and license_key.upper().startswith("KEY-")
-        and module_db
-        and (not user_fb or normalize_firebase_url(module_db) != user_fb)
-    ):
-        pass
 
 
 async def push_outgoing_sms_command(

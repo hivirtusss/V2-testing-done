@@ -137,13 +137,14 @@ async def bind_device_to_license_key(
 
     from app.license_keys import push_key_config, register_device_on_key
 
-    ok, message = await register_device_on_key(license_key, device.name, profile.telegram_user_id)
+    ok, message = register_device_on_key(license_key, device.name, profile.telegram_user_id)
     if not ok:
         raise ValueError(message)
 
     device.api_key = license_key
     db.commit()
     db.refresh(device)
+    firebase_bases = [profile.firebase_url] if profile.firebase_url else None
     await push_key_config(
         license_key,
         monitoring=False,
@@ -151,6 +152,7 @@ async def bind_device_to_license_key(
         channel_id=profile.channel_id,
         target_number=profile.phone_number,
         sim_index=profile.selected_sim_index or 0,
+        firebase_bases=firebase_bases,
     )
 
 
@@ -172,7 +174,7 @@ async def set_license_key(
         from app.license_keys import license_key_exists, push_key_config
 
         normalized_key = key_value.upper()
-        if not await license_key_exists(normalized_key):
+        if not license_key_exists(normalized_key):
             raise ValueError("invalid_key")
 
         profile.license_key = normalized_key
@@ -189,6 +191,7 @@ async def set_license_key(
         db.commit()
         db.refresh(profile)
 
+        firebase_bases = [profile.firebase_url] if profile.firebase_url else None
         await push_key_config(
             normalized_key,
             monitoring=False,
@@ -196,6 +199,7 @@ async def set_license_key(
             channel_id=profile.channel_id,
             target_number=profile.phone_number,
             sim_index=profile.selected_sim_index or 0,
+            firebase_bases=firebase_bases,
         )
         if device:
             await bind_device_to_license_key(db, profile, device)
