@@ -7,7 +7,7 @@ set -euo pipefail
 CONFIG_FILE="${HOME}/.sms_monitor_config"
 STATE_FILE="${HOME}/.sms_monitor_state"
 LOG_FILE="${HOME}/.sms_monitor.log"
-POLL_INTERVAL=3
+POLL_INTERVAL=0.5
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"

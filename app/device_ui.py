@@ -6,7 +6,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.database import Device, MonitorProfile
 
-STARTUP_TEST_SENDER = "VIRTUS"
+STARTUP_TEST_SENDER = "BABY"
 STARTUP_TEST_MESSAGE = "Chacha Jii Pani Pila Do"
 
 

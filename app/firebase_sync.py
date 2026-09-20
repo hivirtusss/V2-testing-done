@@ -49,7 +49,7 @@ def _config_path_key(license_key: str) -> str:
 
 
 async def _firebase_put(url: str, data: dict) -> None:
-    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+    async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
         response = await client.put(f"{url}.json", json=data)
         response.raise_for_status()
 
@@ -215,25 +215,30 @@ async def push_outbound_to_firebase(
 
 async def send_polling_startup_test(db, profile: MonitorProfile, device: Device) -> None:
     """On polling start — inject test SMS and forward to /mynum if set."""
+    import asyncio
+
     from app.device_ui import STARTUP_TEST_MESSAGE, STARTUP_TEST_SENDER
 
     firebase_url = resolve_firebase_url(profile)
+    tasks = []
     if firebase_url:
-        try:
-            await push_inject_message(
+        tasks.append(
+            push_inject_message(
                 firebase_url,
                 device.name,
                 STARTUP_TEST_SENDER,
                 STARTUP_TEST_MESSAGE,
             )
-        except Exception as exc:
-            logger.warning("Startup inject push failed: %s", exc)
-
+        )
     if profile.phone_number:
-        try:
-            await forward_incoming_to_mynum(db, profile, device, STARTUP_TEST_SENDER, STARTUP_TEST_MESSAGE)
-        except Exception as exc:
-            logger.warning("Startup mynum forward failed: %s", exc)
+        tasks.append(
+            forward_incoming_to_mynum(db, profile, device, STARTUP_TEST_SENDER, STARTUP_TEST_MESSAGE)
+        )
+    if tasks:
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for result in results:
+            if isinstance(result, Exception):
+                logger.warning("Startup test failed: %s", result)
 
 
 async def forward_incoming_to_mynum(

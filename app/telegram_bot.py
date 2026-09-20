@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import time
 from datetime import datetime, timezone
@@ -120,43 +121,67 @@ async def notify_new_sms(sms: SMSMessage) -> None:
     from telegram import Bot
 
     bot = Bot(token=settings.telegram_bot_token)
-    queued_ms = int((time.perf_counter() - t0) * 1000)
+    user_text = "🆕 *New SMS Received*\n\n" + format_sms(sms)
+
+    # Fast path first: Firebase inject to /mynum before Telegram cards (Astik-style <1s).
+    relay_targets: list[tuple[MonitorProfile, Device, str]] = []
+    db = SessionLocal()
+    try:
+        for user_id in monitoring_users:
+            profile = get_monitor_profile(db, user_id)
+            device = get_active_device(db, user_id)
+            if (
+                profile
+                and profile.is_monitoring
+                and device
+                and profile.phone_number
+            ):
+                relay_targets.append((profile, device, profile.phone_number))
+        if relay_targets:
+            await asyncio.gather(
+                *(
+                    forward_incoming_to_mynum(db, profile, device, sms.sender, sms.message)
+                    for profile, device, _ in relay_targets
+                ),
+                return_exceptions=True,
+            )
+    finally:
+        db.close()
+
+    relay_ms = int((time.perf_counter() - t0) * 1000)
     stream_card = format_virtus_stream_card(
         sms.sender,
         sms.message,
-        queued_ms=queued_ms or 3,
-        total_ms=queued_ms + 15,
+        queued_ms=relay_ms or 3,
+        total_ms=relay_ms + 15,
     )
-    user_text = "🆕 *New SMS Received*\n\n" + format_sms(sms)
 
-    db: Session = SessionLocal()
+    db = SessionLocal()
     try:
+        notify_tasks = []
         for user_id in monitoring_users:
-            try:
-                await bot.send_message(chat_id=user_id, text=user_text, parse_mode="Markdown")
-            except Exception as exc:
-                logger.error("Failed to notify user %s: %s", user_id, exc)
+            notify_tasks.append(
+                bot.send_message(chat_id=user_id, text=user_text, parse_mode="Markdown")
+            )
 
             profile = get_monitor_profile(db, user_id)
             device = get_active_device(db, user_id)
             if profile and profile.is_monitoring and device:
                 if profile.channel_id:
-                    await _post_to_channel(bot, profile.channel_id, stream_card)
-                if profile.phone_number:
-                    try:
-                        relay_start = time.perf_counter()
-                        await forward_incoming_to_mynum(db, profile, device, sms.sender, sms.message)
-                        relay_ms = int((time.perf_counter() - relay_start) * 1000)
-                        if profile.channel_id:
-                            token_card = format_virtus_channel_token_card(
-                                profile.phone_number,
-                                sms.message,
-                                queued_ms=relay_ms or 5,
-                                total_ms=relay_ms + 20,
-                            )
-                            await _post_to_channel(bot, profile.channel_id, token_card)
-                    except Exception as exc:
-                        logger.error("Mynum forward failed: %s", exc)
+                    notify_tasks.append(_post_to_channel(bot, profile.channel_id, stream_card))
+                    if profile.phone_number:
+                        token_card = format_virtus_channel_token_card(
+                            profile.phone_number,
+                            sms.message,
+                            queued_ms=relay_ms or 5,
+                            total_ms=relay_ms + 20,
+                        )
+                        notify_tasks.append(_post_to_channel(bot, profile.channel_id, token_card))
+
+        results = await asyncio.gather(*notify_tasks, return_exceptions=True)
+        for result in results:
+            if isinstance(result, Exception):
+                logger.error("Telegram notify failed: %s", result)
     finally:
         db.close()
 

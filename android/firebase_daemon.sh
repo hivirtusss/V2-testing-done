@@ -7,7 +7,7 @@ set -euo pipefail
 CONFIG_FILE="${HOME}/.firebase_sms_config"
 STATE_FILE="${HOME}/.firebase_sms_state"
 LOG_FILE="${HOME}/.firebase_sms.log"
-POLL_INTERVAL=3
+POLL_INTERVAL=0.25
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
