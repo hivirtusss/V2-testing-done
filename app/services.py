@@ -52,14 +52,45 @@ def save_sms(
     return sms
 
 
-def list_devices_with_counts(db: Session) -> list[dict]:
+def get_device_by_identifier(db: Session, deviceid: str) -> Device | None:
+    if deviceid.isdigit():
+        by_id = db.query(Device).filter(Device.id == int(deviceid)).first()
+        if by_id:
+            return by_id
+    return db.query(Device).filter(Device.name == deviceid).first()
+
+
+def claim_device(db: Session, deviceid: str, owner_telegram_id: int) -> tuple[Device, bool]:
+    device = get_device_by_identifier(db, deviceid)
+    created = False
+
+    if device:
+        if device.owner_telegram_id and device.owner_telegram_id != owner_telegram_id:
+            raise PermissionError("Device kisi aur user ki hai")
+        device.owner_telegram_id = owner_telegram_id
+        device.is_active = True
+        device.last_seen = datetime.now(timezone.utc)
+    else:
+        device = register_device(db, deviceid)
+        device.owner_telegram_id = owner_telegram_id
+        created = True
+
+    db.commit()
+    db.refresh(device)
+    return device, created
+
+
+def list_devices_with_counts(db: Session, owner_telegram_id: int | None = None) -> list[dict]:
+    query = db.query(
+        Device,
+        func.count(SMSMessage.id).label("sms_count"),
+    ).outerjoin(SMSMessage, SMSMessage.device_id == Device.id)
+
+    if owner_telegram_id is not None:
+        query = query.filter(Device.owner_telegram_id == owner_telegram_id)
+
     rows = (
-        db.query(
-            Device,
-            func.count(SMSMessage.id).label("sms_count"),
-        )
-        .outerjoin(SMSMessage, SMSMessage.device_id == Device.id)
-        .group_by(Device.id)
+        query.group_by(Device.id)
         .order_by(Device.last_seen.desc().nullslast(), Device.name)
         .all()
     )

@@ -42,7 +42,8 @@ Jab bhi koi device SMS bhejti hai, wo automatically database mein add ho jati ha
 **Bot commands:**
 | Command | Kya karta hai |
 |---------|---------------|
-| `/devices` | Saari devices list |
+| `/a myphone` | Apni device add/claim karo |
+| `/devices` | Meri devices list |
 | `/device redmi` | Us device ke SMS |
 | `/adddevice samsung` | Nayi device add |
 

