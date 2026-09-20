@@ -20,7 +20,6 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     init_db()
     telegram_app = build_telegram_app()
-    polling_task = None
 
     if telegram_app:
         await telegram_app.initialize()

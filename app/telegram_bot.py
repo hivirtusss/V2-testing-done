@@ -74,11 +74,13 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     await update.message.reply_text(
         "📖 *Help*\n\n"
-        "This bot monitors SMS forwarded from your Android phone.\n\n"
-        "*Setup:*\n"
-        "1. Deploy this server with a public URL\n"
-        "2. Install 'SMS Forwarder' app on Android\n"
-        "3. Set webhook URL to:\n"
+        "This bot monitors SMS from your Android phone.\n\n"
+        "*Setup (Superuser/Root):*\n"
+        "1. Termux + Magisk root on phone\n"
+        "2. Run `sms_daemon.sh setup` in Termux\n"
+        "3. Grant Termux permanent superuser\n\n"
+        "*Setup (No root):*\n"
+        "Use SMS Forwarder app → webhook:\n"
         "`POST /api/sms?key=YOUR_API_KEY`\n\n"
         "*Commands:*\n"
         "/recent - Show recent SMS\n"

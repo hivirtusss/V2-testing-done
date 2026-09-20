@@ -1,16 +1,59 @@
 # Remote SMS Monitor Bot 📱
 
-Android phone se aane wale SMS ko remotely monitor karo — Telegram bot notifications + web dashboard ke saath.
+Android phone se aane wale SMS ko remotely monitor karo — **superuser/root** se direct SMS read + Telegram notifications.
 
 ## Features
 
+- **Superuser Mode** — rooted phone par Termux + `su` se direct SMS read (no third-party app)
 - **Telegram Bot** — har naye SMS par instant notification
-- **Webhook API** — Android SMS forwarder apps se connect
+- **Webhook API** — kisi bhi SMS forwarder se bhi connect ho sakta hai
 - **Web Dashboard** — browser mein sabhi SMS dekho
-- **Search** — Telegram mein `/search otp` se OTP dhundho
-- **Secure** — API key authentication
+- **One-command install** — server par `./install.sh` se setup
 
-## Quick Setup
+## Superuser Setup (Recommended — Rooted Phone)
+
+Yeh method **Magisk/root** wale phone par seedha SMS database se read karta hai. Koi extra forwarder app nahi chahiye.
+
+### Phone par (Termux + Root)
+
+1. **Magisk** se phone root karo
+2. **Termux** install karo (F-Droid se)
+3. Magisk mein Termux ko **permanent superuser** do
+4. Repo ka `android/` folder phone par copy karo (ya git clone)
+
+```bash
+# Termux mein chalao:
+bash android/install_termux.sh
+cd ~/sms_monitor
+bash sms_daemon.sh setup    # server URL + API key daalo
+bash sms_daemon.sh start    # daemon start
+```
+
+Daemon har 3 second mein naye SMS check karta hai aur server par forward karta hai.
+
+**Background + auto-start on reboot:**
+```bash
+nohup bash sms_daemon.sh start >> ~/.sms_monitor.log 2>&1 &
+# Termux:Boot app install karo for auto-start
+```
+
+**Test root access:**
+```bash
+bash sms_daemon.sh test
+```
+
+### Server par (VPS / PC)
+
+```bash
+# Normal user
+./install.sh && ./start.sh
+
+# Ya root/superuser (systemd service auto-install)
+sudo ./install.sh
+sudo systemctl start sms-monitor
+```
+
+## Quick Setup (Manual)
 
 ### 1. Telegram Bot banao
 
@@ -39,6 +82,10 @@ python run.py
 Server `http://localhost:8000` par chalega.
 
 ### 3. Android phone setup
+
+**Option A — Superuser (rooted):** Upar wala Superuser Setup follow karo.
+
+**Option B — SMS Forwarder app (non-root):**
 
 Phone par **SMS Forwarder** app install karo (Play Store se):
 
@@ -102,12 +149,18 @@ curl -X POST "http://localhost:8000/api/sms?key=YOUR_API_SECRET_KEY" \
 
 ```
 ├── app/
-│   ├── main.py          # FastAPI server + dashboard
-│   ├── telegram_bot.py  # Telegram bot commands
-│   ├── database.py      # SQLite storage
-│   ├── models.py        # Pydantic models
-│   └── config.py        # Settings
-├── run.py               # Entry point
+│   ├── main.py              # FastAPI server + dashboard
+│   ├── telegram_bot.py      # Telegram bot commands
+│   ├── database.py          # SQLite storage
+│   ├── models.py            # Pydantic models
+│   └── config.py            # Settings
+├── android/
+│   ├── sms_daemon.sh        # Superuser SMS reader (Termux)
+│   ├── install_termux.sh    # Phone-side installer
+│   └── termux_boot.sh       # Auto-start on reboot
+├── install.sh               # Server installer (root-friendly)
+├── start.sh / stop.sh       # Server daemon control
+├── run.py                   # Entry point
 ├── requirements.txt
 └── .env.example
 ```

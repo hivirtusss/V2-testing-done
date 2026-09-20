@@ -1,4 +1,6 @@
 .env
+.sms-monitor.pid
+sms-monitor.log
 __pycache__/
 *.pyc
 *.pyo
