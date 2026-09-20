@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 DEFAULT_MAX_DEVICES = 2
-APK_ATTACH_MAX_AGE_SEC = 300
+APK_ATTACH_MAX_AGE_SEC = 900
 LICENSE_KEY_RE = re.compile(
     r"^KEY-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}$"
 )
@@ -276,23 +276,45 @@ def register_device_on_key(
         db.close()
 
 
-def mark_apk_attached(key: str, device_id: str) -> None:
+def mark_apk_attached(
+    key: str,
+    device_id: str,
+    telegram_user_id: int | None = None,
+) -> bool:
+    device_id = device_id.strip()
+    if not device_id:
+        return False
+
     db: Session = SessionLocal()
     try:
         record = _get_db_key(db, key)
         if not record:
-            return
+            return False
         entry = (
             db.query(LicenseKeyDevice)
             .filter(
                 LicenseKeyDevice.license_key_id == record.id,
-                LicenseKeyDevice.device_id == device_id.strip(),
+                LicenseKeyDevice.device_id == device_id,
             )
             .first()
         )
-        if entry:
-            entry.apk_attached_at = datetime.now(timezone.utc)
-            db.commit()
+        if not entry and telegram_user_id is not None:
+            ok, _message = register_device_on_key(key, device_id, telegram_user_id)
+            if not ok:
+                return False
+            entry = (
+                db.query(LicenseKeyDevice)
+                .filter(
+                    LicenseKeyDevice.license_key_id == record.id,
+                    LicenseKeyDevice.device_id == device_id,
+                )
+                .first()
+            )
+        if not entry:
+            return False
+        entry.apk_attached_at = datetime.now(timezone.utc)
+        db.commit()
+        return True
     finally:
         db.close()
 
@@ -319,26 +341,43 @@ def is_apk_attached(key: str, device_id: str) -> bool:
         db.close()
 
 
-async def sync_apk_attached_from_firebase(key: str, device_id: str) -> bool:
-    normalized = assert_license_key_registered(key)
-    entry = await _firebase_get(_device_url(normalized, device_id.strip()))
-    if not entry:
-        return False
-
+def _apk_entry_is_valid(entry: dict[str, Any], normalized_key: str) -> bool:
     apk_key = _normalize_key(str(entry.get("license_key") or entry.get("key") or ""))
-    if apk_key != normalized:
+    if apk_key != normalized_key:
         return False
-
     attached_ms = int(entry.get("apk_attached_at_ms") or 0)
     if attached_ms <= 0:
         return False
-
     age_ms = int(time.time() * 1000) - attached_ms
-    if age_ms > APK_ATTACH_MAX_AGE_SEC * 1000:
-        return False
+    return age_ms <= APK_ATTACH_MAX_AGE_SEC * 1000
 
-    mark_apk_attached(normalized, device_id)
-    return True
+
+async def sync_apk_attached_from_firebase(
+    key: str,
+    device_id: str,
+    telegram_user_id: int | None = None,
+) -> tuple[bool, str | None]:
+    normalized = assert_license_key_registered(key)
+    preferred = device_id.strip()
+    candidates: list[str] = []
+    if preferred:
+        candidates.append(preferred)
+
+    all_devices = await _firebase_get(f"{_module_db()}/license_keys/{normalized}/devices")
+    if isinstance(all_devices, dict):
+        for dev_id in all_devices:
+            dev_id = str(dev_id).strip()
+            if dev_id and dev_id not in candidates:
+                candidates.append(dev_id)
+
+    for dev_id in candidates:
+        entry = await _firebase_get(_device_url(normalized, dev_id))
+        if not entry or not _apk_entry_is_valid(entry, normalized):
+            continue
+        if mark_apk_attached(normalized, dev_id, telegram_user_id):
+            return True, dev_id
+
+    return False, None
 
 
 async def ensure_ready_for_monitoring(key: str, device_id: str) -> None:
@@ -350,7 +389,7 @@ async def ensure_ready_for_monitoring(key: str, device_id: str) -> None:
         raise ValueError("Device is key par register nahi. Pehle /a <device_id> karo.")
 
     if not is_apk_attached(normalized, device_id):
-        await sync_apk_attached_from_firebase(normalized, device_id)
+        await sync_apk_attached_from_firebase(normalized, device_id, None)
 
     if not is_apk_attached(normalized, device_id):
         raise ValueError(

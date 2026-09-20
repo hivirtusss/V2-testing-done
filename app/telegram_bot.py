@@ -977,25 +977,47 @@ async def key_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         try:
             profile = get_monitor_profile(db, user.id)
             device = get_active_device(db, user.id)
-            if not profile or not device:
-                await update.message.reply_text("❌ Pehle /key set karo aur /a <device_id> se device select karo.")
+            if not profile:
+                await update.message.reply_text("❌ Pehle <code>/key generate</code> karo.")
                 return
             license_key = require_license_key(profile)
-            from app.license_keys import sync_apk_attached_from_firebase
+            if not device:
+                await update.message.reply_text(
+                    "❌ Pehle device select karo:\n"
+                    "<code>/fdy f0577ffa536dde46</code>\n\n"
+                    "Phir APK START SERVICE ON → <code>/key confirm</code>",
+                    parse_mode="HTML",
+                )
+                return
 
-            attached = await sync_apk_attached_from_firebase(license_key, device.name)
+            from app.license_keys import register_device_on_key, sync_apk_attached_from_firebase
+
+            register_device_on_key(license_key, device.name, user.id)
+            await sync_profile_to_firebase(profile, device)
+            attached, apk_device_id = await sync_apk_attached_from_firebase(
+                license_key,
+                device.name,
+                user.id,
+            )
         finally:
             db.close()
         if attached:
             await update.message.reply_text(
-                "✅ APK verified — same original key Firebase par mili.\nAb <code>/startmonitor</code> chala sakte ho.",
+                "✅ <b>APK VERIFIED</b>\n\n"
+                f"🔑 Key: <code>{license_key}</code>\n"
+                f"📱 APK device: <code>{apk_device_id or device.name}</code>\n\n"
+                "Ab SIM select → <code>/mynum</code> → <code>/addchannel</code> → Monitoring ON",
                 parse_mode="HTML",
             )
         else:
             await update.message.reply_text(
-                "❌ APK verify fail.\n\n"
-                "APK mein <b>same original key</b> daalo jo /key generate se aayi.\n"
-                "Random key kaam nahi karegi — START SERVICE dabao, phir dubara try karo.",
+                "❌ <b>APK verify fail</b>\n\n"
+                "Ye steps follow karo:\n"
+                "1. <code>/fdy &lt;device_id&gt;</code> (bot par device pick)\n"
+                "2. APK mein <b>same KEY</b> daalo\n"
+                "3. START SERVICE <b>OFF</b> → 2 sec → <b>ON</b>\n"
+                "4. 5 sec wait → <code>/key confirm</code>\n\n"
+                "Random key kaam nahi karegi.",
                 parse_mode="HTML",
             )
         return
