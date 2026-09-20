@@ -102,9 +102,7 @@ def set_channel_id(db: Session, telegram_user_id: int, channel_id: str) -> Monit
 
 
 def select_sim_slot(db: Session, telegram_user_id: int, sim_index: int) -> MonitorProfile:
-    profile = get_monitor_profile(db, telegram_user_id)
-    if not profile:
-        raise ValueError("Profile nahi mili")
+    profile = get_or_create_monitor_profile(db, telegram_user_id)
     profile.selected_sim_index = sim_index
     db.commit()
     db.refresh(profile)

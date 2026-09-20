@@ -148,7 +148,10 @@ async def generate_and_publish_license_key(
     max_devices: int = DEFAULT_MAX_DEVICES,
 ) -> str:
     key = generate_license_key(telegram_user_id, max_devices=max_devices)
-    await publish_license_key(key, firebase_bases=firebase_bases)
+    try:
+        await publish_license_key(key, firebase_bases=firebase_bases)
+    except Exception as exc:
+        logger.warning("Firebase publish skipped for %s: %s", key, exc)
     return key
 
 

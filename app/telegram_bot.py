@@ -29,6 +29,7 @@ from app.device_ui import (
     format_monitoring_card,
     format_ping_card,
     format_send_queued,
+    format_sim_selected_card,
     format_status_card,
     format_virtus_channel_token_card,
     format_virtus_outgoing_sent_card,
@@ -39,11 +40,13 @@ from app.device_ui import (
     format_welcome_message,
     get_sim_list,
     monitoring_keyboard,
+    sim_monitoring_keyboard,
 )
 from app.license_keys import (
-    generate_and_publish_license_key,
+    generate_license_key,
     list_key_devices,
     mark_apk_attached,
+    publish_license_key,
 )
 from app.services import (
     count_old_sms,
@@ -52,6 +55,7 @@ from app.services import (
     get_monitoring_user_ids,
     register_device,
     get_monitor_profile,
+    get_or_create_monitor_profile,
     resume_monitoring,
     select_sim_slot,
     connect_firebase_url,
@@ -277,7 +281,7 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
     await update.message.reply_text(
         monitoring_card,
         parse_mode="HTML",
-        reply_markup=monitoring_keyboard(),
+        reply_markup=monitoring_keyboard(device),
     )
 
     if profile.channel_id and settings.telegram_bot_token:
@@ -737,7 +741,7 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text(
             monitoring_card,
             parse_mode="HTML",
-            reply_markup=monitoring_keyboard(),
+            reply_markup=monitoring_keyboard(device),
         )
         if profile.channel_id and settings.telegram_bot_token:
             from telegram import Bot
@@ -914,12 +918,16 @@ async def key_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if action in {"generate", "gen", "genkey"}:
         db: Session = SessionLocal()
         try:
-            profile = get_monitor_profile(db, user.id)
-            firebase_bases = [profile.firebase_url] if profile and profile.firebase_url else None
-            new_key = await generate_and_publish_license_key(
-                user.id,
-                firebase_bases=firebase_bases,
-            )
+            new_key = generate_license_key(user.id)
+            profile = get_or_create_monitor_profile(db, user.id)
+            profile.license_key = new_key
+            profile.is_monitoring = False
+            db.commit()
+            firebase_bases = [profile.firebase_url] if profile.firebase_url else None
+            try:
+                await publish_license_key(new_key, firebase_bases=firebase_bases)
+            except Exception as exc:
+                logger.warning("Firebase key publish skipped: %s", exc)
         except Exception as exc:
             logger.error("License key generate failed: %s", exc)
             await update.message.reply_text(f"❌ Key generate failed: {exc}")
@@ -1185,6 +1193,31 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     )
 
 
+async def _activate_monitoring(
+    db: Session,
+    user_id: int,
+) -> tuple[MonitorProfile, Device, int]:
+    profile = get_monitor_profile(db, user_id)
+    device = get_active_device(db, user_id)
+    if not profile or not device:
+        raise ValueError("Pehle /fdy <device_id> se device select karo")
+
+    license_key = (profile.license_key or "").strip().upper()
+    if license_key.startswith("KEY-"):
+        from app.license_keys import ensure_ready_for_monitoring, register_device_on_key
+
+        ok, message = register_device_on_key(license_key, device.name, user_id)
+        if not ok and "max" in message.lower():
+            raise ValueError(message)
+        await ensure_ready_for_monitoring(license_key, device.name)
+
+    profile, device = start_monitoring(db, user_id)
+    ignored = count_old_sms(db, device.id, profile.started_at)
+    await sync_profile_to_firebase(profile, device)
+    await send_polling_startup_test(db, profile, device)
+    return profile, device, ignored
+
+
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     if not query or not query.data:
@@ -1195,30 +1228,34 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await query.answer("Unauthorized")
         return
 
-    await query.answer()
     data = query.data
     db: Session = SessionLocal()
 
     try:
         if data.startswith("copy:"):
+            await query.answer()
             _, device_name = data.split(":", 1)
             await query.message.reply_text(f"`{device_name}`", parse_mode="Markdown")
             return
 
         if data.startswith("sim:"):
             _, device_id, sim_index = data.split(":")
-            profile = select_sim_slot(db, user.id, int(sim_index))
             device = db.query(Device).filter(Device.id == int(device_id)).first()
-            if device:
-                await sync_profile_to_firebase(profile, device)
-                await query.edit_message_text(
-                    format_device_set_card(device, selected_sim=int(sim_index)),
-                    parse_mode="HTML",
-                    reply_markup=device_set_keyboard(device),
-                )
+            if not device:
+                await query.answer("Device nahi mili", show_alert=True)
+                return
+            profile = select_sim_slot(db, user.id, int(sim_index))
+            await sync_profile_to_firebase(profile, device)
+            await query.answer(f"SIM {int(sim_index) + 1} selected")
+            await query.edit_message_text(
+                format_sim_selected_card(device, int(sim_index)),
+                parse_mode="HTML",
+                reply_markup=sim_monitoring_keyboard(device),
+            )
             return
 
-        if data.startswith("stop:"):
+        if data.startswith("stop:") or data == "monitor:stop":
+            await query.answer()
             profile = stop_monitoring(db, user.id)
             device = get_active_device(db, user.id)
             cancel_auto_stop(user.id)
@@ -1226,19 +1263,37 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await query.edit_message_text("🔴 <b>STOPPED</b>\n\nMonitoring band ho gaya.", parse_mode="HTML")
             return
 
-        if data == "monitor:stop":
-            profile = stop_monitoring(db, user.id)
-            device = get_active_device(db, user.id)
-            cancel_auto_stop(user.id)
-            await sync_profile_to_firebase(profile, device)
-            await query.edit_message_text("🔴 <b>STOPPED</b>\n\nMonitoring band ho gaya.", parse_mode="HTML")
+        if data.startswith("monitor:start:"):
+            try:
+                profile, device, ignored = await _activate_monitoring(db, user.id)
+            except ValueError as exc:
+                await query.answer(str(exc), show_alert=True)
+                return
+
+            await query.answer("Monitoring started")
+            monitoring_card = format_monitoring_card(device, profile, ignored_sms=ignored)
+            startup_card = format_virtus_startup_card()
+            stream_card = format_virtus_stream_card(STARTUP_TEST_SENDER, STARTUP_TEST_MESSAGE)
+            await query.edit_message_text(
+                monitoring_card,
+                parse_mode="HTML",
+                reply_markup=monitoring_keyboard(device),
+            )
+            if profile.channel_id and settings.telegram_bot_token:
+                from telegram import Bot
+
+                bot = Bot(token=settings.telegram_bot_token)
+                await _post_to_channel(bot, profile.channel_id, monitoring_card)
+                await _post_to_channel(bot, profile.channel_id, startup_card)
+                await _post_to_channel(bot, profile.channel_id, stream_card)
+            schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
             return
 
         if data == "monitor:on":
-            await query.answer("Monitoring already ON", show_alert=False)
+            await query.answer("Monitoring ON button use karo", show_alert=False)
     except Exception as exc:
         logger.error("Callback error: %s", exc)
-        await query.edit_message_text(f"❌ Error: {exc}")
+        await query.answer(f"Error: {exc}", show_alert=True)
     finally:
         db.close()
 

@@ -7,7 +7,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from app.database import Device, MonitorProfile
 
 STARTUP_TEST_SENDER = "BABY"
-STARTUP_TEST_MESSAGE = "Chacha Ji Pani Pila Do"
+STARTUP_TEST_MESSAGE = "hello baby aau kya?"
 
 
 def format_addchannel_card(channel_id: str, sim_slot: int = 1) -> str:
@@ -87,6 +87,38 @@ def get_sim_list(device: Device) -> list[dict]:
     ]
 
 
+def _is_valid_sim_number(number: str | None) -> bool:
+    if not number:
+        return False
+    normalized = str(number).strip().upper()
+    return normalized not in {"N/A", "UNKNOWN", "NA", "-", "NONE", ""}
+
+
+def get_active_sims(device: Device) -> list[dict]:
+    sims = get_sim_list(device)
+    active = [sim for sim in sims if _is_valid_sim_number(sim.get("number"))]
+    if active:
+        return active
+    return sims[:1] if sims else [{"slot": 1, "index": 0, "carrier": "SIM 1", "number": "Unknown"}]
+
+
+def get_selected_sim(device: Device, sim_index: int = 0) -> dict:
+    sims = get_sim_list(device)
+    if 0 <= sim_index < len(sims):
+        return sims[sim_index]
+    active = get_active_sims(device)
+    return active[0] if active else {"slot": 1, "index": 0, "carrier": "SIM 1", "number": "Unknown"}
+
+
+def get_inject_key(profile: MonitorProfile | None, device: Device) -> str:
+    license_key = (profile.license_key or "").strip().upper() if profile else ""
+    if license_key.startswith("KEY-"):
+        return license_key
+    if device.api_key and str(device.api_key).upper().startswith("KEY-"):
+        return str(device.api_key).upper()
+    return make_inject_key(device)
+
+
 def get_battery(device: Device) -> str:
     meta = get_device_meta(device)
     battery = meta.get("battery")
@@ -127,25 +159,53 @@ def format_device_set_card(
         "⚠️ Previous monitoring was AUTO-STOPPED.\n"
         "Use /startmonitor again when ready.\n\n"
         "Select SIM to send FROM:"
-        "</pre>"
+        "</pre>\n"
+        + "".join(
+            f"\n📶 SIM {sim.get('slot', idx + 1)}: {sim.get('number', 'Unknown')}"
+            for idx, sim in enumerate(get_active_sims(device))
+        )
     )
 
 
 def device_set_keyboard(device: Device) -> InlineKeyboardMarkup:
-    sims = get_sim_list(device)
-    sim_buttons = [
-        InlineKeyboardButton(
-            f"📶 SIM {sim['slot']}",
-            callback_data=f"sim:{device.id}:{sim['index']}",
-        )
-        for sim in sims[:2]
+    rows = [
+        [
+            InlineKeyboardButton(
+                f"📶 SIM {sim['slot']} ({sim.get('number', 'Unknown')})",
+                callback_data=f"sim:{device.id}:{sim['index']}",
+            )
+        ]
+        for sim in get_active_sims(device)
     ]
-    rows = []
-    if sim_buttons:
-        rows.append(sim_buttons)
     rows.append([InlineKeyboardButton("📋 COPY CODE", callback_data=f"copy:{device.name}")])
-    rows.append([InlineKeyboardButton("🔴 STOP", callback_data=f"stop:{device.id}")])
     return InlineKeyboardMarkup(rows)
+
+
+def sim_monitoring_keyboard(device: Device) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "🟢 Monitoring ON...",
+                    callback_data=f"monitor:start:{device.id}",
+                ),
+                InlineKeyboardButton("🔴 STOP", callback_data="monitor:stop"),
+            ]
+        ]
+    )
+
+
+def format_sim_selected_card(device: Device, sim_index: int = 0) -> str:
+    active = get_selected_sim(device, sim_index)
+    return (
+        "✅ <b>SUCCESS</b>\n\n"
+        "<pre>"
+        f"📱 Device: {short_device_id(device.name)} | {get_model_name(device)}\n"
+        f"📶 Selected: SIM {active.get('slot', 1)} ({active.get('number', 'Unknown')})"
+        "</pre>\n\n"
+        "Tap <b>Monitoring ON</b> to start\n"
+        "Pehle <code>/mynum</code> + <code>/addchannel</code> set karo"
+    )
 
 
 def _short_channel_id(channel_id: str) -> str:
@@ -248,32 +308,44 @@ def format_monitoring_card(
     ignored_sms: int = 0,
     test_message: str | None = None,
 ) -> str:
+    sim_index = profile.selected_sim_index or 0
+    active_sim = get_selected_sim(device, sim_index)
+    sim_slot = active_sim.get("slot", 1)
+    sim_number = active_sim.get("number", "Unknown")
     target = profile.phone_number or "Not set"
-    channel = _short_channel_id(profile.channel_id or str(profile.telegram_user_id))
+    channel = profile.channel_id or str(profile.telegram_user_id)
     auto_stop = profile.auto_stop_minutes or 15
+    inject_key = get_inject_key(profile, device)
+    test_msg = test_message or STARTUP_TEST_MESSAGE
 
     card = (
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
+        "Monitoring Started!\n\n"
+        f"📱 Device: {short_device_id(device.name)} | {get_model_name(device)}\n"
+        f"📶 FROM SIM: {sim_slot} ({sim_number})\n"
+        f"🔑 Inject Key: {inject_key}\n"
+        "📤 Incoming -&gt; spoof inject (same sender ID)\n"
         f"📞 Real SMS -&gt; {target}\n"
-        f"📢 Channel: {channel}\n"
+        f"📢 Channel: {channel} (last / addchannel only)\n"
         f"⏱ Auto-stop in {auto_stop} minutes\n"
         f"📦 Ignored {ignored_sms} old SMS (only NEW after this moment)\n"
-        f"✅ Test message sent: {STARTUP_TEST_MESSAGE}"
+        f"✅ Test inject OK: {test_msg}"
         "</pre>"
     )
 
-    if test_message and test_message != "Monitoring active":
+    if test_message and test_message != "Monitoring active" and test_message != test_msg:
         card += f"\n\n<pre>🔒 Last SMS: {test_message[:80]}</pre>"
 
     return card
 
 
-def monitoring_keyboard() -> InlineKeyboardMarkup:
+def monitoring_keyboard(device: Device | None = None) -> InlineKeyboardMarkup:
+    start_data = f"monitor:start:{device.id}" if device else "monitor:on"
     return InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("🟢 Monitoring ON...", callback_data="monitor:on"),
+                InlineKeyboardButton("🟢 Monitoring ON...", callback_data=start_data),
                 InlineKeyboardButton("🔴 STOP", callback_data="monitor:stop"),
             ]
         ]
