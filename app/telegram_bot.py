@@ -28,6 +28,7 @@ from app.device_ui import (
     format_send_queued,
     format_status_card,
     format_virtus_channel_token_card,
+    format_virtus_outgoing_sent_card,
     format_virtus_startup_card,
     format_virtus_stream_card,
     format_welcome_message,
@@ -137,32 +138,6 @@ async def notify_new_sms(sms: SMSMessage) -> None:
             profile = get_monitor_profile(db, user_id)
             if profile and profile.channel_id and profile.is_monitoring:
                 await _post_to_channel(bot, profile.channel_id, stream_card)
-
-                device = get_active_device(db, user_id)
-                if device and profile.phone_number:
-                    from app.channel_relay import queue_channel_sms
-
-                    try:
-                        relay_start = time.perf_counter()
-                        outbound = queue_channel_sms(
-                            db,
-                            profile,
-                            device,
-                            f"From: {sms.sender}\nMessage: {sms.message}",
-                        )
-                        from app.firebase_sync import push_outbound_to_firebase
-
-                        await push_outbound_to_firebase(profile, device, outbound)
-                        relay_ms = int((time.perf_counter() - relay_start) * 1000)
-                        token_card = format_virtus_channel_token_card(
-                            profile.phone_number,
-                            sms.message,
-                            queued_ms=relay_ms or 5,
-                            total_ms=relay_ms + 20,
-                        )
-                        await _post_to_channel(bot, profile.channel_id, token_card)
-                    except Exception as exc:
-                        logger.error("Token forward failed: %s", exc)
     finally:
         db.close()
 
@@ -320,13 +295,17 @@ def _is_virtus_bot_message(text: str) -> bool:
         "Real SMS ->",
         "Virtus Auto Token",
         "Test message sent:",
+        "✅ SUCCESS",
     )
     return any(marker in text for marker in markers)
 
 
 async def channel_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    message = update.channel_post
+    message = update.channel_post or update.message
     if not message or not message.text:
+        return
+
+    if message.from_user and message.from_user.is_bot:
         return
 
     if _is_virtus_bot_message(message.text):
@@ -350,13 +329,22 @@ async def channel_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
                     channel_message_id=message.message_id,
                 )
                 relay_ms = int((time.perf_counter() - relay_start) * 1000)
-                token_card = format_virtus_channel_token_card(
-                    outbound.to_number,
-                    outbound.message,
-                    queued_ms=relay_ms or 5,
-                    total_ms=relay_ms + 20,
-                )
-                await message.reply_text(token_card, parse_mode="HTML")
+                if outbound.spoof_sender:
+                    confirm_card = format_virtus_channel_token_card(
+                        outbound.to_number,
+                        outbound.message,
+                        queued_ms=relay_ms or 5,
+                        total_ms=relay_ms + 20,
+                    )
+                else:
+                    confirm_card = format_virtus_outgoing_sent_card(
+                        outbound.to_number,
+                        outbound.message,
+                        sim_slot=outbound.sim_slot,
+                        queued_ms=relay_ms or 5,
+                        total_ms=relay_ms + 20,
+                    )
+                await message.reply_text(confirm_card, parse_mode="HTML")
             except Exception as exc:
                 logger.error("Channel relay failed: %s", exc)
                 await message.reply_text(f"❌ Send failed: {exc}")
@@ -955,7 +943,10 @@ def build_telegram_app() -> Application | None:
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("mynum", mynum_command))
     app.add_handler(CommandHandler("addchannel", addchannel_command))
-    app.add_handler(MessageHandler(filters.ChatType.CHANNEL & filters.TEXT, channel_sms_handler))
+    channel_filter = (
+        filters.ChatType.CHANNEL | filters.ChatType.GROUP | filters.ChatType.SUPERGROUP
+    ) & filters.TEXT & ~filters.COMMAND
+    app.add_handler(MessageHandler(channel_filter, channel_sms_handler))
     app.add_handler(CommandHandler("startmonitar", startmonitar_command))
     app.add_handler(CommandHandler("startmonitor", startmonitar_command))
     app.add_handler(CommandHandler("stopmonitar", stopmonitar_command))

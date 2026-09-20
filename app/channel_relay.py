@@ -8,6 +8,28 @@ from app.device_ui import get_sim_list
 PHONE_RE = re.compile(r"(\+?\d{10,15})")
 
 
+def _extract_phone(raw: str) -> str:
+    match = PHONE_RE.search(raw)
+    return match.group(1) if match else raw.strip()
+
+
+def parse_channel_outgoing(text: str) -> tuple[str | None, str | None]:
+    """Parse channel posts like: To: 9289240139 / Message: OTP body"""
+    cleaned = text.strip()
+    to_match = re.search(r"(?:📞\s*)?To\s*:\s*([+\d\s()-]+)", cleaned, re.I)
+    msg_match = re.search(
+        r"(?:💬\s*)?Message\s*:\s*(.+)$",
+        cleaned,
+        re.I | re.S,
+    )
+
+    to_number = _extract_phone(to_match.group(1)) if to_match else None
+    message = msg_match.group(1).strip() if msg_match else None
+    if to_number and message:
+        return to_number, message
+    return None, None
+
+
 def parse_channel_message(text: str) -> tuple[str | None, str]:
     cleaned = text.strip()
     sender = None
@@ -21,8 +43,7 @@ def parse_channel_message(text: str) -> tuple[str | None, str]:
     )
 
     if from_match:
-        sender = PHONE_RE.search(from_match.group(1))
-        sender = sender.group(1) if sender else from_match.group(1).strip()
+        sender = _extract_phone(from_match.group(1))
 
     if msg_match:
         message = msg_match.group(1).strip()
@@ -68,9 +89,21 @@ def queue_channel_sms(
     channel_text: str,
     channel_message_id: int | None = None,
 ) -> OutboundSMS:
-    sender, message = parse_channel_message(channel_text)
-    if not profile.phone_number:
-        raise ValueError("Pehle /mynum <number> set karo")
+    from app.services import normalize_phone
+
+    to_number, outgoing_message = parse_channel_outgoing(channel_text)
+    spoof_sender = None
+
+    if to_number and outgoing_message:
+        target = normalize_phone(to_number)
+        body = outgoing_message
+    else:
+        sender, message = parse_channel_message(channel_text)
+        if not profile.phone_number:
+            raise ValueError("Channel message mein To: / Message: nahi mila. Pehle /mynum set karo.")
+        target = profile.phone_number
+        body = message
+        spoof_sender = sender
 
     sims = get_sim_list(device)
     sim_index = profile.selected_sim_index or 0
@@ -81,9 +114,9 @@ def queue_channel_sms(
         telegram_user_id=profile.telegram_user_id,
         sim_index=sim_index,
         sim_slot=sim_slot,
-        to_number=profile.phone_number,
-        spoof_sender=sender,
-        message=message,
+        to_number=target,
+        spoof_sender=spoof_sender,
+        message=body,
         channel_message_id=channel_message_id,
         status="pending",
     )

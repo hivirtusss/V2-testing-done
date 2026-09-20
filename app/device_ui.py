@@ -14,7 +14,8 @@ def format_addchannel_card(channel_id: str, sim_slot: int = 1) -> str:
         "Channel Connected!\n\n"
         f"📢 Channel: {channel_id}\n"
         f"📶 Selected SIM: SIM {sim_slot}\n"
-        "📬 Channel par jo SMS aayega → auto send hoga\n"
+        "📬 Channel par To: + Message: aaye\n"
+        "   → us number par auto SMS send hoga\n"
         "   selected SIM se"
         "</pre>\n\n"
         "Next Step: /startmonitor"
@@ -152,6 +153,28 @@ def format_virtus_stream_card(
         "<pre>"
         "⚡ INJECT FORWARDED! [STREAM]\n\n"
         f"📤 Sender: {sender}\n"
+        f"🔒 {body}\n\n"
+        f"{format_timing_footer(queued_ms, total_ms)}"
+        "</pre>"
+    )
+
+
+def format_virtus_outgoing_sent_card(
+    to_number: str,
+    message: str,
+    sim_slot: int = 1,
+    queued_ms: int = 5,
+    total_ms: int = 25,
+) -> str:
+    body = message.replace("<", "").replace(">", "").strip()
+    if len(body) > 300:
+        body = body[:300] + "..."
+    return (
+        "✅ <b>SUCCESS</b>\n\n"
+        "<pre>"
+        "📤 OUTGOING SMS SENT! [CHANNEL]\n\n"
+        f"📞 To: {to_number}\n"
+        f"📶 SIM: {sim_slot}\n"
         f"🔒 {body}\n\n"
         f"{format_timing_footer(queued_ms, total_ms)}"
         "</pre>"
