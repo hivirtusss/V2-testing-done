@@ -163,6 +163,10 @@ async def set_license_key(
 
         db.commit()
         db.refresh(profile)
+
+        from app.firebase_sync import sync_profile_to_firebase
+
+        await sync_profile_to_firebase(profile, device)
         return profile, normalized_key, "key"
 
     raise ValueError("invalid_format")

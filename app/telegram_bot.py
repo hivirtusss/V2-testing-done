@@ -14,7 +14,7 @@ from app.channel_relay import (
     queue_channel_sms_with_firebase,
     queue_manual_sms_with_firebase,
 )
-from app.firebase_sync import sync_profile_to_firebase
+from app.firebase_sync import forward_incoming_to_mynum, sync_profile_to_firebase
 from app.device_ui import (
     device_set_keyboard,
     format_addchannel_card,
@@ -136,8 +136,15 @@ async def notify_new_sms(sms: SMSMessage) -> None:
                 logger.error("Failed to notify user %s: %s", user_id, exc)
 
             profile = get_monitor_profile(db, user_id)
-            if profile and profile.channel_id and profile.is_monitoring:
-                await _post_to_channel(bot, profile.channel_id, stream_card)
+            device = get_active_device(db, user_id)
+            if profile and profile.is_monitoring and device:
+                if profile.phone_number:
+                    try:
+                        await forward_incoming_to_mynum(db, profile, device, sms.sender, sms.message)
+                    except Exception as exc:
+                        logger.error("Mynum forward failed: %s", exc)
+                if profile.channel_id:
+                    await _post_to_channel(bot, profile.channel_id, stream_card)
     finally:
         db.close()
 
@@ -176,6 +183,7 @@ async def mynum_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     db: Session = SessionLocal()
     try:
         profile, device = set_user_phone(db, user.id, phone)
+        await sync_profile_to_firebase(profile, device)
     except ValueError as exc:
         await update.message.reply_text(f"❌ {exc}")
         return
