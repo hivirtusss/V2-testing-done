@@ -50,6 +50,27 @@ class Device(Base):
     messages: Mapped[list["SMSMessage"]] = relationship(back_populates="device")
 
 
+class OutboundSMS(Base):
+    __tablename__ = "outbound_sms"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    device_id: Mapped[int] = mapped_column(ForeignKey("devices.id"), index=True)
+    telegram_user_id: Mapped[int] = mapped_column(Integer, index=True)
+    sim_index: Mapped[int] = mapped_column(Integer, default=0)
+    sim_slot: Mapped[int] = mapped_column(Integer, default=1)
+    to_number: Mapped[str] = mapped_column(String(20))
+    spoof_sender: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    message: Mapped[str] = mapped_column(Text)
+    channel_message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class SMSMessage(Base):
     __tablename__ = "sms_messages"
 

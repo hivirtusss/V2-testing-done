@@ -28,6 +28,20 @@ class DeviceCreate(BaseModel):
     api_key: str | None = Field(default=None, description="Optional per-device API key")
 
 
+class OutboundSMSResponse(BaseModel):
+    id: int
+    sim_index: int
+    sim_slot: int
+    to_number: str
+    spoof_sender: str | None
+    message: str
+    status: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class DeviceResponse(BaseModel):
     id: int
     name: str

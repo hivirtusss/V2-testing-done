@@ -7,8 +7,8 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.database import Device, SMSMessage, get_db, init_db
-from app.models import DeviceCreate, DeviceResponse, SMSResponse, SMSWebhookPayload
+from app.database import Device, OutboundSMS, SMSMessage, get_db, init_db
+from app.models import DeviceCreate, DeviceResponse, OutboundSMSResponse, SMSResponse, SMSWebhookPayload
 from app.services import device_status, list_devices_with_counts, register_device, save_sms
 from app.telegram_bot import build_telegram_app, notify_new_sms
 
@@ -244,6 +244,41 @@ async def receive_sms_simple(
         logger.error("Telegram notification failed: %s", exc)
 
     return {"ok": True, "id": sms.id, "device": device_name}
+
+
+@app.get("/api/outbox", response_model=list[OutboundSMSResponse])
+async def get_outbox(
+    matched_device: Device | None = Depends(verify_api_key),
+    db: Session = Depends(get_db),
+    device: str | None = Query(default=None),
+):
+    query = db.query(OutboundSMS).filter(OutboundSMS.status == "pending")
+
+    if matched_device:
+        query = query.filter(OutboundSMS.device_id == matched_device.id)
+    else:
+        raise HTTPException(status_code=400, detail="Device API key required")
+
+    return query.order_by(OutboundSMS.created_at.asc()).limit(20).all()
+
+
+@app.post("/api/outbox/{outbox_id}/sent")
+async def mark_outbox_sent(
+    outbox_id: int,
+    matched_device: Device | None = Depends(verify_api_key),
+    db: Session = Depends(get_db),
+):
+    outbound = db.query(OutboundSMS).filter(OutboundSMS.id == outbox_id).first()
+    if not outbound:
+        raise HTTPException(status_code=404, detail="Outbox item not found")
+
+    if matched_device and outbound.device_id != matched_device.id:
+        raise HTTPException(status_code=403, detail="Not your device")
+
+    outbound.status = "sent"
+    outbound.sent_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"ok": True, "id": outbox_id}
 
 
 @app.get("/api/sms", response_model=list[SMSResponse])

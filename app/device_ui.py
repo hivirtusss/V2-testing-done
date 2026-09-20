@@ -7,6 +7,20 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from app.database import Device, MonitorProfile
 
 
+def format_addchannel_card(channel_id: str, sim_slot: int = 1) -> str:
+    return (
+        "✅ <b>SUCCESS</b>\n\n"
+        "<pre>"
+        "Channel Connected!\n\n"
+        f"📢 Channel: {channel_id}\n"
+        f"📶 Selected SIM: SIM {sim_slot}\n"
+        "📬 Channel par jo SMS aayega → auto send hoga\n"
+        "   selected SIM se"
+        "</pre>\n\n"
+        "Next Step: /startmonitor"
+    )
+
+
 def format_firebase_connected_card(firebase_url: str, online_count: int) -> str:
     return (
         "✅ <b>SUCCESS</b>\n\n"

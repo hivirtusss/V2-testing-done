@@ -6,7 +6,6 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import Device, MonitorProfile, SMSMessage, get_or_create_device
-from app.bulk_firebase import upsert_pool_device
 from app.firebase_client import fetch_firebase_devices, is_device_online, normalize_firebase_url
 
 
@@ -88,6 +87,18 @@ def count_old_sms(db: Session, device_id: int, since: datetime | None = None) ->
     if since:
         query = query.filter(SMSMessage.received_at < since)
     return query.count()
+
+
+def set_channel_id(db: Session, telegram_user_id: int, channel_id: str) -> MonitorProfile:
+    normalized = channel_id.strip()
+    if not normalized.lstrip("-").isdigit():
+        raise ValueError("Valid channel ID daalo, example: -1003553669855")
+
+    profile = get_or_create_monitor_profile(db, telegram_user_id)
+    profile.channel_id = normalized
+    db.commit()
+    db.refresh(profile)
+    return profile
 
 
 def select_sim_slot(db: Session, telegram_user_id: int, sim_index: int) -> MonitorProfile:
@@ -357,6 +368,8 @@ async def connect_firebase_url(
     telegram_user_id: int,
     firebase_url: str,
 ) -> tuple[MonitorProfile, int, int]:
+    from app.bulk_firebase import upsert_pool_device
+
     normalized_url = normalize_firebase_url(firebase_url)
     remote_devices = await fetch_firebase_devices(normalized_url)
     if not remote_devices:
