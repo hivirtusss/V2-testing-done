@@ -30,6 +30,7 @@ from app.device_ui import (
     format_ping_card,
     format_send_queued,
     format_sim_selected_card,
+    sim_confirm_keyboard,
     format_status_card,
     format_virtus_channel_token_card,
     format_virtus_outgoing_sent_card,
@@ -38,6 +39,7 @@ from app.device_ui import (
     STARTUP_TEST_MESSAGE,
     STARTUP_TEST_SENDER,
     format_welcome_message,
+    get_selected_sim,
     get_sim_list,
     monitoring_keyboard,
     sim_monitoring_keyboard,
@@ -55,6 +57,8 @@ from app.services import (
     register_device,
     get_monitor_profile,
     get_or_create_monitor_profile,
+    profile_has_active_key,
+    require_active_license_key,
     resume_monitoring,
     select_sim_slot,
     connect_firebase_url,
@@ -155,6 +159,7 @@ async def notify_new_sms(sms: SMSMessage) -> None:
                 and device
                 and profile.phone_number
                 and sms.device_id == device.id
+                and profile_has_active_key(profile)
             ):
                 relay_targets.append((profile, device, profile.phone_number))
         if relay_targets:
@@ -239,22 +244,39 @@ async def mynum_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     phone = context.args[0]
     db: Session = SessionLocal()
     try:
+        profile = get_monitor_profile(db, user.id)
+        require_active_license_key(profile)
         profile = set_profile_phone(db, user.id, phone)
         device = get_active_device(db, user.id)
         if not device:
-            raise ValueError("Pehle /fdy <device_id> se device select karo")
+            raise ValueError("Pehle /fdy ya /a <device_id> se device select karo")
         await sync_profile_to_firebase(profile, device)
     except ValueError as exc:
-        await update.message.reply_text(f"❌ {exc}")
+        message = str(exc)
+        if "sirf key users" in message or "license" in message.lower() or "/key" in message:
+            await update.message.reply_text(
+                "❌ <b>/mynum sirf KEY users ke liye</b>\n\n"
+                "<pre>"
+                "1. /key generate (bot + APK same key)\n"
+                "2. /a &lt;device_id&gt; ya /fdy + key set\n"
+                "3. /mynum &lt;number&gt;\n"
+                "4. /addchannel → SIM → Monitoring ON"
+                "</pre>\n\n"
+                "Bina key /fdy se device dekh sakte ho — SMS forward nahi hoga.",
+                parse_mode="HTML",
+            )
+        else:
+            await update.message.reply_text(f"❌ {exc}")
         return
     finally:
         db.close()
 
     await update.message.reply_text(
-        f"✅ Number set: `+{profile.phone_number}`\n"
-        f"📱 Device: `{device.name}` (same — change nahi hua)\n\n"
-        f"Ab `/addchannel` → `/startmonitor`",
-        parse_mode="Markdown",
+        f"✅ <b>Number set</b>\n\n"
+        f"📞 Real SMS / inject → <code>+{profile.phone_number}</code>\n"
+        f"📱 Device: <code>{device.name}</code>\n\n"
+        f"Ab <code>/addchannel</code> → SIM select → Monitoring ON",
+        parse_mode="HTML",
     )
 
 
@@ -289,8 +311,21 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
         await sync_profile_to_firebase(profile, device)
         await send_polling_startup_test(db, profile, device)
     except ValueError as exc:
-        if "channel" in str(exc).lower():
+        message = str(exc)
+        if "channel" in message.lower():
             await update.message.reply_text("❌ <b>ERROR</b>\n\nAdd a channel first!", parse_mode="HTML")
+        elif "select sim" in message.lower():
+            await update.message.reply_text(
+                "❌ <b>ERROR</b>\n\n<pre>Select SIM first! Pick SIM after ⚡ fb, /fy or /setdevice.</pre>",
+                parse_mode="HTML",
+            )
+        elif "sirf key" in message.lower() or "/key" in message:
+            await update.message.reply_text(
+                "❌ <b>ERROR</b>\n\n"
+                "<pre>Monitoring sirf KEY users ke liye.\n"
+                "/key generate → APK same key → /a &lt;device_id&gt;</pre>",
+                parse_mode="HTML",
+            )
         else:
             await update.message.reply_text(f"❌ {exc}")
         return
@@ -1333,7 +1368,27 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     try:
         if data.startswith("sim:"):
-            _, device_id, sim_index = data.split(":")
+            parts = data.split(":")
+            action = parts[1]
+            if action == "confirm":
+                _, _, device_id, sim_index = parts
+                device = db.query(Device).filter(Device.id == int(device_id)).first()
+                if not device:
+                    await query.answer("Device nahi mili", show_alert=True)
+                    return
+                if device.firebase_source_url:
+                    device = await sync_device_from_firebase(db, device)
+                profile = get_monitor_profile(db, user.id)
+                await sync_profile_to_firebase(profile, device)
+                await query.answer("SIM ready — Monitoring ON dabao")
+                await query.edit_message_text(
+                    format_sim_selected_card(device, int(sim_index)),
+                    parse_mode="HTML",
+                    reply_markup=sim_monitoring_keyboard(device),
+                )
+                return
+
+            device_id, sim_index = parts[1], parts[2]
             device = db.query(Device).filter(Device.id == int(device_id)).first()
             if not device:
                 await query.answer("Device nahi mili", show_alert=True)
@@ -1342,11 +1397,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 device = await sync_device_from_firebase(db, device)
             profile = select_sim_slot(db, user.id, int(sim_index))
             await sync_profile_to_firebase(profile, device)
-            await query.answer(f"SIM {int(sim_index) + 1} selected")
+            active = get_selected_sim(device, int(sim_index))
+            await query.answer(f"SIM {active.get('slot', int(sim_index) + 1)} selected")
             await query.edit_message_text(
                 format_sim_selected_card(device, int(sim_index)),
                 parse_mode="HTML",
-                reply_markup=sim_monitoring_keyboard(device),
+                reply_markup=sim_confirm_keyboard(device, int(sim_index)),
             )
             return
 

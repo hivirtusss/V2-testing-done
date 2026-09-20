@@ -25,6 +25,29 @@ def get_monitor_profile(db: Session, telegram_user_id: int) -> MonitorProfile | 
     return db.query(MonitorProfile).filter(MonitorProfile.telegram_user_id == telegram_user_id).first()
 
 
+def profile_has_active_key(profile: MonitorProfile | None) -> bool:
+    if not profile or not profile.license_key:
+        return False
+    from app.license_keys import is_valid_license_key_format, license_key_exists
+
+    key = profile.license_key.strip().upper()
+    return is_valid_license_key_format(key) and license_key_exists(key)
+
+
+def require_active_license_key(profile: MonitorProfile | None) -> str:
+    if not profile or not profile.license_key:
+        raise ValueError(
+            "/mynum sirf key users ke liye.\n"
+            "Pehle /key generate → APK + bot same key → /a <device_id>"
+        )
+    return require_license_key(profile)
+
+
+def ensure_sim_selected(profile: MonitorProfile) -> None:
+    if not profile.sim_selected:
+        raise ValueError("Select SIM first! Pick SIM after ⚡ fb, /fy or /setdevice.")
+
+
 def get_or_create_monitor_profile(db: Session, telegram_user_id: int) -> MonitorProfile:
     profile = get_monitor_profile(db, telegram_user_id)
     if profile:
@@ -68,8 +91,10 @@ def start_monitoring(db: Session, telegram_user_id: int) -> tuple[MonitorProfile
     profile = get_monitor_profile(db, telegram_user_id)
     if not profile or not profile.active_device_id:
         raise ValueError("Pehle /fdy <device_id> se device select karo (key ke liye /a)")
+    require_active_license_key(profile)
+    ensure_sim_selected(profile)
     if not profile.phone_number:
-        raise ValueError("Pehle /mynum <number> set karo")
+        raise ValueError("Pehle /mynum <number> set karo (sirf key users)")
 
     device = db.query(Device).filter(Device.id == profile.active_device_id).first()
     if not device:
@@ -108,6 +133,7 @@ def set_channel_id(db: Session, telegram_user_id: int, channel_id: str) -> Monit
 def select_sim_slot(db: Session, telegram_user_id: int, sim_index: int) -> MonitorProfile:
     profile = get_or_create_monitor_profile(db, telegram_user_id)
     profile.selected_sim_index = sim_index
+    profile.sim_selected = True
     db.commit()
     db.refresh(profile)
     return profile
@@ -593,6 +619,8 @@ async def show_device_by_id(
         )
 
     profile.active_device_id = device.id
+    profile.is_monitoring = False
+    profile.sim_selected = False
     device.owner_telegram_id = telegram_user_id
     device.is_active = True
     device.last_seen = datetime.now(timezone.utc)

@@ -20,6 +20,7 @@ class MonitorProfile(Base):
     license_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     active_device_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     selected_sim_index: Mapped[int] = mapped_column(Integer, default=0)
+    sim_selected: Mapped[bool] = mapped_column(Boolean, default=False)
     channel_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     auto_stop_minutes: Mapped[int] = mapped_column(Integer, default=15)
     is_monitoring: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -192,6 +193,9 @@ def _migrate_existing_tables() -> None:
         if "auto_stop_minutes" not in columns:
             with engine.begin() as conn:
                 conn.execute(text("ALTER TABLE monitor_profiles ADD COLUMN auto_stop_minutes INTEGER DEFAULT 15"))
+        if "sim_selected" not in columns:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE monitor_profiles ADD COLUMN sim_selected BOOLEAN DEFAULT 0"))
 
     if "devices" in table_names:
         columns = {col["name"] for col in inspector.get_columns("devices")}
