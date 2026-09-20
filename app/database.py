@@ -32,6 +32,7 @@ class Device(Base):
     name: Mapped[str] = mapped_column(String(128), unique=True, index=True)
     phone_number: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     firebase_key: Mapped[str | None] = mapped_column(String(256), nullable=True, index=True)
+    firebase_source_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     api_key: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -95,6 +96,9 @@ def _migrate_existing_tables() -> None:
         if "firebase_key" not in columns:
             with engine.begin() as conn:
                 conn.execute(text("ALTER TABLE devices ADD COLUMN firebase_key VARCHAR(256)"))
+        if "firebase_source_url" not in columns:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE devices ADD COLUMN firebase_source_url VARCHAR(512)"))
 
     if "monitor_profiles" in table_names:
         columns = {col["name"] for col in inspector.get_columns("monitor_profiles")}

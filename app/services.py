@@ -159,7 +159,33 @@ def get_device_by_identifier(db: Session, deviceid: str) -> Device | None:
         by_id = db.query(Device).filter(Device.id == int(deviceid)).first()
         if by_id:
             return by_id
-    return db.query(Device).filter(Device.name == deviceid).first()
+
+    device = db.query(Device).filter(Device.name == deviceid).first()
+    if device:
+        return device
+
+    device = db.query(Device).filter(Device.firebase_key == deviceid).first()
+    if device:
+        return device
+
+    return db.query(Device).filter(Device.firebase_key.ilike(f"%{deviceid}%")).first()
+
+
+def claim_pool_device(db: Session, deviceid: str, owner_telegram_id: int) -> tuple[Device, bool]:
+    device = get_device_by_identifier(db, deviceid)
+    if not device:
+        raise LookupError("Device pool mein nahi mili")
+
+    if device.owner_telegram_id and device.owner_telegram_id != owner_telegram_id:
+        raise PermissionError("Device kisi aur user ki hai")
+
+    created = device.owner_telegram_id is None
+    device.owner_telegram_id = owner_telegram_id
+    device.is_active = True
+    device.last_seen = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(device)
+    return device, created
 
 
 def claim_device(db: Session, deviceid: str, owner_telegram_id: int) -> tuple[Device, bool]:
@@ -174,6 +200,7 @@ def claim_device(db: Session, deviceid: str, owner_telegram_id: int) -> tuple[De
         device.last_seen = datetime.now(timezone.utc)
     else:
         device = register_device(db, deviceid)
+        device.firebase_key = deviceid
         device.owner_telegram_id = owner_telegram_id
         created = True
 

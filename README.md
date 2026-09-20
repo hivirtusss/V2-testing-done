@@ -52,6 +52,7 @@ Jab bhi koi device SMS bhejti hai, wo automatically database mein add ho jati ha
 | `/mynum 9876543210` | Apna SIM number set karo |
 | `/startmonitar` | Is number ke saare SMS forward |
 | `/stopmonitar` | Forwarding band karo |
+| `/allfirebase` | Txt file se 1600+ Firebase bulk import |
 | `/setfirebase <url>` | Firebase attach — saari devices sync |
 | `/a myphone` | Apni device add/claim karo |
 | `/devices` | Meri devices list |

