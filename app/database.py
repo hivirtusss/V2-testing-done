@@ -18,6 +18,9 @@ class MonitorProfile(Base):
     phone_number: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     firebase_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     active_device_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    selected_sim_index: Mapped[int] = mapped_column(Integer, default=0)
+    channel_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    auto_stop_minutes: Mapped[int] = mapped_column(Integer, default=15)
     is_monitoring: Mapped[bool] = mapped_column(Boolean, default=False)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -34,6 +37,7 @@ class Device(Base):
     phone_number: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     firebase_key: Mapped[str | None] = mapped_column(String(256), nullable=True, index=True)
     firebase_source_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    device_meta: Mapped[str | None] = mapped_column(Text, nullable=True)
     api_key: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -109,6 +113,21 @@ def _migrate_existing_tables() -> None:
         if "active_device_id" not in columns:
             with engine.begin() as conn:
                 conn.execute(text("ALTER TABLE monitor_profiles ADD COLUMN active_device_id INTEGER"))
+        if "selected_sim_index" not in columns:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE monitor_profiles ADD COLUMN selected_sim_index INTEGER DEFAULT 0"))
+        if "channel_id" not in columns:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE monitor_profiles ADD COLUMN channel_id VARCHAR(64)"))
+        if "auto_stop_minutes" not in columns:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE monitor_profiles ADD COLUMN auto_stop_minutes INTEGER DEFAULT 15"))
+
+    if "devices" in table_names:
+        columns = {col["name"] for col in inspector.get_columns("devices")}
+        if "device_meta" not in columns:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE devices ADD COLUMN device_meta TEXT"))
 
 
 def init_db() -> None:

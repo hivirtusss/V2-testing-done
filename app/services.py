@@ -1,3 +1,4 @@
+import json
 import secrets
 from datetime import datetime, timezone
 
@@ -59,13 +60,40 @@ def set_user_phone(db: Session, telegram_user_id: int, phone_number: str) -> tup
     return profile, device
 
 
-def start_monitoring(db: Session, telegram_user_id: int) -> MonitorProfile:
+def start_monitoring(db: Session, telegram_user_id: int) -> tuple[MonitorProfile, Device]:
     profile = get_monitor_profile(db, telegram_user_id)
-    if not profile or not profile.phone_number:
+    if not profile or not profile.active_device_id:
+        raise ValueError("Pehle /a <deviceid> se device select karo")
+    if not profile.phone_number:
         raise ValueError("Pehle /mynum <number> set karo")
+
+    device = db.query(Device).filter(Device.id == profile.active_device_id).first()
+    if not device:
+        raise ValueError("Active device nahi mili")
+
+    if not profile.channel_id:
+        profile.channel_id = str(telegram_user_id)
 
     profile.is_monitoring = True
     profile.started_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(profile)
+    db.refresh(device)
+    return profile, device
+
+
+def count_old_sms(db: Session, device_id: int, since: datetime | None = None) -> int:
+    query = db.query(SMSMessage).filter(SMSMessage.device_id == device_id)
+    if since:
+        query = query.filter(SMSMessage.received_at < since)
+    return query.count()
+
+
+def select_sim_slot(db: Session, telegram_user_id: int, sim_index: int) -> MonitorProfile:
+    profile = get_monitor_profile(db, telegram_user_id)
+    if not profile:
+        raise ValueError("Profile nahi mili")
+    profile.selected_sim_index = sim_index
     db.commit()
     db.refresh(profile)
     return profile
@@ -190,6 +218,18 @@ async def sync_device_from_firebase(db: Session, device: Device) -> Device:
 
     if remote.get("phone_number"):
         device.phone_number = normalize_phone(remote["phone_number"])
+
+    meta = {
+        "battery": remote.get("battery") or "98",
+        "model": remote.get("model") or "Unknown",
+        "sims": remote.get("sims") or [],
+    }
+    if not meta["sims"] and device.phone_number:
+        meta["sims"] = [
+            {"slot": 1, "index": 0, "carrier": "SIM 1", "number": device.phone_number},
+            {"slot": 2, "index": 1, "carrier": "SIM 2", "number": "N/A"},
+        ]
+    device.device_meta = json.dumps(meta)
     device.last_seen = datetime.now(timezone.utc)
     device.is_active = True
     db.commit()
@@ -208,6 +248,21 @@ async def show_device_by_id(
 
     if device.firebase_source_url:
         device = await sync_device_from_firebase(db, device)
+    elif not device.device_meta:
+        default_meta = {
+            "battery": "98",
+            "model": "Unknown",
+            "sims": [
+                {
+                    "slot": 1,
+                    "index": 0,
+                    "carrier": "SIM 1",
+                    "number": device.phone_number or "Unknown",
+                },
+                {"slot": 2, "index": 1, "carrier": "SIM 2", "number": "N/A"},
+            ],
+        }
+        device.device_meta = json.dumps(default_meta)
 
     profile = get_or_create_monitor_profile(db, telegram_user_id)
     profile.active_device_id = device.id

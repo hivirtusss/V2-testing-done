@@ -56,11 +56,29 @@ def _build_device_record(key: str, value: dict, prefix: str) -> dict:
     )
     phone = value.get("phone") or value.get("phone_number") or value.get("mobile") or value.get("number")
     status = value.get("status") or value.get("online")
+    sims = value.get("sims") or value.get("sim_list")
+    if not sims and phone:
+        sims = [
+            {"slot": 1, "index": 0, "carrier": value.get("carrier1", "SIM 1"), "number": str(phone)},
+        ]
+        if value.get("phone2") or value.get("sim2"):
+            sims.append(
+                {
+                    "slot": 2,
+                    "index": 1,
+                    "carrier": value.get("carrier2", "SIM 2"),
+                    "number": str(value.get("phone2") or value.get("sim2")),
+                }
+            )
+
     return {
         "firebase_key": f"{prefix}{key}".strip("/"),
         "name": str(name),
         "phone_number": str(phone) if phone else None,
         "status": str(status) if status is not None else None,
+        "battery": value.get("battery") or value.get("battery_level"),
+        "model": value.get("model") or value.get("device_model"),
+        "sims": sims,
         "raw": value,
     }
 
