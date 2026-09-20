@@ -21,6 +21,33 @@ def _fetch_json(url: str) -> dict | list | None:
     return data
 
 
+def _looks_like_device(value: dict) -> bool:
+    fields = (
+        "name",
+        "device_name",
+        "phone",
+        "phone_number",
+        "mobile",
+        "model",
+        "battery",
+        "battery_level",
+        "online",
+        "status",
+        "sim",
+        "carrier",
+        "device",
+    )
+    return any(field in value for field in fields)
+
+
+def _extract_shallow_devices(data: dict, prefix: str = "") -> list[dict]:
+    devices: list[dict] = []
+    for key, value in data.items():
+        if isinstance(value, dict):
+            devices.append(_build_device_record(str(key), value, prefix))
+    return devices
+
+
 def _extract_devices(data: dict | list, prefix: str = "") -> list[dict]:
     found: list[dict] = []
 
@@ -36,14 +63,34 @@ def _extract_devices(data: dict | list, prefix: str = "") -> list[dict]:
 
     for key, value in data.items():
         if isinstance(value, dict):
-            if any(field in value for field in ("name", "device_name", "phone", "phone_number", "mobile", "model")):
+            if _looks_like_device(value):
                 found.append(_build_device_record(str(key), value, prefix))
             else:
-                found.extend(_extract_devices(value, prefix=f"{prefix}{key}/"))
+                nested = [item for item in value.values() if isinstance(item, dict)]
+                if nested and len(nested) == len(value):
+                    found.extend(_extract_shallow_devices(value, prefix=f"{prefix}{key}/"))
+                else:
+                    found.extend(_extract_devices(value, prefix=f"{prefix}{key}/"))
         elif isinstance(value, list):
             found.extend(_extract_devices(value, prefix=f"{prefix}{key}/"))
 
     return found
+
+
+def is_device_online(device: dict) -> bool:
+    raw = device.get("raw") or {}
+    online = raw.get("online")
+    if online in (True, "true", "True", 1, "1"):
+        return True
+    if online in (False, "false", "False", 0, "0"):
+        return False
+
+    status = str(device.get("status") or raw.get("status") or "").lower()
+    if status in {"online", "true", "1", "connected", "active"}:
+        return True
+    if status in {"offline", "false", "0", "inactive"}:
+        return False
+    return True
 
 
 def _build_device_record(key: str, value: dict, prefix: str) -> dict:
@@ -87,23 +134,36 @@ async def fetch_firebase_devices(firebase_url: str) -> list[dict]:
     base_url = normalize_firebase_url(firebase_url)
     parsed = urlparse(base_url)
     path = parsed.path.strip("/")
+    best_devices: list[dict] = []
+
+    def consider(data: dict | list | None, prefix: str = "") -> list[dict]:
+        if not data:
+            return []
+        if isinstance(data, dict):
+            shallow = _extract_shallow_devices(data, prefix)
+            if shallow:
+                return shallow
+        return _extract_devices(data if isinstance(data, (dict, list)) else {}, prefix=prefix)
 
     if path:
-        data = _fetch_json(f"{base_url}.json")
-        devices = _extract_devices(data if isinstance(data, (dict, list)) else {})
-        if devices:
-            return devices
+        try:
+            devices = consider(_fetch_json(f"{base_url}.json"))
+            if devices:
+                return devices
+        except httpx.HTTPError:
+            pass
 
     for device_path in DEVICE_PATHS:
         try:
             data = _fetch_json(f"{base_url}/{device_path}.json")
         except httpx.HTTPError:
             continue
-        if data is None:
-            continue
-        devices = _extract_devices(data if isinstance(data, (dict, list)) else {}, prefix=device_path)
-        if devices:
-            return devices
+        devices = consider(data, prefix=device_path)
+        if len(devices) > len(best_devices):
+            best_devices = devices
+
+    if best_devices:
+        return best_devices
 
     try:
         data = _fetch_json(f"{base_url}.json")
@@ -113,4 +173,4 @@ async def fetch_firebase_devices(firebase_url: str) -> list[dict]:
     if data is None:
         return []
 
-    return _extract_devices(data if isinstance(data, (dict, list)) else {})
+    return consider(data)

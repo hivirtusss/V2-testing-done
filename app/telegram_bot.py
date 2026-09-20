@@ -11,6 +11,7 @@ from app.bulk_firebase import bulk_import_from_txt
 from app.device_ui import (
     device_set_keyboard,
     format_device_set_card,
+    format_firebase_connected_card,
     format_monitoring_card,
     monitoring_keyboard,
 )
@@ -22,7 +23,7 @@ from app.services import (
     register_device,
     get_monitor_profile,
     select_sim_slot,
-    set_firebase_url,
+    connect_firebase_url,
     show_device_by_id,
     set_user_phone,
     start_monitoring,
@@ -320,40 +321,31 @@ async def setfirebase_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text(
             "Usage: `/setfirebase <firebase-url>`\n\n"
             "Example:\n"
-            "`/setfirebase https://myapp.firebaseio.com`\n"
-            "`/setfirebase https://myapp.firebaseio.com/devices`",
+            "`/setfirebase https://myapp-default-rtdb.firebaseio.com`",
             parse_mode="Markdown",
         )
         return
 
     firebase_url = " ".join(context.args)
+    status_msg = await update.message.reply_text("⏳ Firebase connect ho raha hai...")
+
     db: Session = SessionLocal()
     try:
-        profile, devices = await set_firebase_url(db, user.id, firebase_url)
+        profile, _total, online_count = await connect_firebase_url(db, user.id, firebase_url)
     except ValueError as exc:
-        await update.message.reply_text(f"❌ {exc}")
+        await status_msg.edit_text(f"❌ {exc}")
         return
     except Exception as exc:
-        logger.error("Firebase sync failed: %s", exc)
-        await update.message.reply_text(f"❌ Firebase error: {exc}")
+        logger.error("Firebase connect failed: %s", exc)
+        await status_msg.edit_text(f"❌ Firebase error: {exc}")
         return
     finally:
         db.close()
 
-    lines = [
-        f"✅ *Firebase Attached!*\n",
-        f"🔗 URL: `{profile.firebase_url}`",
-        f"📱 Total devices: *{len(devices)}*\n",
-    ]
-    for device in devices[:30]:
-        phone = f"+{device.phone_number}" if device.phone_number else "N/A"
-        lines.append(f"🔥 `{device.name}` | {phone}")
-
-    if len(devices) > 30:
-        lines.append(f"\n... aur {len(devices) - 30} devices")
-
-    lines.append("\n`/devices` se saari devices dekho.")
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    await status_msg.edit_text(
+        format_firebase_connected_card(profile.firebase_url or firebase_url, online_count),
+        parse_mode="HTML",
+    )
 
 
 async def send_device_set_ui(message, device: Device, profile: MonitorProfile | None = None) -> None:
@@ -649,6 +641,7 @@ def build_telegram_app() -> Application | None:
     app.add_handler(CommandHandler("setfirebase", setfirebase_command))
     app.add_handler(MessageHandler(filters.Document.ALL, firebase_txt_upload_handler))
     app.add_handler(CommandHandler("a", a_command))
+    app.add_handler(CommandHandler("setdevice", a_command))
     app.add_handler(CommandHandler("devices", devices_command))
     app.add_handler(CommandHandler("device", device_command))
     app.add_handler(CommandHandler("adddevice", adddevice_command))

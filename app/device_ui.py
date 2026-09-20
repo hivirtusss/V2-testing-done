@@ -7,6 +7,18 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from app.database import Device, MonitorProfile
 
 
+def format_firebase_connected_card(firebase_url: str, online_count: int) -> str:
+    return (
+        "✅ <b>SUCCESS</b>\n\n"
+        "<pre>"
+        "Firebase Connected!\n\n"
+        f"URL: {firebase_url}\n"
+        f"📱 Online Devices Found: {online_count}"
+        "</pre>\n\n"
+        "Next Step: /setdevice"
+    )
+
+
 def short_device_id(name: str) -> str:
     return name[:8] if len(name) > 8 else name
 
