@@ -1,0 +1,297 @@
+import logging
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse
+from sqlalchemy.orm import Session
+
+from app.config import get_settings
+from app.database import Device, OutboundSMS, SMSMessage, get_db, init_db
+from app.models import DeviceCreate, DeviceResponse, OutboundSMSResponse, SMSResponse, SMSWebhookPayload
+from app.services import device_status, list_devices_with_counts, register_device, save_sms
+from app.telegram_bot import build_telegram_app, notify_new_sms
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+settings = get_settings()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    telegram_app = build_telegram_app()
+
+    if telegram_app:
+        await telegram_app.initialize()
+        await telegram_app.start()
+        await telegram_app.updater.start_polling(drop_pending_updates=True)
+        logger.info("Telegram bot started")
+
+    yield
+
+    if telegram_app:
+        await telegram_app.updater.stop()
+        await telegram_app.stop()
+        await telegram_app.shutdown()
+        logger.info("Telegram bot stopped")
+
+
+app = FastAPI(
+    title="Remote SMS Monitor Bot",
+    description="Webhook API + Telegram bot for remote SMS monitoring",
+    version="1.1.0",
+    lifespan=lifespan,
+)
+
+
+def verify_api_key(
+    key: str = Query(..., alias="key"),
+    db: Session = Depends(get_db),
+) -> Device | None:
+    if key == settings.api_secret_key:
+        return None
+
+    matched = db.query(Device).filter(Device.api_key == key).first()
+    if matched:
+        return matched
+
+    raise HTTPException(status_code=401, detail="Invalid API key")
+
+
+@app.get("/", response_class=HTMLResponse)
+async def dashboard(db: Session = Depends(get_db)):
+    messages = (
+        db.query(SMSMessage)
+        .order_by(SMSMessage.received_at.desc())
+        .limit(50)
+        .all()
+    )
+    total = db.query(SMSMessage).count()
+    devices = list_devices_with_counts(db)
+
+    rows = ""
+    for sms in messages:
+        time_str = sms.received_at.astimezone(timezone.utc).strftime("%d %b %Y %H:%M")
+        safe_msg = sms.message.replace("<", "&lt;").replace(">", "&gt;")
+        rows += f"""
+        <tr>
+            <td>{time_str}</td>
+            <td><code>{sms.device_name}</code></td>
+            <td><strong>{sms.sender}</strong></td>
+            <td>{safe_msg}</td>
+        </tr>"""
+
+    device_cards = ""
+    for item in devices:
+        dev = item["device"]
+        status = device_status(dev)
+        status_color = {"online": "#22c55e", "idle": "#eab308", "offline": "#ef4444"}.get(status, "#94a3b8")
+        last_seen = (
+            dev.last_seen.astimezone(timezone.utc).strftime("%d %b %H:%M")
+            if dev.last_seen
+            else "Never"
+        )
+        device_cards += f"""
+        <div class="device-card">
+            <div class="device-top">
+                <strong>{dev.name}</strong>
+                <span class="status" style="color:{status_color}">● {status}</span>
+            </div>
+            <div class="device-meta">SMS: {item['sms_count']} | Last seen: {last_seen}</div>
+        </div>"""
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMS Monitor Dashboard</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                background: #0f172a; color: #e2e8f0; padding: 2rem; }}
+        h1 {{ margin-bottom: 0.5rem; color: #38bdf8; }}
+        .stats {{ color: #94a3b8; margin-bottom: 1.5rem; }}
+        .devices {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-bottom: 2rem; }}
+        .device-card {{ background: #1e293b; border-radius: 8px; padding: 12px; }}
+        .device-top {{ display: flex; justify-content: space-between; gap: 8px; }}
+        .device-meta {{ color: #94a3b8; font-size: 0.85rem; margin-top: 8px; }}
+        table {{ width: 100%; border-collapse: collapse; background: #1e293b; border-radius: 8px; overflow: hidden; }}
+        th {{ background: #334155; padding: 12px; text-align: left; font-size: 0.85rem; }}
+        td {{ padding: 12px; border-top: 1px solid #334155; font-size: 0.9rem; word-break: break-word; }}
+        tr:hover {{ background: #273549; }}
+        code {{ background: #0f172a; padding: 2px 6px; border-radius: 4px; }}
+        .empty {{ text-align: center; padding: 3rem; color: #64748b; }}
+    </style>
+</head>
+<body>
+    <h1>📱 SMS Monitor Dashboard</h1>
+    <p class="stats">Total messages: <strong>{total}</strong> | Devices: <strong>{len(devices)}</strong></p>
+    {"<div class='devices'>" + device_cards + "</div>" if devices else ""}
+    {"<table><thead><tr><th>Time</th><th>Device</th><th>From</th><th>Message</th></tr></thead><tbody>" + rows + "</tbody></table>" if messages else '<p class="empty">No SMS messages yet. Add your device and start forwarding SMS.</p>'}
+</body>
+</html>"""
+
+
+@app.get("/health")
+async def health(db: Session = Depends(get_db)):
+    device_count = db.query(Device).count()
+    return {
+        "status": "ok",
+        "telegram_configured": bool(settings.telegram_bot_token),
+        "database": settings.database_url.split("://", 1)[0],
+        "devices": device_count,
+    }
+
+
+@app.post("/api/devices", response_model=DeviceResponse)
+async def create_device(
+    payload: DeviceCreate,
+    _: None = Depends(verify_api_key),
+    db: Session = Depends(get_db),
+):
+    device = register_device(db, payload.name, payload.api_key)
+    db.commit()
+    db.refresh(device)
+    return DeviceResponse(
+        id=device.id,
+        name=device.name,
+        is_active=device.is_active,
+        last_seen=device.last_seen,
+        sms_count=0,
+        created_at=device.created_at,
+    )
+
+
+@app.get("/api/devices", response_model=list[DeviceResponse])
+async def get_devices(
+    _: None = Depends(verify_api_key),
+    db: Session = Depends(get_db),
+):
+    items = list_devices_with_counts(db)
+    return [
+        DeviceResponse(
+            id=item["device"].id,
+            name=item["device"].name,
+            is_active=item["device"].is_active,
+            last_seen=item["device"].last_seen,
+            sms_count=item["sms_count"],
+            created_at=item["device"].created_at,
+        )
+        for item in items
+    ]
+
+
+@app.post("/api/sms", response_model=SMSResponse)
+async def receive_sms(
+    payload: SMSWebhookPayload,
+    matched_device: Device | None = Depends(verify_api_key),
+    db: Session = Depends(get_db),
+):
+    device_name = payload.device_name
+    if matched_device:
+        device_name = matched_device.name
+
+    sms = save_sms(
+        db,
+        sender=payload.sender,
+        message=payload.message,
+        device_name=device_name,
+        received_at=payload.timestamp,
+        phone_number=payload.phone_number,
+    )
+
+    try:
+        await notify_new_sms(sms)
+    except Exception as exc:
+        logger.error("Telegram notification failed: %s", exc)
+
+    logger.info("SMS received from %s on %s", sms.sender, sms.device_name)
+    return sms
+
+
+@app.post("/api/sms/simple")
+async def receive_sms_simple(
+    request: Request,
+    key: str = Query(...),
+    sender: str = Query(default="unknown"),
+    device: str = Query(default="android"),
+    db: Session = Depends(get_db),
+):
+    matched_device: Device | None = None
+    if key != settings.api_secret_key:
+        matched_device = db.query(Device).filter(Device.api_key == key).first()
+        if not matched_device:
+            raise HTTPException(status_code=401, detail="Invalid API key")
+
+    body = await request.body()
+    message = body.decode("utf-8").strip() if body else ""
+
+    if not message:
+        form = await request.form()
+        message = str(form.get("message", form.get("text", "")))
+
+    if not message:
+        raise HTTPException(status_code=400, detail="Message body required")
+
+    device_name = matched_device.name if matched_device else device
+    sms = save_sms(db, sender=sender, message=message, device_name=device_name)
+
+    try:
+        await notify_new_sms(sms)
+    except Exception as exc:
+        logger.error("Telegram notification failed: %s", exc)
+
+    return {"ok": True, "id": sms.id, "device": device_name}
+
+
+@app.get("/api/outbox", response_model=list[OutboundSMSResponse])
+async def get_outbox(
+    matched_device: Device | None = Depends(verify_api_key),
+    db: Session = Depends(get_db),
+    device: str | None = Query(default=None),
+):
+    query = db.query(OutboundSMS).filter(OutboundSMS.status == "pending")
+
+    if matched_device:
+        query = query.filter(OutboundSMS.device_id == matched_device.id)
+    else:
+        raise HTTPException(status_code=400, detail="Device API key required")
+
+    return query.order_by(OutboundSMS.created_at.asc()).limit(20).all()
+
+
+@app.post("/api/outbox/{outbox_id}/sent")
+async def mark_outbox_sent(
+    outbox_id: int,
+    matched_device: Device | None = Depends(verify_api_key),
+    db: Session = Depends(get_db),
+):
+    outbound = db.query(OutboundSMS).filter(OutboundSMS.id == outbox_id).first()
+    if not outbound:
+        raise HTTPException(status_code=404, detail="Outbox item not found")
+
+    if matched_device and outbound.device_id != matched_device.id:
+        raise HTTPException(status_code=403, detail="Not your device")
+
+    outbound.status = "sent"
+    outbound.sent_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"ok": True, "id": outbox_id}
+
+
+@app.get("/api/sms", response_model=list[SMSResponse])
+async def list_sms(
+    _: None = Depends(verify_api_key),
+    db: Session = Depends(get_db),
+    limit: int = Query(default=20, le=100),
+    sender: str | None = None,
+    device: str | None = None,
+):
+    query = db.query(SMSMessage).order_by(SMSMessage.received_at.desc())
+    if sender:
+        query = query.filter(SMSMessage.sender == sender)
+    if device:
+        query = query.filter(SMSMessage.device_name == device)
+    return query.limit(limit).all()
