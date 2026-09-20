@@ -126,22 +126,65 @@ def resume_monitoring(db: Session, telegram_user_id: int) -> tuple[MonitorProfil
     return profile, device
 
 
-def set_inject_key(db: Session, telegram_user_id: int, inject_key: str) -> Device:
-    if not inject_key.startswith("KEY-"):
-        raise ValueError("Format: KEY-XXXX-XXXX-XXXX")
+async def set_license_key(
+    db: Session,
+    telegram_user_id: int,
+    key_value: str,
+) -> tuple[MonitorProfile, str, str]:
+    """Set license key — Firebase URL or KEY-XXXX format. Returns (profile, display_key, key_type)."""
+    profile = get_or_create_monitor_profile(db, telegram_user_id)
+    key_value = key_value.strip()
 
+    if key_value.startswith(("http://", "https://")):
+        profile, _total, _online = await connect_firebase_url(db, telegram_user_id, key_value)
+        display_key = normalize_firebase_url(key_value).upper()
+        profile.license_key = display_key
+        db.commit()
+        db.refresh(profile)
+
+        from app.firebase_sync import sync_profile_to_firebase
+
+        device = None
+        if profile.active_device_id:
+            device = db.query(Device).filter(Device.id == profile.active_device_id).first()
+        await sync_profile_to_firebase(profile, device)
+
+        return profile, display_key, "firebase"
+
+    if key_value.upper().startswith("KEY-"):
+        normalized_key = key_value.upper()
+        profile.license_key = normalized_key
+
+        device = None
+        if profile.active_device_id:
+            device = db.query(Device).filter(Device.id == profile.active_device_id).first()
+            if device:
+                device.api_key = normalized_key
+
+        db.commit()
+        db.refresh(profile)
+        return profile, normalized_key, "key"
+
+    raise ValueError("invalid_format")
+
+
+def set_inject_key(db: Session, telegram_user_id: int, inject_key: str) -> Device:
     profile = get_or_create_monitor_profile(db, telegram_user_id)
     device = None
     if profile.active_device_id:
         device = db.query(Device).filter(Device.id == profile.active_device_id).first()
 
-    if not device:
-        raise ValueError("Pehle /setdevice <id> se device select karo")
+    if inject_key.upper().startswith("KEY-"):
+        profile.license_key = inject_key.upper()
+        if device:
+            device.api_key = inject_key.upper()
+        else:
+            raise ValueError("Pehle /setdevice <id> se device select karo")
+        db.commit()
+        db.refresh(device)
+        return device
 
-    device.api_key = inject_key
-    db.commit()
-    db.refresh(device)
-    return device
+    raise ValueError("invalid_format")
 
 
 def stop_monitoring(db: Session, telegram_user_id: int) -> MonitorProfile:

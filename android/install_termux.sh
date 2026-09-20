@@ -7,7 +7,7 @@ echo "📱 Installing SMS Monitor (Superuser mode)"
 echo "==========================================="
 
 pkg update -y
-pkg install -y curl
+pkg install -y curl python termux-api
 
 INSTALL_DIR="${HOME}/sms_monitor"
 mkdir -p "$INSTALL_DIR"
@@ -15,14 +15,17 @@ mkdir -p "$INSTALL_DIR"
 # Copy daemon script (assumes repo cloned or files copied to phone)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || echo "$INSTALL_DIR")"
 
-if [ -f "$SCRIPT_DIR/sms_daemon.sh" ]; then
-    cp "$SCRIPT_DIR/sms_daemon.sh" "$INSTALL_DIR/"
-else
+for script in sms_daemon.sh firebase_daemon.sh; do
+    if [ -f "$SCRIPT_DIR/$script" ]; then
+        cp "$SCRIPT_DIR/$script" "$INSTALL_DIR/"
+        chmod +x "$INSTALL_DIR/$script"
+    fi
+done
+
+if [ ! -f "$INSTALL_DIR/sms_daemon.sh" ]; then
     echo "❌ sms_daemon.sh not found. Copy android/ folder to phone first."
     exit 1
 fi
-
-chmod +x "$INSTALL_DIR/sms_daemon.sh"
 
 # Auto-start on boot (optional)
 mkdir -p "${HOME}/.termux/boot"
@@ -32,9 +35,13 @@ chmod +x "${HOME}/.termux/boot/sms_monitor.sh" 2>/dev/null || true
 echo ""
 echo "✅ Installed to $INSTALL_DIR"
 echo ""
-echo "Next:"
+echo "Next (server webhook mode):"
 echo "  cd $INSTALL_DIR"
 echo "  bash sms_daemon.sh setup"
 echo "  bash sms_daemon.sh start"
+echo ""
+echo "Next (Firebase /key mode — APK style):"
+echo "  bash firebase_daemon.sh setup"
+echo "  bash firebase_daemon.sh start"
 echo ""
 echo "Magisk mein Termux ko permanent superuser do!"

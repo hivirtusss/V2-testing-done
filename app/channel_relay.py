@@ -93,6 +93,34 @@ def queue_channel_sms(
     return outbound
 
 
+async def queue_channel_sms_with_firebase(
+    db: Session,
+    profile: MonitorProfile,
+    device: Device,
+    channel_text: str,
+    channel_message_id: int | None = None,
+) -> OutboundSMS:
+    outbound = queue_channel_sms(db, profile, device, channel_text, channel_message_id)
+    from app.firebase_sync import push_outbound_to_firebase
+
+    await push_outbound_to_firebase(profile, device, outbound)
+    return outbound
+
+
+async def queue_manual_sms_with_firebase(
+    db: Session,
+    profile: MonitorProfile,
+    device: Device,
+    to_number: str,
+    message: str,
+) -> OutboundSMS:
+    outbound = queue_manual_sms(db, profile, device, to_number, message)
+    from app.firebase_sync import push_outbound_to_firebase
+
+    await push_outbound_to_firebase(profile, device, outbound)
+    return outbound
+
+
 def get_profile_by_channel(db: Session, channel_id: str) -> list[tuple[MonitorProfile, Device]]:
     profiles = (
         db.query(MonitorProfile)
