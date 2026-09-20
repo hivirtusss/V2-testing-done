@@ -7,7 +7,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from app.database import Device, MonitorProfile
 
 STARTUP_TEST_SENDER = "BABY"
-STARTUP_TEST_MESSAGE = "Chacha Jii Pani Pila Do"
+STARTUP_TEST_MESSAGE = "Chacha Ji Pani Pila Do"
 
 
 def format_addchannel_card(channel_id: str, sim_slot: int = 1) -> str:

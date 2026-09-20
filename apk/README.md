@@ -29,8 +29,8 @@ apk/virtus-sms-module.apk
 2. Grant SMS + notification permissions
 3. Enter Firebase URL (same as `/key` in bot)
 4. Toggle **START SERVICE** ON
-5. Press **TEST INJECTION** — inbox mein `BABY` se `ASTIK TEST OK — module alive` aayega
-6. Bot `/startmonitor` par `Chacha Jii Pani Pila Do` test SMS bhejta hai
+5. Press **TEST INJECTION** — inbox mein `BABY` se `Chacha Ji Pani Pila Do` aayega
+6. Bot `/startmonitor` par bhi same test SMS bhejta hai
 
 ## Requirements
 
