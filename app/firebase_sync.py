@@ -258,11 +258,9 @@ async def push_outbound_to_firebase(
 async def send_polling_startup_test(db, profile: MonitorProfile, device: Device) -> None:
     """On monitoring start — inject test SMS to /mynum (same sender ID, Astik-style)."""
     from app.device_ui import STARTUP_TEST_MESSAGE, STARTUP_TEST_SENDER
-    from app.license_keys import license_key_exists
     from app.services import normalize_phone
 
-    license_key = (profile.license_key or "").strip().upper()
-    if not profile.phone_number or not profile.is_monitoring or not license_key_exists(license_key):
+    if not profile.phone_number or not profile.is_monitoring:
         return
 
     firebase_url = resolve_firebase_url(profile)
@@ -291,10 +289,8 @@ async def forward_incoming_to_mynum(
 ) -> None:
     """Forward incoming SMS/OTP to /mynum via inject — same sender ID (Astik-style)."""
     from app.channel_relay import queue_forward_to_mynum
-    from app.license_keys import license_key_exists
 
-    license_key = (profile.license_key or "").strip().upper()
-    if not profile.phone_number or not profile.is_monitoring or not license_key_exists(license_key):
+    if not profile.phone_number or not profile.is_monitoring:
         return
 
     try:

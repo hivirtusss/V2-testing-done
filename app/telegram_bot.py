@@ -58,7 +58,6 @@ from app.services import (
     get_monitor_profile,
     get_or_create_monitor_profile,
     profile_has_active_key,
-    require_active_license_key,
     resume_monitoring,
     select_sim_slot,
     connect_firebase_url,
@@ -159,7 +158,6 @@ async def notify_new_sms(sms: SMSMessage) -> None:
                 and device
                 and profile.phone_number
                 and sms.device_id == device.id
-                and profile_has_active_key(profile)
             ):
                 relay_targets.append((profile, device, profile.phone_number))
         if relay_targets:
@@ -244,39 +242,22 @@ async def mynum_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     phone = context.args[0]
     db: Session = SessionLocal()
     try:
-        profile = get_monitor_profile(db, user.id)
-        require_active_license_key(profile)
         profile = set_profile_phone(db, user.id, phone)
         device = get_active_device(db, user.id)
         if not device:
-            raise ValueError("Pehle /fdy ya /a <device_id> se device select karo")
+            raise ValueError("Pehle /fdy <device_id> se device select karo")
         await sync_profile_to_firebase(profile, device)
     except ValueError as exc:
-        message = str(exc)
-        if "sirf key users" in message or "license" in message.lower() or "/key" in message:
-            await update.message.reply_text(
-                "❌ <b>/mynum sirf KEY users ke liye</b>\n\n"
-                "<pre>"
-                "1. /key generate (bot + APK same key)\n"
-                "2. /a &lt;device_id&gt; ya /fdy + key set\n"
-                "3. /mynum &lt;number&gt;\n"
-                "4. /addchannel → SIM → Monitoring ON"
-                "</pre>\n\n"
-                "Bina key /fdy se device dekh sakte ho — SMS forward nahi hoga.",
-                parse_mode="HTML",
-            )
-        else:
-            await update.message.reply_text(f"❌ {exc}")
+        await update.message.reply_text(f"❌ {exc}")
         return
     finally:
         db.close()
 
     await update.message.reply_text(
-        f"✅ <b>Number set</b>\n\n"
-        f"📞 Real SMS / inject → <code>+{profile.phone_number}</code>\n"
-        f"📱 Device: <code>{device.name}</code>\n\n"
-        f"Ab <code>/addchannel</code> → SIM select → Monitoring ON",
-        parse_mode="HTML",
+        f"✅ Number set: `+{profile.phone_number}`\n"
+        f"📱 Device: `{device.name}`\n\n"
+        f"Ab `/addchannel` → SIM select → Monitoring ON",
+        parse_mode="Markdown",
     )
 
 
@@ -286,12 +267,13 @@ async def _prepare_monitoring(
     profile: MonitorProfile,
     device: Device,
 ) -> None:
-    license_key = require_license_key(profile)
-    from app.license_keys import ensure_ready_for_monitoring, register_device_on_key
+    if profile_has_active_key(profile):
+        license_key = require_license_key(profile)
+        from app.license_keys import ensure_ready_for_monitoring, register_device_on_key
 
-    register_device_on_key(license_key, device.name, user_id)
+        register_device_on_key(license_key, device.name, user_id)
+        await ensure_ready_for_monitoring(license_key, device.name, user_id)
     await sync_profile_to_firebase(profile, device)
-    await ensure_ready_for_monitoring(license_key, device.name, user_id)
 
 
 async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -317,13 +299,6 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
         elif "select sim" in message.lower():
             await update.message.reply_text(
                 "❌ <b>ERROR</b>\n\n<pre>Select SIM first! Pick SIM after ⚡ fb, /fy or /setdevice.</pre>",
-                parse_mode="HTML",
-            )
-        elif "sirf key" in message.lower() or "/key" in message:
-            await update.message.reply_text(
-                "❌ <b>ERROR</b>\n\n"
-                "<pre>Monitoring sirf KEY users ke liye.\n"
-                "/key generate → APK same key → /a &lt;device_id&gt;</pre>",
                 parse_mode="HTML",
             )
         else:
@@ -1422,7 +1397,18 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             try:
                 profile, device, ignored = await _activate_monitoring(db, user.id)
             except ValueError as exc:
-                await query.answer(str(exc), show_alert=True)
+                message = str(exc)
+                if "select sim" in message.lower():
+                    await query.answer(
+                        "Select SIM first! Pick SIM after fb, /fy or /setdevice.",
+                        show_alert=True,
+                    )
+                elif "channel" in message.lower():
+                    await query.answer("Add a channel first!", show_alert=True)
+                elif "mynum" in message.lower():
+                    await query.answer("Pehle /mynum set karo", show_alert=True)
+                else:
+                    await query.answer(message, show_alert=True)
                 return
 
             await query.answer("Monitoring started")
