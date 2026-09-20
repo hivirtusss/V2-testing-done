@@ -5,6 +5,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import Device, MonitorProfile, SMSMessage, get_or_create_device
+from app.firebase_client import fetch_firebase_devices, normalize_firebase_url
 
 
 def normalize_phone(number: str) -> str:
@@ -202,6 +203,58 @@ def list_devices_with_counts(db: Session, owner_telegram_id: int | None = None) 
         }
         for device, sms_count in rows
     ]
+
+
+async def set_firebase_url(db: Session, telegram_user_id: int, firebase_url: str) -> tuple[MonitorProfile, list[Device]]:
+    normalized_url = normalize_firebase_url(firebase_url)
+    remote_devices = await fetch_firebase_devices(normalized_url)
+    if not remote_devices:
+        raise ValueError("Firebase se koi device nahi mili. URL ya path check karo.")
+
+    profile = get_or_create_monitor_profile(db, telegram_user_id)
+    profile.firebase_url = normalized_url
+
+    synced_devices: list[Device] = []
+    for remote in remote_devices:
+        device_name = str(remote["name"])[:128]
+        device = db.query(Device).filter(Device.firebase_key == remote["firebase_key"]).first()
+        if not device:
+            device = db.query(Device).filter(Device.name == device_name).first()
+
+        if device:
+            if device.owner_telegram_id and device.owner_telegram_id != telegram_user_id:
+                continue
+            device.name = device_name
+            device.owner_telegram_id = telegram_user_id
+            device.firebase_key = remote["firebase_key"]
+            device.is_active = True
+            if remote.get("phone_number"):
+                device.phone_number = normalize_phone(remote["phone_number"])
+        else:
+            existing_name = db.query(Device).filter(Device.name == device_name).first()
+            if existing_name:
+                device_name = f"{device_name}-{remote['firebase_key']}"[:128]
+            device = register_device(db, device_name)
+            device.owner_telegram_id = telegram_user_id
+            device.firebase_key = remote["firebase_key"]
+            if remote.get("phone_number"):
+                device.phone_number = normalize_phone(remote["phone_number"])
+
+        synced_devices.append(device)
+
+    db.commit()
+    for device in synced_devices:
+        db.refresh(device)
+    db.refresh(profile)
+    return profile, synced_devices
+
+
+async def resync_firebase_devices(db: Session, telegram_user_id: int) -> list[Device]:
+    profile = get_monitor_profile(db, telegram_user_id)
+    if not profile or not profile.firebase_url:
+        raise ValueError("Pehle /setfirebase <url> use karo")
+    _, devices = await set_firebase_url(db, telegram_user_id, profile.firebase_url)
+    return devices
 
 
 def device_status(device: Device) -> str:
