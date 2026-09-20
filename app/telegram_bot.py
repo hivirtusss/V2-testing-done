@@ -15,6 +15,7 @@ from app.channel_relay import (
     queue_manual_sms_with_firebase,
 )
 from app.firebase_sync import forward_incoming_to_mynum, sync_profile_to_firebase
+from app.monitor_timer import cancel_auto_stop, schedule_auto_stop
 from app.device_ui import (
     device_set_keyboard,
     format_addchannel_card,
@@ -254,6 +255,8 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
             except Exception as exc:
                 logger.warning("Startup inject push failed: %s", exc)
 
+    schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
+
 
 async def addchannel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
@@ -374,6 +377,7 @@ async def stopmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     finally:
         db.close()
 
+    cancel_auto_stop(user.id)
     await update.message.reply_text(
         "🔴 <b>STOPPED</b>\n\n"
         "<pre>"
@@ -602,6 +606,7 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             bot = Bot(token=settings.telegram_bot_token)
             await _post_to_channel(bot, profile.channel_id, monitoring_card)
             await _post_to_channel(bot, profile.channel_id, startup_card)
+        schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
     else:
         await update.message.reply_text("🟢 Monitor resumed!", parse_mode="HTML")
 
@@ -921,6 +926,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         if data.startswith("stop:"):
             profile = stop_monitoring(db, user.id)
             device = get_active_device(db, user.id)
+            cancel_auto_stop(user.id)
             await sync_profile_to_firebase(profile, device)
             await query.edit_message_text("🔴 <b>STOPPED</b>\n\nMonitoring band ho gaya.", parse_mode="HTML")
             return
@@ -928,6 +934,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         if data == "monitor:stop":
             profile = stop_monitoring(db, user.id)
             device = get_active_device(db, user.id)
+            cancel_auto_stop(user.id)
             await sync_profile_to_firebase(profile, device)
             await query.edit_message_text("🔴 <b>STOPPED</b>\n\nMonitoring band ho gaya.", parse_mode="HTML")
             return

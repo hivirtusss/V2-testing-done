@@ -201,6 +201,16 @@ def format_virtus_channel_token_card(
     )
 
 
+def format_auto_stop_card(minutes: int = 15) -> str:
+    return (
+        "✅ <b>SUCCESS</b>\n\n"
+        "<pre>"
+        f"⏱ Monitoring AUTO-STOPPED after {minutes} minutes.\n"
+        "Use /startmonitor to start again."
+        "</pre>"
+    )
+
+
 def format_monitoring_card(
     device: Device,
     profile: MonitorProfile,
