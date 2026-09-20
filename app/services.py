@@ -63,7 +63,7 @@ def set_user_phone(db: Session, telegram_user_id: int, phone_number: str) -> tup
 def start_monitoring(db: Session, telegram_user_id: int) -> tuple[MonitorProfile, Device]:
     profile = get_monitor_profile(db, telegram_user_id)
     if not profile or not profile.active_device_id:
-        raise ValueError("Pehle /a <deviceid> se device select karo")
+        raise ValueError("Pehle /fdy <deviceid> ya /a <deviceid> se device select karo")
     if not profile.phone_number:
         raise ValueError("Pehle /mynum <number> set karo")
 
@@ -311,31 +311,51 @@ def save_sms(
 
 
 def get_device_by_identifier(db: Session, deviceid: str, exact: bool = False) -> Device | None:
-    if deviceid.isdigit():
-        by_id = db.query(Device).filter(Device.id == int(deviceid)).first()
-        if by_id:
-            return by_id
-
-    device = db.query(Device).filter(Device.name == deviceid).first()
-    if device:
-        return device
-
-    device = db.query(Device).filter(Device.firebase_key == deviceid).first()
-    if device:
-        return device
-
-    device = (
-        db.query(Device)
-        .filter(Device.firebase_key.endswith(f"/{deviceid}"))
-        .first()
-    )
-    if device:
-        return device
-
-    if exact:
+    matches = search_devices(db, deviceid, limit=2 if exact else 1)
+    if not matches:
         return None
+    if exact and len(matches) > 1:
+        return None
+    return matches[0]
 
-    return db.query(Device).filter(Device.firebase_key.ilike(f"%{deviceid}%")).first()
+
+def search_devices(db: Session, deviceid: str, limit: int = 10) -> list[Device]:
+    query = (deviceid or "").strip()
+    if not query:
+        return []
+
+    if query.isdigit():
+        by_id = db.query(Device).filter(Device.id == int(query)).first()
+        if by_id:
+            return [by_id]
+
+    exact_name = db.query(Device).filter(Device.name == query).all()
+    if exact_name:
+        return exact_name[:limit]
+
+    exact_key = db.query(Device).filter(Device.firebase_key == query).all()
+    if exact_key:
+        return exact_key[:limit]
+
+    suffix_matches = (
+        db.query(Device)
+        .filter(Device.firebase_key.endswith(f"/{query}"))
+        .limit(limit)
+        .all()
+    )
+    if suffix_matches:
+        return suffix_matches
+
+    partial = (
+        db.query(Device)
+        .filter(
+            (Device.name.ilike(f"%{query}%")) | (Device.firebase_key.ilike(f"%{query}%"))
+        )
+        .order_by(Device.last_seen.desc().nullslast(), Device.name)
+        .limit(limit)
+        .all()
+    )
+    return partial
 
 
 async def sync_device_from_firebase(db: Session, device: Device) -> Device:
@@ -377,10 +397,18 @@ async def show_device_by_id(
     db: Session,
     deviceid: str,
     telegram_user_id: int,
+    *,
+    bind_license_key: bool = True,
 ) -> tuple[Device, MonitorProfile]:
-    device = get_device_by_identifier(db, deviceid, exact=True)
-    if not device:
+    matches = search_devices(db, deviceid, limit=6)
+    if not matches:
         raise LookupError("Device nahi mili")
+    if len(matches) > 1:
+        raise LookupError(
+            "multiple:"
+            + "|".join(f"{item.name}:{item.firebase_key or '-'}" for item in matches[:5])
+        )
+    device = matches[0]
 
     if device.firebase_source_url:
         device = await sync_device_from_firebase(db, device)
@@ -409,10 +437,21 @@ async def show_device_by_id(
     db.refresh(device)
     db.refresh(profile)
 
-    if profile.license_key and profile.license_key.upper().startswith("KEY-"):
+    if (
+        bind_license_key
+        and profile.license_key
+        and profile.license_key.upper().startswith("KEY-")
+    ):
         await bind_device_to_license_key(db, profile, device)
 
     return device, profile
+
+
+def require_license_key(profile: MonitorProfile | None) -> str:
+    license_key = (profile.license_key or "").strip().upper() if profile else ""
+    if not license_key.startswith("KEY-"):
+        raise ValueError("Pehle /key generate aur /key KEY-XXXX set karo (bot + APK same key).")
+    return license_key
 
 
 def get_active_device(db: Session, telegram_user_id: int) -> Device | None:

