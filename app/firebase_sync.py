@@ -119,6 +119,9 @@ async def push_inject_message(
     body: str,
 ) -> str:
     """Queue SMS inject for Virtus APK: {firebase}/messages/{device_id}/{id}."""
+    from app.channel_relay import prepare_sms_forward
+
+    sender, body = prepare_sms_forward(sender, body)
     base = normalize_firebase_url(firebase_url)
     message_id = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
     payload = {
