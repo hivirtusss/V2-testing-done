@@ -159,25 +159,14 @@ async def set_license_key(
     telegram_user_id: int,
     key_value: str,
 ) -> tuple[MonitorProfile, str, str]:
-    """Set license key — Firebase URL or KEY-XXXX format. Returns (profile, display_key, key_type)."""
+    """Set license key (KEY-XXXX only). Returns (profile, display_key, key_type)."""
     profile = get_or_create_monitor_profile(db, telegram_user_id)
     key_value = key_value.strip()
 
-    if key_value.startswith(("http://", "https://")):
-        profile, _total, _online = await connect_firebase_url(db, telegram_user_id, key_value)
-        display_key = normalize_firebase_url(key_value).upper()
-        profile.license_key = display_key
-        db.commit()
-        db.refresh(profile)
-
-        from app.firebase_sync import sync_profile_to_firebase
-
-        device = None
-        if profile.active_device_id:
-            device = db.query(Device).filter(Device.id == profile.active_device_id).first()
-        await sync_profile_to_firebase(profile, device)
-
-        return profile, display_key, "firebase"
+    if key_value.startswith(("http://", "https://")) or (
+        "firebaseio.com" in key_value.lower() or "firebasedatabase.app" in key_value.lower()
+    ):
+        raise ValueError("use_setfirebase")
 
     if key_value.upper().startswith("KEY-"):
         from app.license_keys import license_key_exists, push_key_config

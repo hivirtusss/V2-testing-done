@@ -427,14 +427,18 @@ async def allfirebase_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     context.user_data[AWAITING_FIREBASE_TXT] = True
     await update.message.reply_text(
-        "📄 *Bulk Firebase Import*\n\n"
-        "Ab `.txt` file attach karo.\n\n"
-        "*Supported formats (har line):*\n"
-        "`deviceid`\n"
-        "`deviceid|https://firebase-url.com`\n"
-        "`https://firebase-url.com`\n\n"
-        "Import ke baad `/a <deviceid>` likho — sirf woh ek device dikhegi.",
-        parse_mode="Markdown",
+        "📄 <b>Bulk Firebase Import</b>\n\n"
+        "Ab <code>.txt</code> file attach karo — har Firebase <b>scan</b> hoga.\n\n"
+        "<b>Har line format:</b>\n"
+        "<pre>"
+        "https://app1-default-rtdb.firebaseio.com\n"
+        "https://app2-default-rtdb.asia-south1.firebasedatabase.app\n"
+        "mydevice|https://app3-default-rtdb.firebaseio.com\n"
+        "deviceid,https://app4-default-rtdb.firebaseio.com"
+        "</pre>\n"
+        "Import ke baad: <code>/a &lt;device_id&gt;</code>\n\n"
+        "Ek URL ke liye: <code>/setfirebase &lt;url&gt;</code>",
+        parse_mode="HTML",
     )
 
 
@@ -455,7 +459,7 @@ async def firebase_txt_upload_handler(update: Update, context: ContextTypes.DEFA
         return
 
     context.user_data[AWAITING_FIREBASE_TXT] = False
-    status_msg = await update.message.reply_text("⏳ Txt file read ho rahi hai...")
+    status_msg = await update.message.reply_text("⏳ Txt file read ho rahi hai — Firebase scan start...")
 
     try:
         telegram_file = await document.get_file()
@@ -478,7 +482,7 @@ async def firebase_txt_upload_handler(update: Update, context: ContextTypes.DEFA
             pass
 
     try:
-        result = await bulk_import_from_txt(db, content, live_fetch=False, on_progress=on_progress)
+        result = await bulk_import_from_txt(db, content, live_fetch=True, on_progress=on_progress)
     except ValueError as exc:
         await status_msg.edit_text(f"❌ {exc}")
         return
@@ -490,11 +494,16 @@ async def firebase_txt_upload_handler(update: Update, context: ContextTypes.DEFA
         db.close()
 
     await status_msg.edit_text(
-        f"✅ *{result['imported']} Firebase attached!*\n\n"
-        f"Ab device dekhne ke liye likho:\n"
-        f"`/a <deviceid>`\n\n"
-        f"Sirf woh ek device dikhegi — saari list nahi.",
-        parse_mode="Markdown",
+        "✅ <b>Firebase Scan Complete</b>\n\n"
+        "<pre>"
+        f"Lines: {result['lines']}\n"
+        f"Devices found: {result['imported']}\n"
+        f"Failed: {result['failed']}\n"
+        f"Pool total: {result['pool_total']}"
+        "</pre>\n"
+        "Device pick: <code>/a &lt;device_id&gt;</code>\n"
+        "License key: <code>/key generate</code>",
+        parse_mode="HTML",
     )
 
 
@@ -505,10 +514,15 @@ async def setfirebase_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if not context.args:
         await update.message.reply_text(
-            "Usage: `/setfirebase <firebase-url>`\n\n"
-            "Example:\n"
-            "`/setfirebase https://myapp-default-rtdb.firebaseio.com`",
-            parse_mode="Markdown",
+            "🔥 <b>Firebase Connect</b>\n\n"
+            "<pre>"
+            "/setfirebase https://myapp-default-rtdb.firebaseio.com\n"
+            "/setfirebase myapp-default-rtdb.asia-south1.firebasedatabase.app"
+            "</pre>\n"
+            "Devices auto-scan honge.\n\n"
+            "Bulk txt (1600+): <code>/allfirebase</code> → .txt attach\n"
+            "License key alag: <code>/key generate</code>",
+            parse_mode="HTML",
         )
         return
 
@@ -756,12 +770,31 @@ async def key_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text("\n".join(lines))
         return
 
-    key_value = " ".join(context.args)
+    key_value = " ".join(context.args).strip()
+    if key_value.startswith(("http://", "https://")) or (
+        "firebaseio.com" in key_value.lower() or "firebasedatabase.app" in key_value.lower()
+    ):
+        await update.message.reply_text(
+            "❌ Firebase URL yahan nahi.\n\n"
+            "Firebase: <code>/setfirebase &lt;url&gt;</code>\n"
+            "Bulk txt: <code>/allfirebase</code>\n"
+            "License key: <code>/key generate</code>",
+            parse_mode="HTML",
+        )
+        return
+
     db: Session = SessionLocal()
     try:
-        profile, display_key, key_type = await set_license_key(db, user.id, key_value)
+        profile, display_key, _key_type = await set_license_key(db, user.id, key_value)
     except ValueError as exc:
-        if str(exc) == "invalid_format":
+        if str(exc) == "use_setfirebase":
+            await update.message.reply_text(
+                "❌ Firebase URL <code>/key</code> se nahi set hota.\n\n"
+                "Use: <code>/setfirebase &lt;url&gt;</code>\n"
+                "Bulk: <code>/allfirebase</code>",
+                parse_mode="HTML",
+            )
+        elif str(exc) == "invalid_format":
             await update.message.reply_text(format_key_error_card(), parse_mode="HTML")
         elif str(exc) == "invalid_key":
             await update.message.reply_text(
@@ -780,16 +813,10 @@ async def key_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     finally:
         db.close()
 
-    if key_type == "firebase":
-        await update.message.reply_text(
-            format_license_key_set_card(display_key),
-            parse_mode="HTML",
-        )
-    else:
-        await update.message.reply_text(
-            format_key_set_card(display_key),
-            parse_mode="HTML",
-        )
+    await update.message.reply_text(
+        format_key_set_card(display_key),
+        parse_mode="HTML",
+    )
 
 
 async def devices_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
