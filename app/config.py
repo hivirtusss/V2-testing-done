@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     api_secret_key: str = "dev-secret-change-me"
     database_url: str = "sqlite:///./sms_monitor.db"
     port: int = 8000
+    virtus_module_db: str = "https://virtus-module-default-rtdb.firebaseio.com"
 
     @property
     def allowed_user_ids(self) -> set[int]:

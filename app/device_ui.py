@@ -164,7 +164,7 @@ def monitoring_keyboard() -> InlineKeyboardMarkup:
 
 def format_welcome_message() -> str:
     return (
-        "✨ <b>Welcome to Premium Automation</b>\n"
+        "✨ <b>Welcome to Virtus SMS Automation</b>\n"
         "Fast, secure, and reliable OTP forwarding\n"
         "directly to your Firebase connected devices.\n\n"
         "━━━━━━━━━━━━━━━━━━━━\n"

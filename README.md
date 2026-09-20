@@ -39,7 +39,7 @@ Bot tumhe device ka API key dega.
 **Option 2 — Auto add:**
 Jab bhi koi device SMS bhejti hai, wo automatically database mein add ho jati hai.
 
-**Astik-style /key flow (Firebase + APK inject):**
+**Virtus /key flow (Firebase + APK inject):**
 ```
 /key https://base-e3797-default-rtdb.firebaseio.com   → License key set
 /fy <device_id>        → device select + SIM pick
