@@ -199,6 +199,7 @@ async def receive_sms(
         message=payload.message,
         device_name=device_name,
         received_at=payload.timestamp,
+        phone_number=payload.phone_number,
     )
 
     try:

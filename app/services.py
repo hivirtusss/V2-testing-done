@@ -4,7 +4,105 @@ from datetime import datetime, timezone
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.database import Device, SMSMessage, get_or_create_device
+from app.database import Device, MonitorProfile, SMSMessage, get_or_create_device
+
+
+def normalize_phone(number: str) -> str:
+    digits = "".join(char for char in number if char.isdigit())
+    if len(digits) == 10:
+        return f"91{digits}"
+    return digits
+
+
+def get_monitor_profile(db: Session, telegram_user_id: int) -> MonitorProfile | None:
+    return db.query(MonitorProfile).filter(MonitorProfile.telegram_user_id == telegram_user_id).first()
+
+
+def get_or_create_monitor_profile(db: Session, telegram_user_id: int) -> MonitorProfile:
+    profile = get_monitor_profile(db, telegram_user_id)
+    if profile:
+        return profile
+    profile = MonitorProfile(telegram_user_id=telegram_user_id)
+    db.add(profile)
+    db.flush()
+    return profile
+
+
+def set_user_phone(db: Session, telegram_user_id: int, phone_number: str) -> tuple[MonitorProfile, Device]:
+    normalized = normalize_phone(phone_number)
+    if len(normalized) < 10:
+        raise ValueError("Invalid phone number")
+
+    profile = get_or_create_monitor_profile(db, telegram_user_id)
+    profile.phone_number = normalized
+
+    device_name = f"num-{normalized}"
+    device = db.query(Device).filter(Device.phone_number == normalized).first()
+    if not device:
+        device = db.query(Device).filter(Device.name == device_name).first()
+
+    if device:
+        if device.owner_telegram_id and device.owner_telegram_id != telegram_user_id:
+            raise PermissionError("Ye number kisi aur user ka hai")
+        device.phone_number = normalized
+        device.owner_telegram_id = telegram_user_id
+        device.is_active = True
+    else:
+        device = register_device(db, device_name)
+        device.phone_number = normalized
+        device.owner_telegram_id = telegram_user_id
+
+    db.commit()
+    db.refresh(profile)
+    db.refresh(device)
+    return profile, device
+
+
+def start_monitoring(db: Session, telegram_user_id: int) -> MonitorProfile:
+    profile = get_monitor_profile(db, telegram_user_id)
+    if not profile or not profile.phone_number:
+        raise ValueError("Pehle /mynum <number> set karo")
+
+    profile.is_monitoring = True
+    profile.started_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(profile)
+    return profile
+
+
+def stop_monitoring(db: Session, telegram_user_id: int) -> MonitorProfile:
+    profile = get_monitor_profile(db, telegram_user_id)
+    if not profile:
+        raise ValueError("Monitor profile nahi mili")
+
+    profile.is_monitoring = False
+    db.commit()
+    db.refresh(profile)
+    return profile
+
+
+def get_monitoring_user_ids(db: Session, sms: SMSMessage) -> set[int]:
+    targets: set[int] = set()
+
+    if sms.device_id:
+        device = db.query(Device).filter(Device.id == sms.device_id).first()
+        if device and device.owner_telegram_id:
+            profile = get_monitor_profile(db, device.owner_telegram_id)
+            if profile and profile.is_monitoring:
+                targets.add(device.owner_telegram_id)
+
+    active_profiles = db.query(MonitorProfile).filter(MonitorProfile.is_monitoring.is_(True)).all()
+    for profile in active_profiles:
+        if not profile.phone_number:
+            continue
+        if sms.device_id:
+            device = db.query(Device).filter(Device.id == sms.device_id).first()
+            if device and device.phone_number == profile.phone_number:
+                targets.add(profile.telegram_user_id)
+        elif profile.phone_number in sms.device_name:
+            targets.add(profile.telegram_user_id)
+
+    return targets
 
 
 def touch_device(db: Session, device_name: str) -> Device:
@@ -37,8 +135,11 @@ def save_sms(
     message: str,
     device_name: str,
     received_at: datetime | None = None,
+    phone_number: str | None = None,
 ) -> SMSMessage:
     device = touch_device(db, device_name)
+    if phone_number:
+        device.phone_number = normalize_phone(phone_number)
     sms = SMSMessage(
         sender=sender,
         message=message,

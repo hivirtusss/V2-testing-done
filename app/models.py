@@ -7,6 +7,7 @@ class SMSWebhookPayload(BaseModel):
     sender: str = Field(..., description="SMS sender number or name")
     message: str = Field(..., description="SMS body text")
     device_name: str = Field(default="android", description="Device identifier")
+    phone_number: str | None = Field(default=None, description="SIM number receiving SMS")
     timestamp: datetime | None = Field(default=None, description="Optional SMS timestamp")
 
 

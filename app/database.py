@@ -10,11 +10,26 @@ class Base(DeclarativeBase):
     pass
 
 
+class MonitorProfile(Base):
+    __tablename__ = "monitor_profiles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    telegram_user_id: Mapped[int] = mapped_column(Integer, unique=True, index=True)
+    phone_number: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
+    is_monitoring: Mapped[bool] = mapped_column(Boolean, default=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+
 class Device(Base):
     __tablename__ = "devices"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    phone_number: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     api_key: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -72,6 +87,9 @@ def _migrate_existing_tables() -> None:
         if "owner_telegram_id" not in columns:
             with engine.begin() as conn:
                 conn.execute(text("ALTER TABLE devices ADD COLUMN owner_telegram_id INTEGER"))
+        if "phone_number" not in columns:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE devices ADD COLUMN phone_number VARCHAR(20)"))
 
 
 def init_db() -> None:

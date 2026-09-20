@@ -39,9 +39,19 @@ Bot tumhe device ka API key dega.
 **Option 2 — Auto add:**
 Jab bhi koi device SMS bhejti hai, wo automatically database mein add ho jati hai.
 
+**Monitor flow (recommended):**
+```
+/mynum 9876543210      → apna number set
+/startmonitar          → saare incoming SMS forward start
+/stopmonitar           → forwarding band
+```
+
 **Bot commands:**
 | Command | Kya karta hai |
 |---------|---------------|
+| `/mynum 9876543210` | Apna SIM number set karo |
+| `/startmonitar` | Is number ke saare SMS forward |
+| `/stopmonitar` | Forwarding band karo |
 | `/a myphone` | Apni device add/claim karo |
 | `/devices` | Meri devices list |
 | `/device redmi` | Us device ke SMS |
