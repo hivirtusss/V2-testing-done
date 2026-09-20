@@ -154,6 +154,7 @@ async def notify_new_sms(sms: SMSMessage) -> None:
                 and profile.is_monitoring
                 and device
                 and profile.phone_number
+                and sms.device_id == device.id
             ):
                 relay_targets.append((profile, device, profile.phone_number))
         if relay_targets:

