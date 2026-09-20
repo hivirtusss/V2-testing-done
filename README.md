@@ -4,11 +4,47 @@ Android phone se aane wale SMS ko remotely monitor karo — **superuser/root** s
 
 ## Features
 
-- **Superuser Mode** — rooted phone par Termux + `su` se direct SMS read (no third-party app)
+- **Apna Database** — MySQL, PostgreSQL, ya SQLite connect karo
+- **Device Management** — tumhari devices bot mein auto dikhein
+- **Superuser Mode** — rooted phone par Termux + `su` se direct SMS read
 - **Telegram Bot** — har naye SMS par instant notification
-- **Webhook API** — kisi bhi SMS forwarder se bhi connect ho sakta hai
-- **Web Dashboard** — browser mein sabhi SMS dekho
+- **Web Dashboard** — browser mein devices + SMS dekho
 - **One-command install** — server par `./install.sh` se setup
+
+## Apna Database Connect Karo
+
+`.env` file mein `DATABASE_URL` set karo:
+
+```bash
+# SQLite (local, easy)
+DATABASE_URL=sqlite:///./sms_monitor.db
+
+# MySQL
+DATABASE_URL=mysql+pymysql://user:password@host:3306/sms_monitor
+
+# PostgreSQL
+DATABASE_URL=postgresql+psycopg2://user:password@host:5432/sms_monitor
+```
+
+Server start hote hi tables auto-create ho jayengi (`devices` + `sms_messages`).
+
+## Devices Bot Mein Kaise Aayengi
+
+**Option 1 — Bot se add karo:**
+```
+/adddevice redmi-note-12
+```
+Bot tumhe device ka API key dega.
+
+**Option 2 — Auto add:**
+Jab bhi koi device SMS bhejti hai, wo automatically database mein add ho jati hai.
+
+**Bot commands:**
+| Command | Kya karta hai |
+|---------|---------------|
+| `/devices` | Saari devices list |
+| `/device redmi` | Us device ke SMS |
+| `/adddevice samsung` | Nayi device add |
 
 ## Superuser Setup (Recommended — Rooted Phone)
 
@@ -136,6 +172,8 @@ Body: SMS message text
 | `POST` | `/api/sms?key=SECRET` | Receive SMS (JSON) |
 | `POST` | `/api/sms/simple?key=SECRET` | Receive SMS (plain text) |
 | `GET` | `/api/sms?key=SECRET` | List recent SMS |
+| `GET` | `/api/devices?key=SECRET` | List all devices |
+| `POST` | `/api/devices?key=SECRET` | Add new device |
 
 ## Example: Test SMS bhejo
 
