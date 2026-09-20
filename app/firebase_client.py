@@ -7,8 +7,12 @@ DEVICE_PATHS = ("devices", "device", "clients", "users", "phones")
 
 def normalize_firebase_url(url: str) -> str:
     cleaned = url.strip().rstrip("/")
+    if not cleaned:
+        raise ValueError("Firebase URL khali hai")
     if not cleaned.startswith(("http://", "https://")):
         cleaned = f"https://{cleaned}"
+    if ".firebaseio.com" not in cleaned and ".firebasedatabase.app" not in cleaned:
+        raise ValueError("Valid Firebase RTDB URL daalo (firebaseio.com ya firebasedatabase.app)")
     return cleaned
 
 

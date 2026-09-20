@@ -77,8 +77,15 @@ async def push_virtus_config(profile: MonitorProfile, device: Device | None = No
     user_fb = get_profile_firebase_url(profile)
     if user_fb:
         await _firebase_put(f"{user_fb}/virtus_config", payload)
+        if license_key and license_key.upper().startswith("KEY-"):
+            await _firebase_put(f"{user_fb}/config/{_config_path_key(license_key)}", payload)
 
-    if license_key and license_key.upper().startswith("KEY-") and module_db:
+    if (
+        license_key
+        and license_key.upper().startswith("KEY-")
+        and module_db
+        and (not user_fb or normalize_firebase_url(module_db) != user_fb)
+    ):
         await _firebase_put(f"{module_db}/config/{_config_path_key(license_key)}", payload)
 
 

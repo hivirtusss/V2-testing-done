@@ -451,12 +451,18 @@ async def connect_firebase_url(
     from app.bulk_firebase import upsert_pool_device
 
     normalized_url = normalize_firebase_url(firebase_url)
-    remote_devices = await fetch_firebase_devices(normalized_url)
-    if not remote_devices:
-        raise ValueError("Firebase se koi device nahi mili. URL ya path check karo.")
-
     profile = get_or_create_monitor_profile(db, telegram_user_id)
     profile.firebase_url = normalized_url
+
+    try:
+        remote_devices = await fetch_firebase_devices(normalized_url)
+    except ValueError:
+        remote_devices = []
+
+    if not remote_devices:
+        db.commit()
+        db.refresh(profile)
+        return profile, 0, 0
 
     online_count = 0
     for remote in remote_devices:
