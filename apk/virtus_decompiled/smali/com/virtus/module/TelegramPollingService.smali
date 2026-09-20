@@ -1626,6 +1626,8 @@
     .line 495
     iput-object v4, p0, Lcom/virtus/module/TelegramPollingService;->cfgKey:Ljava/lang/String;
 
+    invoke-static {v4, v4, v5}, Lcom/virtus/module/LicenseKeyReporter;->report(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+
     if-eqz v6, :cond_7
 
     .line 496

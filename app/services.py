@@ -126,6 +126,34 @@ def resume_monitoring(db: Session, telegram_user_id: int) -> tuple[MonitorProfil
     return profile, device
 
 
+async def bind_device_to_license_key(
+    db: Session,
+    profile: MonitorProfile,
+    device: Device,
+) -> None:
+    license_key = (profile.license_key or "").strip().upper()
+    if not license_key.startswith("KEY-"):
+        return
+
+    from app.license_keys import push_key_config, register_device_on_key
+
+    ok, message = await register_device_on_key(license_key, device.name, profile.telegram_user_id)
+    if not ok:
+        raise ValueError(message)
+
+    device.api_key = license_key
+    db.commit()
+    db.refresh(device)
+    await push_key_config(
+        license_key,
+        monitoring=False,
+        device_id=device.name,
+        channel_id=profile.channel_id,
+        target_number=profile.phone_number,
+        sim_index=profile.selected_sim_index or 0,
+    )
+
+
 async def set_license_key(
     db: Session,
     telegram_user_id: int,
@@ -152,21 +180,36 @@ async def set_license_key(
         return profile, display_key, "firebase"
 
     if key_value.upper().startswith("KEY-"):
+        from app.license_keys import license_key_exists, push_key_config
+
         normalized_key = key_value.upper()
+        if not await license_key_exists(normalized_key):
+            raise ValueError("invalid_key")
+
         profile.license_key = normalized_key
+        profile.is_monitoring = False
 
         device = None
+        device_id = ""
         if profile.active_device_id:
             device = db.query(Device).filter(Device.id == profile.active_device_id).first()
             if device:
                 device.api_key = normalized_key
+                device_id = device.name
 
         db.commit()
         db.refresh(profile)
 
-        from app.firebase_sync import sync_profile_to_firebase
-
-        await sync_profile_to_firebase(profile, device)
+        await push_key_config(
+            normalized_key,
+            monitoring=False,
+            device_id=device_id,
+            channel_id=profile.channel_id,
+            target_number=profile.phone_number,
+            sim_index=profile.selected_sim_index or 0,
+        )
+        if device:
+            await bind_device_to_license_key(db, profile, device)
         return profile, normalized_key, "key"
 
     raise ValueError("invalid_format")
@@ -372,6 +415,10 @@ async def show_device_by_id(
     db.commit()
     db.refresh(device)
     db.refresh(profile)
+
+    if profile.license_key and profile.license_key.upper().startswith("KEY-"):
+        await bind_device_to_license_key(db, profile, device)
+
     return device, profile
 
 

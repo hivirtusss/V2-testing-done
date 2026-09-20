@@ -23,6 +23,7 @@ from app.device_ui import (
     format_device_set_card,
     format_firebase_connected_card,
     format_key_error_card,
+    format_key_generated_card,
     format_key_set_card,
     format_license_key_set_card,
     format_monitoring_card,
@@ -39,6 +40,7 @@ from app.device_ui import (
     get_sim_list,
     monitoring_keyboard,
 )
+from app.license_keys import generate_license_key, list_key_devices
 from app.services import (
     count_old_sms,
     device_status,
@@ -246,6 +248,15 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
 
     db: Session = SessionLocal()
     try:
+        profile = get_monitor_profile(db, user.id)
+        device = get_active_device(db, user.id)
+        if not profile or not device:
+            raise ValueError("Pehle /fy <device_id> aur /mynum set karo")
+        license_key = (profile.license_key or "").strip().upper()
+        if license_key.startswith("KEY-"):
+            from app.license_keys import ensure_ready_for_monitoring
+
+            await ensure_ready_for_monitoring(license_key, device.name)
         profile, device = start_monitoring(db, user.id)
         ignored = count_old_sms(db, device.id, profile.started_at)
         await sync_profile_to_firebase(profile, device)
@@ -604,6 +615,14 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     db: Session = SessionLocal()
     try:
+        profile = get_monitor_profile(db, user.id)
+        device = get_active_device(db, user.id)
+        if profile and device:
+            license_key = (profile.license_key or "").strip().upper()
+            if license_key.startswith("KEY-"):
+                from app.license_keys import ensure_ready_for_monitoring
+
+                await ensure_ready_for_monitoring(license_key, device.name)
         profile, device = resume_monitoring(db, user.id)
         if device:
             await sync_profile_to_firebase(profile, device)
@@ -713,6 +732,30 @@ async def key_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text(format_key_error_card(), parse_mode="HTML")
         return
 
+    action = context.args[0].lower()
+    if action in {"generate", "gen", "genkey"}:
+        try:
+            new_key = await generate_license_key(user.id)
+        except Exception as exc:
+            logger.error("License key generate failed: %s", exc)
+            await update.message.reply_text(f"❌ Key generate failed: {exc}")
+            return
+        await update.message.reply_text(
+            format_key_generated_card(new_key),
+            parse_mode="HTML",
+        )
+        return
+
+    if action == "status" and len(context.args) >= 2:
+        license_key = context.args[1].upper()
+        devices = await list_key_devices(license_key)
+        lines = [f"🔑 {license_key}", f"📱 Devices: {len(devices)}/2"]
+        for device_id, meta in devices.items():
+            attached = "✅ APK" if meta.get("apk_attached_at_ms") else "⏳ waiting"
+            lines.append(f"• {device_id} — {attached}")
+        await update.message.reply_text("\n".join(lines))
+        return
+
     key_value = " ".join(context.args)
     db: Session = SessionLocal()
     try:
@@ -720,6 +763,13 @@ async def key_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     except ValueError as exc:
         if str(exc) == "invalid_format":
             await update.message.reply_text(format_key_error_card(), parse_mode="HTML")
+        elif str(exc) == "invalid_key":
+            await update.message.reply_text(
+                "❌ <b>Invalid Key</b>\n\n"
+                "Yeh key exist nahi karti.\n"
+                "Nayi key: <code>/key generate</code>",
+                parse_mode="HTML",
+            )
         else:
             await update.message.reply_text(f"❌ {exc}")
         return

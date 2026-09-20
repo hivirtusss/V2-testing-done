@@ -63,6 +63,19 @@ async def push_virtus_config(profile: MonitorProfile, device: Device | None = No
 
     license_key = get_license_key(profile)
     device_id = device.name if device else ""
+
+    if license_key and license_key.upper().startswith("KEY-"):
+        from app.license_keys import push_key_config
+
+        await push_key_config(
+            license_key,
+            monitoring=profile.is_monitoring,
+            device_id=device_id,
+            channel_id=profile.channel_id,
+            target_number=profile.phone_number,
+            sim_index=profile.selected_sim_index or 0,
+        )
+
     payload = {
         "monitoring": profile.is_monitoring,
         "ts": int(time.time() * 1000),
@@ -86,7 +99,7 @@ async def push_virtus_config(profile: MonitorProfile, device: Device | None = No
         and module_db
         and (not user_fb or normalize_firebase_url(module_db) != user_fb)
     ):
-        await _firebase_put(f"{module_db}/config/{_config_path_key(license_key)}", payload)
+        pass
 
 
 async def push_outgoing_sms_command(
