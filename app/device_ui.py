@@ -18,7 +18,10 @@ def format_addchannel_card(channel_id: str, sim_slot: int = 1) -> str:
         f"{channel_id}\n\n"
         "Make sure I am an ADMIN there!\n\n"
         f"📶 Selected SIM: SIM {sim_slot}\n"
-        "Channel par SMS/OTP aaye → auto forward"
+        "Channel se SMS bhejne ke liye likho:\n"
+        "To: 9876543210\n"
+        "Message: apna text\n\n"
+        f"→ SIM {sim_slot} se real SMS jayega (body same)"
         "</pre>\n\n"
         "Next: <code>/startmonitor</code>"
     )
@@ -206,7 +209,8 @@ def format_sim_selected_card(device: Device, sim_index: int = 0) -> str:
         f"📶 Selected: SIM {active.get('slot', 1)} ({active.get('number', 'Unknown')})"
         "</pre>\n\n"
         "Tap <b>Monitoring ON</b> to start\n"
-        "Pehle <code>/mynum</code> + <code>/addchannel</code> set karo"
+        "Pehle <code>/mynum</code> + <code>/addchannel</code> set karo\n\n"
+        f"Channel SMS → SIM {active.get('slot', 1)} se jayega"
     )
 
 
@@ -332,7 +336,8 @@ def format_monitoring_card(
         f"📢 Channel: {channel} (last / addchannel only)\n"
         f"⏱ Auto-stop in {auto_stop} minutes\n"
         f"📦 Ignored {ignored_sms} old SMS (only NEW after this moment)\n"
-        f"✅ Test SMS sent: {test_msg}"
+        f"✅ Test SMS sent: {test_msg}\n"
+        f"(SIM {sim_slot} se /mynum par — recharge nahi to SMS nahi jayega)"
         "</pre>"
     )
 

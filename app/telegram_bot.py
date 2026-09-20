@@ -408,8 +408,11 @@ async def stopmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     db: Session = SessionLocal()
+    profile = None
+    device = None
     try:
         profile = stop_monitoring(db, user.id)
+        device = get_active_device(db, user.id)
     except ValueError as exc:
         await update.message.reply_text(f"❌ {exc}")
         return
@@ -417,10 +420,12 @@ async def stopmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         db.close()
 
     cancel_auto_stop(user.id)
+    if profile:
+        await sync_profile_to_firebase(profile, device)
     await update.message.reply_text(
         "🔴 <b>STOPPED</b>\n\n"
         "<pre>"
-        "Monitor paused.\n\n"
+        "Monitor paused (Firebase: monitoring OFF).\n\n"
         f"📞 Number: {profile.phone_number or 'unknown'}\n"
         "Use /resume to start again."
         "</pre>",
@@ -654,6 +659,13 @@ async def send_device_set_ui(
     *,
     found_ms: int | None = None,
 ) -> None:
+    if device.firebase_source_url:
+        db: Session = SessionLocal()
+        try:
+            device = await sync_device_from_firebase(db, device)
+        finally:
+            db.close()
+
     sim_index = profile.selected_sim_index if profile else 0
     await message.reply_text(
         format_device_set_card(
@@ -1257,7 +1269,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             device = get_active_device(db, user.id)
             cancel_auto_stop(user.id)
             await sync_profile_to_firebase(profile, device)
-            await query.edit_message_text("🔴 <b>STOPPED</b>\n\nMonitoring band ho gaya.", parse_mode="HTML")
+            await query.edit_message_text(
+                "🔴 <b>STOPPED</b>\n\nMonitoring OFF — Firebase sync ho gaya.",
+                parse_mode="HTML",
+            )
             return
 
         if data.startswith("monitor:start:"):

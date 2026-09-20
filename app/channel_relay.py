@@ -18,7 +18,7 @@ def parse_channel_outgoing(text: str) -> tuple[str | None, str | None]:
     cleaned = text.strip()
     to_match = re.search(r"(?:📞\s*)?To\s*:\s*([+\d\s()-]+)", cleaned, re.I)
     msg_match = re.search(
-        r"(?:💬\s*)?Message\s*:\s*(.+)$",
+        r"(?:💬\s*)?(?:Message|MSG|Text|Body)\s*:\s*(.+)$",
         cleaned,
         re.I | re.S,
     )
@@ -27,6 +27,16 @@ def parse_channel_outgoing(text: str) -> tuple[str | None, str | None]:
     message = msg_match.group(1).strip() if msg_match else None
     if to_number and message:
         return to_number, message
+
+    # Fallback: first line number, rest is body
+    lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
+    if len(lines) >= 2:
+        maybe_number = _extract_phone(lines[0])
+        if maybe_number and len(re.sub(r"\D", "", maybe_number)) >= 10:
+            body = "\n".join(lines[1:]).strip()
+            if body:
+                return maybe_number, body
+
     return None, None
 
 

