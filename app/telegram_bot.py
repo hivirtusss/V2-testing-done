@@ -57,6 +57,7 @@ from app.services import (
     connect_firebase_url,
     set_channel_id,
     set_license_key,
+    require_license_key,
     show_device_by_id,
     set_user_phone,
     start_monitoring,
@@ -678,12 +679,26 @@ async def a_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             db.close()
         await update.message.reply_text(
             "Usage: `/a <device_id>`\n\n"
-            "Example: `/a f0577ffa536dde46`",
+            "⚠️ `/a` sirf tab — jab `/key KEY-XXXX` set ho (bot + APK same key).\n"
+            "Bina key: `/fdy <device_id>`",
             parse_mode="Markdown",
         )
         return
 
-    await device_select_command(update, context, bind_license_key=False)
+    db: Session = SessionLocal()
+    try:
+        profile = get_monitor_profile(db, user.id)
+        require_license_key(profile)
+    except ValueError as exc:
+        await update.message.reply_text(
+            f"❌ {exc}\n\nBina key device find: `/fdy {context.args[0]}`",
+            parse_mode="Markdown",
+        )
+        return
+    finally:
+        db.close()
+
+    await device_select_command(update, context, bind_license_key=True)
 
 
 async def stop_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
