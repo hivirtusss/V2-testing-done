@@ -570,6 +570,13 @@ async def setfirebase_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
 
 
+def _normalize_device_id_args(args: list[str]) -> str:
+    cleaned = [part.strip() for part in args if part and part.strip()]
+    if cleaned and cleaned[0].lower() in {"/a", "/fdy", "/fy", "/fb", "/la", "a", "fdy", "fy", "fb"}:
+        cleaned = cleaned[1:]
+    return cleaned[0] if cleaned else ""
+
+
 async def device_select_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
@@ -592,7 +599,21 @@ async def device_select_command(
         )
         return
 
-    deviceid = context.args[0]
+    deviceid = _normalize_device_id_args(list(context.args))
+    if not deviceid:
+        await update.message.reply_text(
+            "❌ Device ID missing.\n\n"
+            "Sahi format:\n"
+            "<code>/fdy f0577ffa536dde46</code>\n"
+            "Galat: <code>/fdy /a f0577ffa...</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    status_msg = await update.message.reply_text(
+        f"🔍 Device <code>{deviceid}</code> dhundh raha hoon...",
+        parse_mode="HTML",
+    )
     lookup_start = time.perf_counter()
     db: Session = SessionLocal()
     try:
@@ -611,11 +632,11 @@ async def device_select_command(
             for option in options:
                 name, _fb = (option.split(":", 1) + ["-"])[:2]
                 lines.append(f"• <code>{name}</code>")
-            await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+            await status_msg.edit_text("\n".join(lines), parse_mode="HTML")
             return
         if message.startswith("notfound:"):
             db_count = message.removeprefix("notfound:")
-            await update.message.reply_text(
+            await status_msg.edit_text(
                 "❌ <b>ERROR</b>\n\n"
                 f"Device <code>{deviceid}</code> not found in any of the "
                 f"<b>{db_count}</b> databases!\n\n"
@@ -624,21 +645,22 @@ async def device_select_command(
             )
             return
         total = db.query(Device).count()
-        await update.message.reply_text(
+        await status_msg.edit_text(
             f"❌ Device <code>{deviceid}</code> nahi mili.\n"
             f"DB total: <b>{total}</b>\n\n"
-            f"Try: <code>/a {deviceid}</code>",
+            f"Bina key: <code>/fdy {deviceid}</code>",
             parse_mode="HTML",
         )
         return
     except Exception as exc:
         logger.error("Device lookup failed: %s", exc)
-        await update.message.reply_text(f"❌ Error: {exc}")
+        await status_msg.edit_text(f"❌ Error: {exc}")
         return
     finally:
         db.close()
 
     await sync_profile_to_firebase(profile, device)
+    await status_msg.delete()
     await send_device_set_ui(update.message, device, profile, found_ms=found_ms)
 
 

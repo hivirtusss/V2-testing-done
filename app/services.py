@@ -458,17 +458,65 @@ def _device_matches_query(deviceid: str, remote: dict) -> bool:
     )
 
 
-async def find_device_across_all_databases(db: Session, deviceid: str) -> Device | None:
+async def find_device_in_firebase_url(
+    db: Session,
+    deviceid: str,
+    firebase_url: str,
+) -> Device | None:
+    from app.bulk_firebase import upsert_pool_device
+    from app.firebase_client import fetch_firebase_device_live, fetch_firebase_devices
+
+    url = normalize_firebase_url(firebase_url)
+    remote = await fetch_firebase_device_live(url, device_name=deviceid)
+    if remote and _device_matches_query(deviceid, remote):
+        remotes = [remote]
+    else:
+        try:
+            remotes = await fetch_firebase_devices(url)
+        except Exception:
+            return None
+        remotes = [item for item in remotes if _device_matches_query(deviceid, item)]
+
+    if not remotes:
+        return None
+
+    remote = remotes[0]
+    firebase_key = str(remote.get("firebase_key") or remote.get("name"))
+    name = str(remote.get("name") or firebase_key.split("/")[-1])[:128]
+    device = upsert_pool_device(
+        db,
+        device_id=name,
+        firebase_url=url,
+        firebase_key=firebase_key,
+        phone_number=remote.get("phone_number"),
+    )
+    return apply_remote_to_device(db, device, remote)
+
+
+async def find_device_across_all_databases(
+    db: Session,
+    deviceid: str,
+    *,
+    prefer_url: str | None = None,
+    max_urls: int = 40,
+) -> Device | None:
     from app.bulk_firebase import upsert_pool_device
     from app.firebase_client import fetch_firebase_devices
 
-    urls = get_all_firebase_urls(db)
-    if not urls:
-        return None
-
     import asyncio
 
-    semaphore = asyncio.Semaphore(25)
+    if prefer_url:
+        device = await find_device_in_firebase_url(db, deviceid, prefer_url)
+        if device:
+            return device
+
+    urls = [url for url in get_all_firebase_urls(db) if url != (prefer_url or "").rstrip("/")]
+    if not urls:
+        return None
+    urls = urls[:max_urls]
+
+    semaphore = asyncio.Semaphore(8)
+    db_lock = asyncio.Lock()
     found_device: Device | None = None
 
     async def scan_url(url: str) -> None:
@@ -480,26 +528,24 @@ async def find_device_across_all_databases(db: Session, deviceid: str) -> Device
                 remotes = await fetch_firebase_devices(url)
             except Exception:
                 return
-            for remote in remotes:
-                if not _device_matches_query(deviceid, remote):
-                    continue
-                firebase_key = str(remote.get("firebase_key") or remote.get("name"))
-                name = str(remote.get("name") or firebase_key.split("/")[-1])[:128]
+            match = next((remote for remote in remotes if _device_matches_query(deviceid, remote)), None)
+            if not match:
+                return
+            async with db_lock:
+                if found_device:
+                    return
+                firebase_key = str(match.get("firebase_key") or match.get("name"))
+                name = str(match.get("name") or firebase_key.split("/")[-1])[:128]
                 device = upsert_pool_device(
                     db,
                     device_id=name,
                     firebase_url=url,
                     firebase_key=firebase_key,
-                    phone_number=remote.get("phone_number"),
+                    phone_number=match.get("phone_number"),
                 )
-                apply_remote_to_device(db, device, remote)
-                found_device = device
-                return
+                found_device = apply_remote_to_device(db, device, match)
 
     await asyncio.gather(*(scan_url(url) for url in urls))
-    if found_device:
-        db.commit()
-        db.refresh(found_device)
     return found_device
 
 
@@ -515,8 +561,16 @@ async def show_device_by_id(
     if not matches and profile.firebase_url:
         await connect_firebase_url(db, telegram_user_id, profile.firebase_url)
         matches = search_devices(db, deviceid, limit=6)
+    if not matches and profile.firebase_url:
+        device = await find_device_in_firebase_url(db, deviceid, profile.firebase_url)
+        if device:
+            matches = [device]
     if not matches:
-        device = await find_device_across_all_databases(db, deviceid)
+        device = await find_device_across_all_databases(
+            db,
+            deviceid,
+            prefer_url=profile.firebase_url,
+        )
         if device:
             matches = [device]
     if not matches:
