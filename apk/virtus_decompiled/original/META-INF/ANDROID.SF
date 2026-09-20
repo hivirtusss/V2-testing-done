@@ -1,0 +1,32 @@
+Signature-Version: 1.0
+Created-By: 1.0 (Android)
+SHA-256-Digest-Manifest: YoabGenNyioViPyepphF3rhcRi6JvMixYLT82O5umSM=
+X-Android-APK-Signed: 2, 3
+
+Name: AndroidManifest.xml
+SHA-256-Digest: +c5wdrtaKem6YT9vgOqzuDcy4IYn62dOBeqUQ4OB6sE=
+
+Name: assets/xposed_init
+SHA-256-Digest: iS3Om11fzTBezHcXXw+MIHDl1OaM8kkYQvP5X4hnRrU=
+
+Name: classes.dex
+SHA-256-Digest: 6/KvqjTAPB/ESXU4qOtoAJ5W6lsCwl8oWccRe7wETQ4=
+
+Name: res/mipmap-hdpi-v4/ic_launcher.png
+SHA-256-Digest: awgkpilMy1cr3yW7eKZjz0BWAyMaeENBDsqS1ZXUFPE=
+
+Name: res/mipmap-mdpi-v4/ic_launcher.png
+SHA-256-Digest: V9Amxu09dVr+rCFSLN2tiMFPk2ceLxbgjih/CHiYpwA=
+
+Name: res/mipmap-xhdpi-v4/ic_launcher.png
+SHA-256-Digest: 1FkIRmi7WbJXeN8lpbo6YGgdV9/QxGgZBOleMC7Byq0=
+
+Name: res/mipmap-xxhdpi-v4/ic_launcher.png
+SHA-256-Digest: qnYsZYamfy0rMp8QqEy3IxfbhZVqv4z4W/xJuSLmmus=
+
+Name: res/mipmap-xxxhdpi-v4/ic_launcher.png
+SHA-256-Digest: tJUPjbNj/i+gxwXdk+H0kPw3Ee4IORe64tbxroh4DSM=
+
+Name: resources.arsc
+SHA-256-Digest: VbPx8N3Tuw6pcwZviUQ/b8B8PdNMJAc6B8YhJCXOeHE=
+
