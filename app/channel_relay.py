@@ -32,6 +32,35 @@ def parse_channel_message(text: str) -> tuple[str | None, str]:
     return sender, message or cleaned
 
 
+def queue_manual_sms(
+    db: Session,
+    profile: MonitorProfile,
+    device: Device,
+    to_number: str,
+    message: str,
+) -> OutboundSMS:
+    from app.services import normalize_phone
+
+    sims = get_sim_list(device)
+    sim_index = profile.selected_sim_index or 0
+    sim_slot = sims[sim_index]["slot"] if sims else 1
+
+    outbound = OutboundSMS(
+        device_id=device.id,
+        telegram_user_id=profile.telegram_user_id,
+        sim_index=sim_index,
+        sim_slot=sim_slot,
+        to_number=normalize_phone(to_number),
+        spoof_sender=None,
+        message=message,
+        status="pending",
+    )
+    db.add(outbound)
+    db.commit()
+    db.refresh(outbound)
+    return outbound
+
+
 def queue_channel_sms(
     db: Session,
     profile: MonitorProfile,

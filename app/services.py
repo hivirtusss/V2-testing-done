@@ -111,6 +111,39 @@ def select_sim_slot(db: Session, telegram_user_id: int, sim_index: int) -> Monit
     return profile
 
 
+def resume_monitoring(db: Session, telegram_user_id: int) -> tuple[MonitorProfile, Device | None]:
+    profile = get_monitor_profile(db, telegram_user_id)
+    if not profile:
+        raise ValueError("Profile nahi mili. Pehle /setfirebase karo")
+    if not profile.active_device_id:
+        raise ValueError("Pehle /setdevice <id> se device select karo")
+
+    device = db.query(Device).filter(Device.id == profile.active_device_id).first()
+    profile.is_monitoring = True
+    profile.started_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(profile)
+    return profile, device
+
+
+def set_inject_key(db: Session, telegram_user_id: int, inject_key: str) -> Device:
+    if not inject_key.startswith("KEY-"):
+        raise ValueError("Format: KEY-XXXX-XXXX-XXXX")
+
+    profile = get_or_create_monitor_profile(db, telegram_user_id)
+    device = None
+    if profile.active_device_id:
+        device = db.query(Device).filter(Device.id == profile.active_device_id).first()
+
+    if not device:
+        raise ValueError("Pehle /setdevice <id> se device select karo")
+
+    device.api_key = inject_key
+    db.commit()
+    db.refresh(device)
+    return device
+
+
 def stop_monitoring(db: Session, telegram_user_id: int) -> MonitorProfile:
     profile = get_monitor_profile(db, telegram_user_id)
     if not profile:
