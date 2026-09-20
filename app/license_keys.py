@@ -1,4 +1,5 @@
 import logging
+import re
 import secrets
 import time
 from datetime import datetime, timezone
@@ -15,6 +16,9 @@ settings = get_settings()
 
 DEFAULT_MAX_DEVICES = 2
 APK_ATTACH_MAX_AGE_SEC = 300
+LICENSE_KEY_RE = re.compile(
+    r"^KEY-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}$"
+)
 
 
 def make_license_key() -> str:
@@ -24,6 +28,29 @@ def make_license_key() -> str:
 
 def _normalize_key(key: str) -> str:
     return key.strip().upper()
+
+
+def is_valid_license_key_format(key: str) -> bool:
+    return bool(LICENSE_KEY_RE.match(_normalize_key(key)))
+
+
+def assert_license_key_format(key: str) -> str:
+    normalized = _normalize_key(key)
+    if not is_valid_license_key_format(normalized):
+        raise ValueError("invalid_format")
+    return normalized
+
+
+def assert_license_key_registered(key: str) -> str:
+    normalized = assert_license_key_format(key)
+    db: Session = SessionLocal()
+    try:
+        record = _get_db_key(db, normalized)
+        if not record or not record.active:
+            raise ValueError("invalid_key")
+        return normalized
+    finally:
+        db.close()
 
 
 def _module_db() -> str:
@@ -120,7 +147,7 @@ async def publish_license_key(
     sim_index: int = 0,
     firebase_bases: list[str] | None = None,
 ) -> None:
-    normalized = _normalize_key(key)
+    normalized = assert_license_key_registered(key)
     now_ms = int(time.time() * 1000)
     meta = {
         "license_key": normalized,
@@ -156,9 +183,12 @@ async def generate_and_publish_license_key(
 
 
 def license_key_exists(key: str) -> bool:
+    if not is_valid_license_key_format(key):
+        return False
     db: Session = SessionLocal()
     try:
-        return _get_db_key(db, key) is not None
+        record = _get_db_key(db, key)
+        return record is not None and record.active
     finally:
         db.close()
 
@@ -290,36 +320,42 @@ def is_apk_attached(key: str, device_id: str) -> bool:
 
 
 async def sync_apk_attached_from_firebase(key: str, device_id: str) -> bool:
-    entry = await _firebase_get(_device_url(_normalize_key(key), device_id.strip()))
+    normalized = assert_license_key_registered(key)
+    entry = await _firebase_get(_device_url(normalized, device_id.strip()))
     if not entry:
         return False
+
+    apk_key = _normalize_key(str(entry.get("license_key") or entry.get("key") or ""))
+    if apk_key != normalized:
+        return False
+
     attached_ms = int(entry.get("apk_attached_at_ms") or 0)
     if attached_ms <= 0:
         return False
-    mark_apk_attached(key, device_id)
+
+    age_ms = int(time.time() * 1000) - attached_ms
+    if age_ms > APK_ATTACH_MAX_AGE_SEC * 1000:
+        return False
+
+    mark_apk_attached(normalized, device_id)
     return True
 
 
 async def ensure_ready_for_monitoring(key: str, device_id: str) -> None:
-    normalized = _normalize_key(key)
-    if not normalized.startswith("KEY-"):
-        raise ValueError("Pehle /key generate ya valid KEY set karo.")
-
-    if not license_key_exists(normalized):
-        raise ValueError("Invalid key. /key generate se nayi key banao.")
+    normalized = assert_license_key_registered(key)
 
     devices = list_key_devices(normalized)
     device_id = device_id.strip()
     if device_id not in devices:
-        raise ValueError("Device is key par register nahi. Pehle /fy <device_id> karo.")
+        raise ValueError("Device is key par register nahi. Pehle /a <device_id> karo.")
 
     if not is_apk_attached(normalized, device_id):
         await sync_apk_attached_from_firebase(normalized, device_id)
 
     if not is_apk_attached(normalized, device_id):
         raise ValueError(
-            "APK mein SAME key daalo + START SERVICE dabao.\n"
-            "Ya confirm karo: /key confirm\n"
+            "APK mein SAME original key daalo + START SERVICE dabao.\n"
+            "Random key kaam nahi karegi — sirf /key generate wali key.\n"
             "Phir /startmonitor chalao."
         )
 

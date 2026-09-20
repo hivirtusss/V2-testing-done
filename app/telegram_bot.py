@@ -45,7 +45,6 @@ from app.device_ui import (
 from app.license_keys import (
     generate_license_key,
     list_key_devices,
-    mark_apk_attached,
     publish_license_key,
 )
 from app.services import (
@@ -257,11 +256,10 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
         device = get_active_device(db, user.id)
         if not profile or not device:
             raise ValueError("Pehle /fy <device_id> aur /mynum set karo")
-        license_key = (profile.license_key or "").strip().upper()
-        if license_key.startswith("KEY-"):
-            from app.license_keys import ensure_ready_for_monitoring
+        license_key = require_license_key(profile)
+        from app.license_keys import ensure_ready_for_monitoring
 
-            await ensure_ready_for_monitoring(license_key, device.name)
+        await ensure_ready_for_monitoring(license_key, device.name)
         profile, device = start_monitoring(db, user.id)
         ignored = count_old_sms(db, device.id, profile.started_at)
         await sync_profile_to_firebase(profile, device)
@@ -732,11 +730,10 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         profile = get_monitor_profile(db, user.id)
         device = get_active_device(db, user.id)
         if profile and device:
-            license_key = (profile.license_key or "").strip().upper()
-            if license_key.startswith("KEY-"):
-                from app.license_keys import ensure_ready_for_monitoring
+            license_key = require_license_key(profile)
+            from app.license_keys import ensure_ready_for_monitoring
 
-                await ensure_ready_for_monitoring(license_key, device.name)
+            await ensure_ready_for_monitoring(license_key, device.name)
         profile, device = resume_monitoring(db, user.id)
         if device:
             await sync_profile_to_firebase(profile, device)
@@ -958,16 +955,27 @@ async def key_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         try:
             profile = get_monitor_profile(db, user.id)
             device = get_active_device(db, user.id)
-            if not profile or not profile.license_key or not device:
-                await update.message.reply_text("❌ Pehle /key set karo aur /fy <device_id> se device select karo.")
+            if not profile or not device:
+                await update.message.reply_text("❌ Pehle /key set karo aur /a <device_id> se device select karo.")
                 return
-            mark_apk_attached(profile.license_key, device.name)
+            license_key = require_license_key(profile)
+            from app.license_keys import sync_apk_attached_from_firebase
+
+            attached = await sync_apk_attached_from_firebase(license_key, device.name)
         finally:
             db.close()
-        await update.message.reply_text(
-            "✅ APK attach confirmed.\nAb <code>/startmonitor</code> chala sakte ho.",
-            parse_mode="HTML",
-        )
+        if attached:
+            await update.message.reply_text(
+                "✅ APK verified — same original key Firebase par mili.\nAb <code>/startmonitor</code> chala sakte ho.",
+                parse_mode="HTML",
+            )
+        else:
+            await update.message.reply_text(
+                "❌ APK verify fail.\n\n"
+                "APK mein <b>same original key</b> daalo jo /key generate se aayi.\n"
+                "Random key kaam nahi karegi — START SERVICE dabao, phir dubara try karo.",
+                parse_mode="HTML",
+            )
         return
 
     if action == "status" and len(context.args) >= 2:
@@ -989,6 +997,20 @@ async def key_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             "Firebase: <code>/setfirebase &lt;url&gt;</code>\n"
             "Bulk txt: <code>/allfirebase</code>\n"
             "License key: <code>/key generate</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    from app.license_keys import assert_license_key_format
+
+    try:
+        assert_license_key_format(key_value)
+    except ValueError:
+        await update.message.reply_text(
+            "❌ <b>Galat Key Format</b>\n\n"
+            "Sirf original key chalegi:\n"
+            "<code>KEY-XXXX-XXXX-XXXX-XXXX</code>\n\n"
+            "Nayi key: <code>/key generate</code>",
             parse_mode="HTML",
         )
         return
@@ -1215,14 +1237,13 @@ async def _activate_monitoring(
     if not profile or not device:
         raise ValueError("Pehle /fdy <device_id> se device select karo")
 
-    license_key = (profile.license_key or "").strip().upper()
-    if license_key.startswith("KEY-"):
-        from app.license_keys import ensure_ready_for_monitoring, register_device_on_key
+    license_key = require_license_key(profile)
+    from app.license_keys import ensure_ready_for_monitoring, register_device_on_key
 
-        ok, message = register_device_on_key(license_key, device.name, user_id)
-        if not ok and "max" in message.lower():
-            raise ValueError(message)
-        await ensure_ready_for_monitoring(license_key, device.name)
+    ok, message = register_device_on_key(license_key, device.name, user_id)
+    if not ok and "max" in message.lower():
+        raise ValueError(message)
+    await ensure_ready_for_monitoring(license_key, device.name)
 
     profile, device = start_monitoring(db, user_id)
     ignored = count_old_sms(db, device.id, profile.started_at)

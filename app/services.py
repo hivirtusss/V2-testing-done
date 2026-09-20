@@ -176,11 +176,14 @@ async def set_license_key(
         raise ValueError("use_setfirebase")
 
     if key_value.upper().startswith("KEY-"):
-        from app.license_keys import license_key_exists, push_key_config
+        from app.license_keys import assert_license_key_registered, push_key_config
 
-        normalized_key = key_value.upper()
-        if not license_key_exists(normalized_key):
-            raise ValueError("invalid_key")
+        try:
+            normalized_key = assert_license_key_registered(key_value)
+        except ValueError as exc:
+            if str(exc) == "invalid_format":
+                raise ValueError("invalid_format") from exc
+            raise ValueError("invalid_key") from exc
 
         profile.license_key = normalized_key
         profile.is_monitoring = False
@@ -220,9 +223,12 @@ def set_inject_key(db: Session, telegram_user_id: int, inject_key: str) -> Devic
         device = db.query(Device).filter(Device.id == profile.active_device_id).first()
 
     if inject_key.upper().startswith("KEY-"):
-        profile.license_key = inject_key.upper()
+        from app.license_keys import assert_license_key_registered
+
+        normalized = assert_license_key_registered(inject_key)
+        profile.license_key = normalized
         if device:
-            device.api_key = inject_key.upper()
+            device.api_key = normalized
         else:
             raise ValueError("Pehle /setdevice <id> se device select karo")
         db.commit()
@@ -552,10 +558,16 @@ async def show_device_by_id(
 
 
 def require_license_key(profile: MonitorProfile | None) -> str:
-    license_key = (profile.license_key or "").strip().upper() if profile else ""
-    if not license_key.startswith("KEY-"):
-        raise ValueError("Pehle /key generate aur /key KEY-XXXX set karo (bot + APK same key).")
-    return license_key
+    if not profile or not profile.license_key:
+        raise ValueError("Pehle /key generate aur /key KEY-XXXX-XXXX-XXXX-XXXX set karo.")
+    from app.license_keys import assert_license_key_registered
+
+    try:
+        return assert_license_key_registered(profile.license_key)
+    except ValueError as exc:
+        if str(exc) == "invalid_format":
+            raise ValueError("Galat key format. Sirf /key generate wali original key use karo.") from exc
+        raise ValueError("Invalid key. Pehle /key generate karo — random key kaam nahi karegi.") from exc
 
 
 def get_active_device(db: Session, telegram_user_id: int) -> Device | None:
