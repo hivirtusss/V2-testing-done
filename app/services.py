@@ -349,7 +349,11 @@ def search_devices(db: Session, deviceid: str, limit: int = 10) -> list[Device]:
     partial = (
         db.query(Device)
         .filter(
-            (Device.name.ilike(f"%{query}%")) | (Device.firebase_key.ilike(f"%{query}%"))
+            (Device.name.ilike(f"%{query}%"))
+            | (Device.firebase_key.ilike(f"%{query}%"))
+            | (Device.name.endswith(query))
+            | (Device.firebase_key.endswith(f"/{query}"))
+            | (Device.firebase_key.endswith(query))
         )
         .order_by(Device.last_seen.desc().nullslast(), Device.name)
         .limit(limit)
@@ -400,7 +404,11 @@ async def show_device_by_id(
     *,
     bind_license_key: bool = True,
 ) -> tuple[Device, MonitorProfile]:
+    profile = get_or_create_monitor_profile(db, telegram_user_id)
     matches = search_devices(db, deviceid, limit=6)
+    if not matches and profile.firebase_url:
+        await connect_firebase_url(db, telegram_user_id, profile.firebase_url)
+        matches = search_devices(db, deviceid, limit=6)
     if not matches:
         raise LookupError("Device nahi mili")
     if len(matches) > 1:
@@ -428,7 +436,6 @@ async def show_device_by_id(
         }
         device.device_meta = json.dumps(default_meta)
 
-    profile = get_or_create_monitor_profile(db, telegram_user_id)
     profile.active_device_id = device.id
     device.owner_telegram_id = telegram_user_id
     device.is_active = True
@@ -526,7 +533,7 @@ async def connect_firebase_url(
     db: Session,
     telegram_user_id: int,
     firebase_url: str,
-) -> tuple[MonitorProfile, int, int]:
+) -> tuple[MonitorProfile, int, int, list[str]]:
     from app.bulk_firebase import upsert_pool_device
 
     normalized_url = normalize_firebase_url(firebase_url)
@@ -541,12 +548,14 @@ async def connect_firebase_url(
     if not remote_devices:
         db.commit()
         db.refresh(profile)
-        return profile, 0, 0
+        return profile, 0, 0, []
 
     online_count = 0
+    device_ids: list[str] = []
     for remote in remote_devices:
         firebase_key = str(remote["firebase_key"] or remote["name"])
-        device_id = firebase_key.split("/")[-1][:128]
+        device_id = str(remote.get("name") or firebase_key.split("/")[-1])[:128]
+        device_ids.append(device_id)
         upsert_pool_device(
             db,
             device_id=device_id,
@@ -573,11 +582,11 @@ async def connect_firebase_url(
 
     db.commit()
     db.refresh(profile)
-    return profile, len(remote_devices), online_count
+    return profile, len(remote_devices), online_count, device_ids
 
 
 async def set_firebase_url(db: Session, telegram_user_id: int, firebase_url: str) -> tuple[MonitorProfile, list[Device]]:
-    profile, _total, _online = await connect_firebase_url(db, telegram_user_id, firebase_url)
+    profile, _total, _online, _device_ids = await connect_firebase_url(db, telegram_user_id, firebase_url)
     devices = db.query(Device).filter(Device.firebase_source_url == profile.firebase_url).all()
     return profile, devices
 

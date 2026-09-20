@@ -2,7 +2,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-DEVICE_PATHS = ("devices", "device", "clients", "users", "phones")
+DEVICE_PATHS = ("clients", "devices", "device", "users", "phones")
 
 
 def normalize_firebase_url(url: str) -> str:
@@ -97,8 +97,17 @@ def is_device_online(device: dict) -> bool:
     return True
 
 
+def _join_firebase_path(prefix: str, key: str) -> str:
+    cleaned_prefix = (prefix or "").strip("/")
+    if cleaned_prefix:
+        return f"{cleaned_prefix}/{key}"
+    return str(key)
+
+
 def _build_device_record(key: str, value: dict, prefix: str) -> dict:
-    name = (
+    # Node key (e.g. f0577ffa536dde46) is the canonical device id for /fdy lookup.
+    name = str(key)
+    display_name = (
         value.get("name")
         or value.get("device_name")
         or value.get("model")
@@ -123,8 +132,9 @@ def _build_device_record(key: str, value: dict, prefix: str) -> dict:
             )
 
     return {
-        "firebase_key": f"{prefix}{key}".strip("/"),
-        "name": str(name),
+        "firebase_key": _join_firebase_path(prefix, key),
+        "name": name,
+        "display_name": str(display_name),
         "phone_number": str(phone) if phone else None,
         "status": str(status) if status is not None else None,
         "battery": value.get("battery") or value.get("battery_level"),
@@ -162,7 +172,7 @@ async def fetch_firebase_devices(firebase_url: str) -> list[dict]:
             data = _fetch_json(f"{base_url}/{device_path}.json")
         except httpx.HTTPError:
             continue
-        devices = consider(data, prefix=device_path)
+        devices = consider(data, prefix=f"{device_path}/")
         if len(devices) > len(best_devices):
             best_devices = devices
 

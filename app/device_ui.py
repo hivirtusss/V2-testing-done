@@ -25,20 +25,33 @@ def format_addchannel_card(channel_id: str, sim_slot: int = 1) -> str:
     )
 
 
-def format_firebase_connected_card(firebase_url: str, online_count: int, total: int = 0) -> str:
+def format_firebase_connected_card(
+    firebase_url: str,
+    online_count: int,
+    total: int = 0,
+    device_ids: list[str] | None = None,
+) -> str:
     device_line = (
         f"📱 Devices Found: {total} (online: {online_count})"
         if total
-        else "📱 Devices: 0 (koi bhi Firebase chalega — /fy se device add karo)"
+        else "📱 Devices: 0 (koi bhi Firebase chalega — /fdy se device add karo)"
     )
+    ids_block = ""
+    if device_ids:
+        preview = device_ids[:12]
+        ids_block = "\n\nIDs:\n" + "\n".join(f"• {device_id}" for device_id in preview)
+        if len(device_ids) > 12:
+            ids_block += f"\n... +{len(device_ids) - 12} more"
     return (
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
         "Firebase Connected!\n\n"
         f"URL: {firebase_url}\n"
         f"{device_line}"
+        f"{ids_block}"
         "</pre>\n\n"
-        "Next: /fy &lt;device_id&gt; ya /key &lt;same-url&gt;"
+        "Pick device: <code>/fdy &lt;device_id&gt;</code>\n"
+        "Key wala: <code>/a &lt;device_id&gt;</code>"
     )
 
 
