@@ -62,6 +62,7 @@ from app.services import (
     set_license_key,
     require_license_key,
     show_device_by_id,
+    set_profile_phone,
     set_user_phone,
     start_monitoring,
     stop_monitoring,
@@ -75,6 +76,18 @@ AWAITING_FIREBASE_TXT = "awaiting_firebase_txt"
 
 def is_authorized(user_id: int | None) -> bool:
     return is_allowed(user_id)
+
+
+async def reply_if_unauthorized(update: Update) -> bool:
+    user_id = update.effective_user.id if update.effective_user else None
+    if is_authorized(user_id):
+        return True
+    if update.message:
+        await update.message.reply_text(
+            "❌ Unauthorized.\nAdmin se <code>/approve YOUR_ID</code> karo.",
+            parse_mode="HTML",
+        )
+    return False
 
 
 def format_sms(sms: SMSMessage) -> str:
@@ -209,7 +222,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def mynum_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
-    if not is_authorized(user.id if user else None):
+    if not await reply_if_unauthorized(update):
         return
 
     if not context.args:
@@ -225,29 +238,42 @@ async def mynum_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     phone = context.args[0]
     db: Session = SessionLocal()
     try:
-        profile, device = set_user_phone(db, user.id, phone)
+        profile = set_profile_phone(db, user.id, phone)
+        device = get_active_device(db, user.id)
+        if not device:
+            raise ValueError("Pehle /fdy <device_id> se device select karo")
         await sync_profile_to_firebase(profile, device)
     except ValueError as exc:
         await update.message.reply_text(f"❌ {exc}")
-        return
-    except PermissionError:
-        await update.message.reply_text("❌ Ye number kisi aur user ka hai.")
         return
     finally:
         db.close()
 
     await update.message.reply_text(
         f"✅ Number set: `+{profile.phone_number}`\n"
-        f"📱 Device: `{device.name}`\n"
-        f"🔑 API key: `{device.api_key}`\n\n"
-        f"Ab `/startmonitar` likho forwarding start karne ke liye.",
+        f"📱 Device: `{device.name}` (same — change nahi hua)\n\n"
+        f"Ab `/addchannel` → `/startmonitor`",
         parse_mode="Markdown",
     )
 
 
+async def _prepare_monitoring(
+    db: Session,
+    user_id: int,
+    profile: MonitorProfile,
+    device: Device,
+) -> None:
+    license_key = require_license_key(profile)
+    from app.license_keys import ensure_ready_for_monitoring, register_device_on_key
+
+    register_device_on_key(license_key, device.name, user_id)
+    await sync_profile_to_firebase(profile, device)
+    await ensure_ready_for_monitoring(license_key, device.name, user_id)
+
+
 async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
-    if not is_authorized(user.id if user else None):
+    if not await reply_if_unauthorized(update):
         return
 
     db: Session = SessionLocal()
@@ -255,11 +281,8 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
         profile = get_monitor_profile(db, user.id)
         device = get_active_device(db, user.id)
         if not profile or not device:
-            raise ValueError("Pehle /fy <device_id> aur /mynum set karo")
-        license_key = require_license_key(profile)
-        from app.license_keys import ensure_ready_for_monitoring
-
-        await ensure_ready_for_monitoring(license_key, device.name)
+            raise ValueError("Pehle /fdy <device_id> → /mynum → /addchannel set karo")
+        await _prepare_monitoring(db, user.id, profile, device)
         profile, device = start_monitoring(db, user.id)
         ignored = count_old_sms(db, device.id, profile.started_at)
         await sync_profile_to_firebase(profile, device)
@@ -585,7 +608,7 @@ async def device_select_command(
 ) -> None:
     """Find device from pool — /fdy /fy /fb /setdevice."""
     user = update.effective_user
-    if not is_authorized(user.id if user else None):
+    if not await reply_if_unauthorized(update):
         return
 
     if not context.args:
@@ -701,7 +724,7 @@ async def send_device_set_ui(
 
 async def a_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
-    if not is_authorized(user.id if user else None):
+    if not await reply_if_unauthorized(update):
         return
 
     if not context.args:
@@ -744,7 +767,7 @@ async def stop_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
-    if not is_authorized(user.id if user else None):
+    if not await reply_if_unauthorized(update):
         return
 
     db: Session = SessionLocal()
@@ -752,10 +775,7 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         profile = get_monitor_profile(db, user.id)
         device = get_active_device(db, user.id)
         if profile and device:
-            license_key = require_license_key(profile)
-            from app.license_keys import ensure_ready_for_monitoring
-
-            await ensure_ready_for_monitoring(license_key, device.name)
+            await _prepare_monitoring(db, user.id, profile, device)
         profile, device = resume_monitoring(db, user.id)
         if device:
             await sync_profile_to_firebase(profile, device)
@@ -939,7 +959,7 @@ async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def key_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
-    if not is_authorized(user.id if user else None):
+    if not await reply_if_unauthorized(update):
         return
 
     if not context.args:
@@ -954,12 +974,20 @@ async def key_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             profile = get_or_create_monitor_profile(db, user.id)
             profile.license_key = new_key
             profile.is_monitoring = False
+            device = get_active_device(db, user.id)
             db.commit()
             firebase_bases = [profile.firebase_url] if profile.firebase_url else None
             try:
                 await publish_license_key(new_key, firebase_bases=firebase_bases)
             except Exception as exc:
                 logger.warning("Firebase key publish skipped: %s", exc)
+            if device:
+                from app.license_keys import register_device_on_key
+                from app.services import bind_device_to_license_key
+
+                register_device_on_key(new_key, device.name, user.id)
+                await bind_device_to_license_key(db, profile, device)
+                await sync_profile_to_firebase(profile, device)
         except Exception as exc:
             logger.error("License key generate failed: %s", exc)
             await update.message.reply_text(f"❌ Key generate failed: {exc}")
@@ -1281,14 +1309,7 @@ async def _activate_monitoring(
     if not profile or not device:
         raise ValueError("Pehle /fdy <device_id> se device select karo")
 
-    license_key = require_license_key(profile)
-    from app.license_keys import ensure_ready_for_monitoring, register_device_on_key
-
-    ok, message = register_device_on_key(license_key, device.name, user_id)
-    if not ok and "max" in message.lower():
-        raise ValueError(message)
-    await ensure_ready_for_monitoring(license_key, device.name)
-
+    await _prepare_monitoring(db, user_id, profile, device)
     profile, device = start_monitoring(db, user_id)
     ignored = count_old_sms(db, device.id, profile.started_at)
     await sync_profile_to_firebase(profile, device)

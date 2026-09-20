@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 DEFAULT_MAX_DEVICES = 2
-APK_ATTACH_MAX_AGE_SEC = 900
+APK_ATTACH_MAX_AGE_SEC = 86400
 LICENSE_KEY_RE = re.compile(
     r"^KEY-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}$"
 )
@@ -380,22 +380,95 @@ async def sync_apk_attached_from_firebase(
     return False, None
 
 
-async def ensure_ready_for_monitoring(key: str, device_id: str) -> None:
+def copy_apk_attach_between_devices(
+    key: str,
+    from_device_id: str,
+    to_device_id: str,
+    telegram_user_id: int,
+) -> bool:
+    from_device_id = from_device_id.strip()
+    to_device_id = to_device_id.strip()
+    if not from_device_id or not to_device_id or from_device_id == to_device_id:
+        return is_apk_attached(key, to_device_id)
+
+    db: Session = SessionLocal()
+    try:
+        record = _get_db_key(db, key)
+        if not record:
+            return False
+        from_entry = (
+            db.query(LicenseKeyDevice)
+            .filter(
+                LicenseKeyDevice.license_key_id == record.id,
+                LicenseKeyDevice.device_id == from_device_id,
+            )
+            .first()
+        )
+        if not from_entry or not from_entry.apk_attached_at:
+            return False
+        register_device_on_key(key, to_device_id, telegram_user_id)
+        to_entry = (
+            db.query(LicenseKeyDevice)
+            .filter(
+                LicenseKeyDevice.license_key_id == record.id,
+                LicenseKeyDevice.device_id == to_device_id,
+            )
+            .first()
+        )
+        if not to_entry:
+            return False
+        to_entry.apk_attached_at = from_entry.apk_attached_at
+        db.commit()
+        return True
+    finally:
+        db.close()
+
+
+async def ensure_ready_for_monitoring(
+    key: str,
+    device_id: str,
+    telegram_user_id: int | None = None,
+) -> None:
     normalized = assert_license_key_registered(key)
-
-    devices = list_key_devices(normalized)
     device_id = device_id.strip()
-    if device_id not in devices:
-        raise ValueError("Device is key par register nahi. Pehle /a <device_id> karo.")
+
+    if telegram_user_id is not None:
+        register_device_on_key(normalized, device_id, telegram_user_id)
+    elif device_id not in list_key_devices(normalized):
+        raise ValueError("Pehle /fdy <device_id> ya /a <device_id> se device select karo.")
 
     if not is_apk_attached(normalized, device_id):
-        await sync_apk_attached_from_firebase(normalized, device_id, None)
+        attached, apk_id = await sync_apk_attached_from_firebase(
+            normalized,
+            device_id,
+            telegram_user_id,
+        )
+        if (
+            attached
+            and apk_id
+            and apk_id != device_id
+            and telegram_user_id is not None
+        ):
+            copy_apk_attach_between_devices(normalized, apk_id, device_id, telegram_user_id)
 
     if not is_apk_attached(normalized, device_id):
+        for dev_id, meta in list_key_devices(normalized).items():
+            if telegram_user_id is not None and meta.get("telegram_user_id") not in (
+                None,
+                telegram_user_id,
+            ):
+                continue
+            if is_apk_attached(normalized, dev_id):
+                if dev_id != device_id and telegram_user_id is not None:
+                    copy_apk_attach_between_devices(
+                        normalized, dev_id, device_id, telegram_user_id
+                    )
+                if is_apk_attached(normalized, device_id):
+                    return
+
         raise ValueError(
-            "APK mein SAME original key daalo + START SERVICE dabao.\n"
-            "Random key kaam nahi karegi — sirf /key generate wali key.\n"
-            "Phir /startmonitor chalao."
+            "APK mein SAME key daalo + START SERVICE ON karo.\n"
+            "Phir /key confirm — ya Monitoring ON dubara dabao."
         )
 
 

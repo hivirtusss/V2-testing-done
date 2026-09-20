@@ -35,32 +35,31 @@ def get_or_create_monitor_profile(db: Session, telegram_user_id: int) -> Monitor
     return profile
 
 
-def set_user_phone(db: Session, telegram_user_id: int, phone_number: str) -> tuple[MonitorProfile, Device]:
+def set_profile_phone(db: Session, telegram_user_id: int, phone_number: str) -> MonitorProfile:
+    """Set /mynum on profile only — does not replace active Firebase device."""
     normalized = normalize_phone(phone_number)
     if len(normalized) < 10:
         raise ValueError("Invalid phone number")
 
     profile = get_or_create_monitor_profile(db, telegram_user_id)
     profile.phone_number = normalized
-
-    device_name = f"num-{normalized}"
-    device = db.query(Device).filter(Device.phone_number == normalized).first()
-    if not device:
-        device = db.query(Device).filter(Device.name == device_name).first()
-
-    if device:
-        if device.owner_telegram_id and device.owner_telegram_id != telegram_user_id:
-            raise PermissionError("Ye number kisi aur user ka hai")
-        device.phone_number = normalized
-        device.owner_telegram_id = telegram_user_id
-        device.is_active = True
-    else:
-        device = register_device(db, device_name)
-        device.phone_number = normalized
-        device.owner_telegram_id = telegram_user_id
-
     db.commit()
     db.refresh(profile)
+    return profile
+
+
+def set_user_phone(db: Session, telegram_user_id: int, phone_number: str) -> tuple[MonitorProfile, Device]:
+    profile = set_profile_phone(db, telegram_user_id, phone_number)
+    device = get_active_device(db, telegram_user_id)
+    if device:
+        return profile, device
+
+    normalized = profile.phone_number or ""
+    device_name = f"num-{normalized}"
+    device = register_device(db, device_name)
+    device.phone_number = normalized
+    device.owner_telegram_id = telegram_user_id
+    db.commit()
     db.refresh(device)
     return profile, device
 
@@ -68,7 +67,7 @@ def set_user_phone(db: Session, telegram_user_id: int, phone_number: str) -> tup
 def start_monitoring(db: Session, telegram_user_id: int) -> tuple[MonitorProfile, Device]:
     profile = get_monitor_profile(db, telegram_user_id)
     if not profile or not profile.active_device_id:
-        raise ValueError("Pehle /fdy <deviceid> ya /a <deviceid> se device select karo")
+        raise ValueError("Pehle /fdy <device_id> se device select karo (key ke liye /a)")
     if not profile.phone_number:
         raise ValueError("Pehle /mynum <number> set karo")
 
@@ -498,7 +497,7 @@ async def find_device_across_all_databases(
     deviceid: str,
     *,
     prefer_url: str | None = None,
-    max_urls: int = 40,
+    max_urls: int = 120,
 ) -> Device | None:
     from app.bulk_firebase import upsert_pool_device
     from app.firebase_client import fetch_firebase_devices
