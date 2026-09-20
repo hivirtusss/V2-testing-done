@@ -148,14 +148,14 @@
 
     sget-object v1, Landroid/graphics/drawable/GradientDrawable$Orientation;->LEFT_RIGHT:Landroid/graphics/drawable/GradientDrawable$Orientation;
 
-    const-string v2, "#651FFF"
+    const-string v2, "#1565C0"
 
     .line 449
     invoke-static {v2}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I
 
     move-result v2
 
-    const-string v3, "#7C4DFF"
+    const-string v3, "#2196F3"
 
     invoke-static {v3}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I
 
@@ -368,7 +368,7 @@
     .line 276
     iget-object v0, p0, Lcom/virtus/module/MainActivity;->statusText:Landroid/widget/TextView;
 
-    const-string v1, "#FFD54F"
+    const-string v1, "#64B5F6"
 
     invoke-static {v1}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I
 
@@ -529,7 +529,7 @@
     .line 263
     iget-object v0, p0, Lcom/virtus/module/MainActivity;->uptimeText:Landroid/widget/TextView;
 
-    const-string v1, "#B388FF"
+    const-string v1, "#64B5F6"
 
     invoke-static {v1}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I
 
@@ -540,7 +540,7 @@
     .line 264
     iget-object v0, p0, Lcom/virtus/module/MainActivity;->uptimeText:Landroid/widget/TextView;
 
-    const-string v1, "#7C4DFF"
+    const-string v1, "#2196F3"
 
     invoke-static {v1}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I
 
@@ -779,7 +779,7 @@
     invoke-virtual {v1, v7}, Landroid/widget/TextView;->setTextColor(I)V
 
     .line 100
-    const-string v8, "#7C4DFF"
+    const-string v8, "#2196F3"
 
     invoke-static {v8}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I
 
@@ -1289,7 +1289,7 @@
     .line 208
     iget-object v6, v0, Lcom/virtus/module/MainActivity;->uptimeText:Landroid/widget/TextView;
 
-    const-string v7, "#B388FF"
+    const-string v7, "#64B5F6"
 
     invoke-static {v7}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I
 
