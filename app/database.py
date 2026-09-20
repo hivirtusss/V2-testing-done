@@ -17,6 +17,7 @@ class MonitorProfile(Base):
     telegram_user_id: Mapped[int] = mapped_column(Integer, unique=True, index=True)
     phone_number: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     firebase_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    active_device_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_monitoring: Mapped[bool] = mapped_column(Boolean, default=False)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -105,6 +106,9 @@ def _migrate_existing_tables() -> None:
         if "firebase_url" not in columns:
             with engine.begin() as conn:
                 conn.execute(text("ALTER TABLE monitor_profiles ADD COLUMN firebase_url VARCHAR(512)"))
+        if "active_device_id" not in columns:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE monitor_profiles ADD COLUMN active_device_id INTEGER"))
 
 
 def init_db() -> None:

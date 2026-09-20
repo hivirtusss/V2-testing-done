@@ -154,7 +154,7 @@ def save_sms(
     return sms
 
 
-def get_device_by_identifier(db: Session, deviceid: str) -> Device | None:
+def get_device_by_identifier(db: Session, deviceid: str, exact: bool = False) -> Device | None:
     if deviceid.isdigit():
         by_id = db.query(Device).filter(Device.id == int(deviceid)).first()
         if by_id:
@@ -168,7 +168,63 @@ def get_device_by_identifier(db: Session, deviceid: str) -> Device | None:
     if device:
         return device
 
+    if exact:
+        return None
+
     return db.query(Device).filter(Device.firebase_key.ilike(f"%{deviceid}%")).first()
+
+
+async def sync_device_from_firebase(db: Session, device: Device) -> Device:
+    if not device.firebase_source_url:
+        return device
+
+    remote_devices = await fetch_firebase_devices(device.firebase_source_url)
+    if not remote_devices:
+        return device
+
+    remote = remote_devices[0]
+    for item in remote_devices:
+        if item["firebase_key"] == device.firebase_key or item["name"] == device.name:
+            remote = item
+            break
+
+    if remote.get("phone_number"):
+        device.phone_number = normalize_phone(remote["phone_number"])
+    device.last_seen = datetime.now(timezone.utc)
+    device.is_active = True
+    db.commit()
+    db.refresh(device)
+    return device
+
+
+async def show_device_by_id(
+    db: Session,
+    deviceid: str,
+    telegram_user_id: int,
+) -> tuple[Device, MonitorProfile]:
+    device = get_device_by_identifier(db, deviceid, exact=True)
+    if not device:
+        raise LookupError("Device nahi mili")
+
+    if device.firebase_source_url:
+        device = await sync_device_from_firebase(db, device)
+
+    profile = get_or_create_monitor_profile(db, telegram_user_id)
+    profile.active_device_id = device.id
+    device.owner_telegram_id = telegram_user_id
+    device.is_active = True
+    device.last_seen = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(device)
+    db.refresh(profile)
+    return device, profile
+
+
+def get_active_device(db: Session, telegram_user_id: int) -> Device | None:
+    profile = get_monitor_profile(db, telegram_user_id)
+    if not profile or not profile.active_device_id:
+        return None
+    return db.query(Device).filter(Device.id == profile.active_device_id).first()
 
 
 def claim_pool_device(db: Session, deviceid: str, owner_telegram_id: int) -> tuple[Device, bool]:
