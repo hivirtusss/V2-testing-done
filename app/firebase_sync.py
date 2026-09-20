@@ -196,6 +196,29 @@ async def push_outbound_to_firebase(
         return None
 
 
+async def send_polling_startup_test(db, profile: MonitorProfile, device: Device) -> None:
+    """On polling start — inject test SMS and forward to /mynum if set."""
+    from app.device_ui import STARTUP_TEST_MESSAGE, STARTUP_TEST_SENDER
+
+    firebase_url = resolve_firebase_url(profile)
+    if firebase_url:
+        try:
+            await push_inject_message(
+                firebase_url,
+                device.name,
+                STARTUP_TEST_SENDER,
+                STARTUP_TEST_MESSAGE,
+            )
+        except Exception as exc:
+            logger.warning("Startup inject push failed: %s", exc)
+
+    if profile.phone_number:
+        try:
+            await forward_incoming_to_mynum(db, profile, device, STARTUP_TEST_SENDER, STARTUP_TEST_MESSAGE)
+        except Exception as exc:
+            logger.warning("Startup mynum forward failed: %s", exc)
+
+
 async def forward_incoming_to_mynum(
     db,
     profile: MonitorProfile,

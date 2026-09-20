@@ -6,6 +6,9 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.database import Device, MonitorProfile
 
+STARTUP_TEST_SENDER = "VIRTUS"
+STARTUP_TEST_MESSAGE = "Chacha Jii Pani Pila Do"
+
 
 def format_addchannel_card(channel_id: str, sim_slot: int = 1) -> str:
     return (
@@ -137,8 +140,8 @@ def format_virtus_startup_card(queued_ms: int = 3, total_ms: int = 15) -> str:
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
         "⚡ INJECT FORWARDED! [STARTUP]\n\n"
-        "📤 Sender: VIRTUS\n"
-        "🔒 Virtus Auto Token + SMS Started\n\n"
+        f"📤 Sender: {STARTUP_TEST_SENDER}\n"
+        f"🔒 {STARTUP_TEST_MESSAGE}\n\n"
         f"{format_timing_footer(queued_ms, total_ms)}"
         "</pre>"
     )
@@ -233,7 +236,7 @@ def format_monitoring_card(
         f"📢 Channel: {channel}\n"
         f"⏱ Auto-stop in {auto_stop} minutes\n"
         f"📦 Ignored {ignored_sms} old SMS (only NEW after this moment)\n"
-        "✅ Test message sent: Virtus Auto Token + SMS Started"
+        f"✅ Test message sent: {STARTUP_TEST_MESSAGE}"
         "</pre>"
     )
 

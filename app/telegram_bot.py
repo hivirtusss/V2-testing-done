@@ -14,7 +14,7 @@ from app.channel_relay import (
     queue_channel_sms_with_firebase,
     queue_manual_sms_with_firebase,
 )
-from app.firebase_sync import forward_incoming_to_mynum, sync_profile_to_firebase
+from app.firebase_sync import forward_incoming_to_mynum, send_polling_startup_test, sync_profile_to_firebase
 from app.monitor_timer import cancel_auto_stop, schedule_auto_stop
 from app.device_ui import (
     device_set_keyboard,
@@ -32,11 +32,12 @@ from app.device_ui import (
     format_virtus_outgoing_sent_card,
     format_virtus_startup_card,
     format_virtus_stream_card,
+    STARTUP_TEST_MESSAGE,
+    STARTUP_TEST_SENDER,
     format_welcome_message,
     get_sim_list,
     monitoring_keyboard,
 )
-from app.firebase_sync import push_inject_message
 from app.services import (
     count_old_sms,
     device_status,
@@ -212,23 +213,17 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
     try:
         profile, device = start_monitoring(db, user.id)
         ignored = count_old_sms(db, device.id, profile.started_at)
-        latest_sms = (
-            db.query(SMSMessage)
-            .filter(SMSMessage.device_id == device.id)
-            .order_by(SMSMessage.received_at.desc())
-            .first()
-        )
-        test_msg = latest_sms.message[:40] if latest_sms else "Monitoring active"
+        await sync_profile_to_firebase(profile, device)
+        await send_polling_startup_test(db, profile, device)
     except ValueError as exc:
         await update.message.reply_text(f"❌ {exc}")
         return
     finally:
         db.close()
 
-    await sync_profile_to_firebase(profile, device)
-
-    monitoring_card = format_monitoring_card(device, profile, ignored_sms=ignored, test_message=test_msg)
+    monitoring_card = format_monitoring_card(device, profile, ignored_sms=ignored)
     startup_card = format_virtus_startup_card()
+    stream_card = format_virtus_stream_card(STARTUP_TEST_SENDER, STARTUP_TEST_MESSAGE)
 
     await update.message.reply_text(
         monitoring_card,
@@ -242,18 +237,7 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
         bot = Bot(token=settings.telegram_bot_token)
         await _post_to_channel(bot, profile.channel_id, monitoring_card)
         await _post_to_channel(bot, profile.channel_id, startup_card)
-
-        firebase_url = profile.firebase_url or profile.license_key
-        if firebase_url and firebase_url.lower().startswith("http"):
-            try:
-                await push_inject_message(
-                    firebase_url,
-                    device.name,
-                    "VIRTUS",
-                    "Virtus Auto Token + SMS Started",
-                )
-            except Exception as exc:
-                logger.warning("Startup inject push failed: %s", exc)
+        await _post_to_channel(bot, profile.channel_id, stream_card)
 
     schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
 
@@ -304,7 +288,7 @@ def _is_virtus_bot_message(text: str) -> bool:
         "INJECT FORWARDED!",
         "TOKEN FORWARDED!",
         "Real SMS ->",
-        "Virtus Auto Token",
+        STARTUP_TEST_MESSAGE,
         "Test message sent:",
         "AUTO-STOPPED",
         "✅ SUCCESS",
@@ -586,16 +570,19 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     db: Session = SessionLocal()
     try:
         profile, device = resume_monitoring(db, user.id)
+        if device:
+            await sync_profile_to_firebase(profile, device)
+            await send_polling_startup_test(db, profile, device)
     except ValueError as exc:
         await update.message.reply_text(f"❌ {exc}")
         return
     finally:
         db.close()
 
-    await sync_profile_to_firebase(profile, device)
     if device:
-        monitoring_card = format_monitoring_card(device, profile, test_message="Monitor resumed")
+        monitoring_card = format_monitoring_card(device, profile)
         startup_card = format_virtus_startup_card()
+        stream_card = format_virtus_stream_card(STARTUP_TEST_SENDER, STARTUP_TEST_MESSAGE)
         await update.message.reply_text(
             monitoring_card,
             parse_mode="HTML",
@@ -607,6 +594,7 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             bot = Bot(token=settings.telegram_bot_token)
             await _post_to_channel(bot, profile.channel_id, monitoring_card)
             await _post_to_channel(bot, profile.channel_id, startup_card)
+            await _post_to_channel(bot, profile.channel_id, stream_card)
         schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
     else:
         await update.message.reply_text("🟢 Monitor resumed!", parse_mode="HTML")
