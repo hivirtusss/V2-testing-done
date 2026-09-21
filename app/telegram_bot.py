@@ -267,7 +267,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await guide_command(update, context)
+    if not is_authorized(update.effective_user.id if update.effective_user else None):
+        return
+    await update.message.reply_text(format_commands_message(), parse_mode="HTML")
 
 
 async def guide_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -557,13 +559,14 @@ async def firebase_txt_upload_handler(update: Update, context: ContextTypes.DEFA
     finally:
         db.close()
 
+    pool_total = result.get("pool_urls", result["pool_total"])
     await status_msg.edit_text(
         "✅ <b>SCAN DONE</b>\n\n"
         "<pre>"
-        f"Lines: {result['lines']}\n"
-        f"Devices: {result['imported']}\n"
-        f"Failed: {result['failed']}\n"
-        f"Pool: {result['pool_total']}"
+        f"URLs found: {result['lines']}\n"
+        f"New added: {result['imported']}\n"
+        f"Total pool: {pool_total}\n"
+        f"Failed: {result['failed']}"
         "</pre>",
         parse_mode="HTML",
     )

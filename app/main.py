@@ -8,7 +8,8 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.database import Device, OutboundSMS, SMSMessage, get_db, init_db
+from app.database import Device, OutboundSMS, SMSMessage, SessionLocal, get_db, init_db
+from app.firebase_pool import ensure_pool_loaded
 from app.models import DeviceCreate, DeviceResponse, OutboundSMSResponse, SMSResponse, SMSWebhookPayload
 from app.services import device_status, list_devices_with_counts, register_device, save_sms
 from app.device_refresh import run_device_refresh_loop
@@ -23,6 +24,14 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    db = SessionLocal()
+    try:
+        pool_added = ensure_pool_loaded(db)
+        if pool_added:
+            logger.info("Bundled Firebase pool synced: %s URLs added", pool_added)
+    finally:
+        db.close()
+
     telegram_app = build_telegram_app()
 
     refresh_task = asyncio.create_task(run_device_refresh_loop())

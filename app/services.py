@@ -454,6 +454,8 @@ async def sync_device_from_firebase(db: Session, device: Device) -> Device:
 
 
 def get_all_firebase_urls(db: Session) -> list[str]:
+    from app.firebase_pool import get_pool_urls
+
     urls = {
         row[0].rstrip("/")
         for row in db.query(Device.firebase_source_url)
@@ -470,7 +472,8 @@ def get_all_firebase_urls(db: Session) -> list[str]:
         .all()
         if row[0]
     }
-    return sorted(urls | profile_urls)
+    pool_urls = {url.rstrip("/") for url in get_pool_urls(db)}
+    return sorted(urls | profile_urls | pool_urls)
 
 
 def _device_matches_query(deviceid: str, remote: dict) -> bool:
@@ -528,10 +531,10 @@ async def find_device_across_all_databases(
     deviceid: str,
     *,
     prefer_url: str | None = None,
-    max_urls: int = 120,
+    max_urls: int | None = None,
 ) -> Device | None:
     from app.bulk_firebase import upsert_pool_device
-    from app.firebase_client import fetch_firebase_devices
+    from app.firebase_client import fetch_firebase_device_live
 
     import asyncio
 
@@ -540,42 +543,67 @@ async def find_device_across_all_databases(
         if device:
             return device
 
-    urls = [url for url in get_all_firebase_urls(db) if url != (prefer_url or "").rstrip("/")]
+    prefer = (prefer_url or "").rstrip("/")
+    urls = [url for url in get_all_firebase_urls(db) if url.rstrip("/") != prefer]
     if not urls:
         return None
-    urls = urls[:max_urls]
+    if max_urls:
+        urls = urls[:max_urls]
 
-    semaphore = asyncio.Semaphore(8)
+    semaphore = asyncio.Semaphore(100)
     db_lock = asyncio.Lock()
+    stop = asyncio.Event()
     found_device: Device | None = None
+    scan_timeout = 2.0
+    batch_size = 150
 
-    async def scan_url(url: str) -> None:
-        nonlocal found_device
-        if found_device:
-            return
+    async def scan_url(url: str) -> tuple[str, dict] | None:
+        if stop.is_set():
+            return None
         async with semaphore:
+            if stop.is_set():
+                return None
             try:
-                remotes = await fetch_firebase_devices(url)
+                remote = await fetch_firebase_device_live(
+                    url,
+                    device_name=deviceid,
+                    quick_only=True,
+                    timeout=scan_timeout,
+                )
             except Exception:
-                return
-            match = next((remote for remote in remotes if _device_matches_query(deviceid, remote)), None)
-            if not match:
-                return
+                return None
+            if remote and _device_matches_query(deviceid, remote):
+                return url, remote
+        return None
+
+    for start in range(0, len(urls), batch_size):
+        if stop.is_set():
+            break
+        batch = urls[start : start + batch_size]
+        results = await asyncio.gather(*(scan_url(url) for url in batch), return_exceptions=True)
+        for result in results:
+            if not isinstance(result, tuple):
+                continue
+            url, remote = result
             async with db_lock:
                 if found_device:
-                    return
-                firebase_key = str(match.get("firebase_key") or match.get("name"))
-                name = str(match.get("name") or firebase_key.split("/")[-1])[:128]
+                    break
+                firebase_key = str(remote.get("firebase_key") or remote.get("name"))
+                name = str(remote.get("name") or firebase_key.split("/")[-1])[:128]
                 device = upsert_pool_device(
                     db,
                     device_id=name,
                     firebase_url=url,
                     firebase_key=firebase_key,
-                    phone_number=match.get("phone_number"),
+                    phone_number=remote.get("phone_number"),
                 )
-                found_device = apply_remote_to_device(db, device, match)
+                found_device = apply_remote_to_device(db, device, remote)
+                stop.set()
+                break
+        if found_device:
+            db.commit()
+            break
 
-    await asyncio.gather(*(scan_url(url) for url in urls))
     return found_device
 
 
