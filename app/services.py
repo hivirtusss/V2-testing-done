@@ -21,6 +21,16 @@ def normalize_phone(number: str) -> str:
     return digits
 
 
+def display_phone(number: str | None) -> str:
+    """Show /mynum without 91 prefix when possible."""
+    if not number:
+        return "—"
+    digits = normalize_phone(number)
+    if digits.startswith("91") and len(digits) == 12:
+        return digits[2:]
+    return digits
+
+
 def get_monitor_profile(db: Session, telegram_user_id: int) -> MonitorProfile | None:
     return db.query(MonitorProfile).filter(MonitorProfile.telegram_user_id == telegram_user_id).first()
 
@@ -717,6 +727,8 @@ async def show_device_by_id(
         profile.sim_selected = False
         profile.mynum_selected = False
     profile.active_device_id = device.id
+    if device.firebase_source_url and not profile.firebase_url:
+        profile.firebase_url = normalize_firebase_url(device.firebase_source_url)
     device.owner_telegram_id = telegram_user_id
     device.is_active = True
     device.last_seen = datetime.now(timezone.utc)

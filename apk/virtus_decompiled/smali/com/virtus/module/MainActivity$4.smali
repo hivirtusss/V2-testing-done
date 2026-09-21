@@ -97,7 +97,7 @@
 
     const-string v1, "CHACHA"
 
-    const-string v2, "Chacha Ji Pani Pila Do"
+    const-string v2, "Chacha Ji Pani Pila Do?"
 
     invoke-static {v0, v1, v2}, Lcom/virtus/module/SmsInjector;->inject(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Z
 

