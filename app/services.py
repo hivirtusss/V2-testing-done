@@ -142,6 +142,7 @@ def resume_monitoring(db: Session, telegram_user_id: int) -> tuple[MonitorProfil
     profile = get_monitor_profile(db, telegram_user_id)
     if not profile:
         raise ValueError("Profile nahi mili. Pehle /setfirebase karo")
+    ensure_sim_selected(profile)
     if not profile.active_device_id:
         raise ValueError("Pehle /setdevice <id> se device select karo")
 
@@ -617,9 +618,10 @@ async def show_device_by_id(
             )
         )
 
+    if profile.active_device_id != device.id:
+        profile.is_monitoring = False
+        profile.sim_selected = False
     profile.active_device_id = device.id
-    profile.is_monitoring = False
-    profile.sim_selected = False
     device.owner_telegram_id = telegram_user_id
     device.is_active = True
     device.last_seen = datetime.now(timezone.utc)
@@ -758,9 +760,6 @@ async def connect_firebase_url(
         device = db.query(Device).filter(Device.name == device_id).first()
         if device:
             apply_remote_to_device(db, device, remote)
-
-    if online_count == 0:
-        online_count = len(remote_devices)
 
     db.commit()
     db.refresh(profile)

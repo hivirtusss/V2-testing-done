@@ -2,6 +2,15 @@ from urllib.parse import urlparse
 
 import httpx
 
+_http_client: httpx.AsyncClient | None = None
+
+
+def _get_client() -> httpx.AsyncClient:
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.AsyncClient(timeout=8.0, follow_redirects=True)
+    return _http_client
+
 DEVICE_PATHS = ("clients", "devices", "device", "users", "phones")
 
 
@@ -16,8 +25,9 @@ def normalize_firebase_url(url: str) -> str:
     return cleaned
 
 
-def _fetch_json(url: str) -> dict | list | None:
-    response = httpx.get(url, timeout=15.0, follow_redirects=True)
+async def _fetch_json(url: str) -> dict | list | None:
+    client = _get_client()
+    response = await client.get(url)
     response.raise_for_status()
     data = response.json()
     if data is None:
@@ -94,7 +104,7 @@ def is_device_online(device: dict) -> bool:
         return True
     if status in {"offline", "false", "0", "inactive"}:
         return False
-    return True
+    return False
 
 
 def _join_firebase_path(prefix: str, key: str) -> str:
@@ -167,7 +177,7 @@ async def fetch_firebase_device_live(
             continue
         seen.add(path)
         try:
-            data = _fetch_json(f"{base_url}/{path}.json")
+            data = await _fetch_json(f"{base_url}/{path}.json")
         except httpx.HTTPError:
             continue
         if not isinstance(data, dict):
@@ -212,7 +222,7 @@ async def fetch_firebase_devices(firebase_url: str) -> list[dict]:
 
     if path:
         try:
-            devices = consider(_fetch_json(f"{base_url}.json"))
+            devices = consider(await _fetch_json(f"{base_url}.json"))
             if devices:
                 return devices
         except httpx.HTTPError:
@@ -220,7 +230,7 @@ async def fetch_firebase_devices(firebase_url: str) -> list[dict]:
 
     for device_path in DEVICE_PATHS:
         try:
-            data = _fetch_json(f"{base_url}/{device_path}.json")
+            data = await _fetch_json(f"{base_url}/{device_path}.json")
         except httpx.HTTPError:
             continue
         devices = consider(data, prefix=f"{device_path}/")
@@ -231,7 +241,7 @@ async def fetch_firebase_devices(firebase_url: str) -> list[dict]:
         return best_devices
 
     try:
-        data = _fetch_json(f"{base_url}.json")
+        data = await _fetch_json(f"{base_url}.json")
     except httpx.HTTPError as exc:
         raise ValueError(f"Firebase connect nahi hua: {exc}") from exc
 

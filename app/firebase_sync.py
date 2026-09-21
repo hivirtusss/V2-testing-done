@@ -13,6 +13,8 @@ from app.firebase_client import normalize_firebase_url
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+OUTGOING_SENDER = "__OUT__"
+
 
 def get_profile_firebase_url(profile: MonitorProfile) -> str | None:
     if profile.firebase_url:
@@ -48,10 +50,20 @@ def _config_path_key(license_key: str) -> str:
     return key.upper()
 
 
+_http_client: httpx.AsyncClient | None = None
+
+
+def _get_http_client() -> httpx.AsyncClient:
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.AsyncClient(timeout=5.0, follow_redirects=True)
+    return _http_client
+
+
 async def _firebase_put(url: str, data: dict) -> None:
-    async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
-        response = await client.put(f"{url}.json", json=data)
-        response.raise_for_status()
+    client = _get_http_client()
+    response = await client.put(f"{url}.json", json=data)
+    response.raise_for_status()
 
 
 async def push_virtus_config(profile: MonitorProfile, device: Device | None = None) -> None:
@@ -242,14 +254,25 @@ async def push_outbound_to_firebase(
                 outbound.spoof_sender,
                 outbound.message,
             )
-        return await push_outgoing_sms_command(
+        body = f"{outbound.to_number}\n{outbound.message}\n{outbound.sim_index}"
+        command_id = await push_inject_message(
             firebase_url,
             device.name,
-            outbound.to_number,
-            outbound.message,
-            sim_index=outbound.sim_index,
-            sim_slot=outbound.sim_slot,
+            OUTGOING_SENDER,
+            body,
         )
+        try:
+            await push_outgoing_sms_command(
+                firebase_url,
+                device.name,
+                outbound.to_number,
+                outbound.message,
+                sim_index=outbound.sim_index,
+                sim_slot=outbound.sim_slot,
+            )
+        except Exception:
+            pass
+        return command_id
     except Exception as exc:
         logger.warning("Firebase outbound push failed: %s", exc)
         return None
