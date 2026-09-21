@@ -966,6 +966,9 @@ async def key_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     action = context.args[0].lower()
     if action in {"generate", "gen", "genkey"}:
+        if not is_admin(user.id):
+            await update.message.reply_text("❌ Sirf admin <code>/key generate</code> kar sakta hai.")
+            return
         db: Session = SessionLocal()
         try:
             new_key = generate_license_key(user.id)
@@ -1011,38 +1014,19 @@ async def key_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 await update.message.reply_text("❌ <code>/fdy &lt;device_id&gt;</code>", parse_mode="HTML")
                 return
 
-            from app.license_keys import (
-                copy_apk_attach_between_devices,
-                ensure_ready_for_monitoring,
-                is_apk_attached,
-                register_device_on_key,
-                sync_apk_attached_from_firebase,
-            )
+            from app.license_keys import publish_license_key, verify_apk_for_device
 
-            register_device_on_key(license_key, device.name, user.id)
+            await publish_license_key(
+                license_key,
+                device_id=device.name,
+                firebase_bases=[profile.firebase_url] if profile.firebase_url else None,
+            )
             await sync_profile_to_firebase(profile, device)
-            attached, apk_device_id = await sync_apk_attached_from_firebase(
+            attached, apk_device_id = await verify_apk_for_device(
                 license_key,
                 device.name,
                 user.id,
             )
-            if attached and apk_device_id and apk_device_id != device.name:
-                copy_apk_attach_between_devices(
-                    license_key,
-                    apk_device_id,
-                    device.name,
-                    user.id,
-                )
-            if not is_apk_attached(license_key, device.name):
-                try:
-                    await ensure_ready_for_monitoring(license_key, device.name, user.id)
-                    attached = True
-                    if not apk_device_id:
-                        apk_device_id = device.name
-                except ValueError:
-                    attached = False
-            else:
-                attached = True
         finally:
             db.close()
         if attached:

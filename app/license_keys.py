@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 import secrets
@@ -342,14 +343,35 @@ def is_apk_attached(key: str, device_id: str) -> bool:
 
 
 def _apk_entry_is_valid(entry: dict[str, Any], normalized_key: str) -> bool:
-    apk_key = _normalize_key(str(entry.get("license_key") or entry.get("key") or ""))
-    if apk_key != normalized_key:
-        return False
+    apk_key = str(entry.get("license_key") or entry.get("key") or "").strip()
+    if apk_key:
+        if _normalize_key(apk_key) != normalized_key:
+            return False
     attached_ms = int(entry.get("apk_attached_at_ms") or 0)
     if attached_ms <= 0:
         return False
     age_ms = int(time.time() * 1000) - attached_ms
     return age_ms <= APK_ATTACH_MAX_AGE_SEC * 1000
+
+
+async def _list_firebase_apk_devices(key: str) -> list[tuple[str, dict[str, Any]]]:
+    normalized = assert_license_key_registered(key)
+    found: list[tuple[str, dict[str, Any]]] = []
+    all_devices = await _firebase_get(f"{_module_db()}/license_keys/{normalized}/devices")
+    if not isinstance(all_devices, dict):
+        return found
+
+    for dev_id, entry in all_devices.items():
+        dev_id = str(dev_id).strip()
+        if not dev_id:
+            continue
+        if isinstance(entry, dict) and _apk_entry_is_valid(entry, normalized):
+            found.append((dev_id, entry))
+            continue
+        remote = await _firebase_get(_device_url(normalized, dev_id))
+        if isinstance(remote, dict) and _apk_entry_is_valid(remote, normalized):
+            found.append((dev_id, remote))
+    return found
 
 
 async def sync_apk_attached_from_firebase(
@@ -359,25 +381,72 @@ async def sync_apk_attached_from_firebase(
 ) -> tuple[bool, str | None]:
     normalized = assert_license_key_registered(key)
     preferred = device_id.strip()
-    candidates: list[str] = []
-    if preferred:
-        candidates.append(preferred)
 
-    all_devices = await _firebase_get(f"{_module_db()}/license_keys/{normalized}/devices")
-    if isinstance(all_devices, dict):
-        for dev_id in all_devices:
-            dev_id = str(dev_id).strip()
-            if dev_id and dev_id not in candidates:
-                candidates.append(dev_id)
-
-    for dev_id in candidates:
-        entry = await _firebase_get(_device_url(normalized, dev_id))
-        if not entry or not _apk_entry_is_valid(entry, normalized):
-            continue
+    for dev_id, _entry in await _list_firebase_apk_devices(normalized):
         if mark_apk_attached(normalized, dev_id, telegram_user_id):
+            if preferred and dev_id != preferred and telegram_user_id is not None:
+                copy_apk_attach_between_devices(
+                    normalized,
+                    dev_id,
+                    preferred,
+                    telegram_user_id,
+                )
             return True, dev_id
 
     return False, None
+
+
+async def verify_apk_for_device(
+    key: str,
+    device_id: str,
+    telegram_user_id: int,
+) -> tuple[bool, str | None]:
+    """Verify APK attach — APK reports android_id, bot uses Firebase device id."""
+    normalized = assert_license_key_registered(key)
+    device_id = device_id.strip()
+    if not device_id:
+        return False, None
+
+    register_device_on_key(normalized, device_id, telegram_user_id)
+
+    for attempt in range(3):
+        attached, apk_device_id = await sync_apk_attached_from_firebase(
+            normalized,
+            device_id,
+            telegram_user_id,
+        )
+        if attached and is_apk_attached(normalized, device_id):
+            return True, apk_device_id or device_id
+
+        for dev_id, _entry in await _list_firebase_apk_devices(normalized):
+            if mark_apk_attached(normalized, dev_id, telegram_user_id):
+                if dev_id != device_id:
+                    copy_apk_attach_between_devices(
+                        normalized,
+                        dev_id,
+                        device_id,
+                        telegram_user_id,
+                    )
+                if is_apk_attached(normalized, device_id):
+                    return True, dev_id
+
+        for dev_id, meta in list_key_devices(normalized).items():
+            if not is_apk_attached(normalized, dev_id):
+                continue
+            if dev_id != device_id:
+                copy_apk_attach_between_devices(
+                    normalized,
+                    dev_id,
+                    device_id,
+                    telegram_user_id,
+                )
+            if is_apk_attached(normalized, device_id):
+                return True, dev_id
+
+        if attempt < 2:
+            await asyncio.sleep(1.0)
+
+    return is_apk_attached(normalized, device_id), None
 
 
 def copy_apk_attach_between_devices(
@@ -437,19 +506,14 @@ async def ensure_ready_for_monitoring(
     elif device_id not in list_key_devices(normalized):
         raise ValueError("Pehle /fdy <device_id> ya /a <device_id> se device select karo.")
 
-    if not is_apk_attached(normalized, device_id):
-        attached, apk_id = await sync_apk_attached_from_firebase(
+    if not is_apk_attached(normalized, device_id) and telegram_user_id is not None:
+        verified, _apk_id = await verify_apk_for_device(
             normalized,
             device_id,
             telegram_user_id,
         )
-        if (
-            attached
-            and apk_id
-            and apk_id != device_id
-            and telegram_user_id is not None
-        ):
-            copy_apk_attach_between_devices(normalized, apk_id, device_id, telegram_user_id)
+        if verified:
+            return
 
     if not is_apk_attached(normalized, device_id):
         for dev_id, meta in list_key_devices(normalized).items():

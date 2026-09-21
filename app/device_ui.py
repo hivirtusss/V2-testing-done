@@ -68,24 +68,63 @@ def get_device_meta(device: Device) -> dict:
         return {}
 
 
-def get_sim_list(device: Device) -> list[dict]:
-    meta = get_device_meta(device)
-    sims = meta.get("sims")
-    if sims:
-        return sims
-
-    primary = device.phone_number or "Unknown"
-    return [
-        {"slot": 1, "index": 0, "carrier": "SIM 1", "number": primary},
-        {"slot": 2, "index": 1, "carrier": "SIM 2", "number": meta.get("sim2", "N/A")},
-    ]
-
-
 def _is_valid_sim_number(number: str | None) -> bool:
     if not number:
         return False
     normalized = str(number).strip().upper()
     return normalized not in {"N/A", "UNKNOWN", "NA", "-", "NONE", ""}
+
+
+def _normalize_sim_slots(sims: list[dict]) -> list[dict]:
+    valid = [sim for sim in sims if isinstance(sim, dict) and _is_valid_sim_number(sim.get("number"))]
+    source = valid if valid else [sim for sim in sims if isinstance(sim, dict)]
+    if not source:
+        return []
+    normalized: list[dict] = []
+    for index, sim in enumerate(source):
+        normalized.append(
+            {
+                "slot": index + 1,
+                "index": index,
+                "carrier": sim.get("carrier") or f"SIM {index + 1}",
+                "number": sim.get("number") or "Unknown",
+            }
+        )
+    return normalized
+
+
+def get_sim_list(device: Device) -> list[dict]:
+    meta = get_device_meta(device)
+    sims = meta.get("sims")
+    if isinstance(sims, list) and sims:
+        cleaned = [sim for sim in sims if isinstance(sim, dict)]
+        if cleaned:
+            return _normalize_sim_slots(cleaned)
+
+    primary = device.phone_number
+    sim2 = meta.get("sim2") or meta.get("phone2")
+    built: list[dict] = []
+    if _is_valid_sim_number(primary):
+        built.append({"slot": 1, "index": 0, "carrier": "SIM 1", "number": primary})
+    if _is_valid_sim_number(sim2):
+        built.append(
+            {
+                "slot": len(built) + 1,
+                "index": len(built),
+                "carrier": "SIM 2",
+                "number": sim2,
+            }
+        )
+    if built:
+        return built
+    return [{"slot": 1, "index": 0, "carrier": "SIM 1", "number": primary or "Unknown"}]
+
+
+def get_display_sims(device: Device) -> list[dict]:
+    """UI buttons — only real SIM slots with numbers."""
+    sims = get_sim_list(device)
+    active = [sim for sim in sims if _is_valid_sim_number(sim.get("number"))]
+    return active if active else sims[:1]
 
 
 def get_active_sims(device: Device) -> list[dict]:
@@ -140,7 +179,7 @@ def _sim_button_label(sim: dict) -> str:
 
 def _sim_lines_block(device: Device) -> str:
     lines = []
-    for sim in get_sim_list(device):
+    for sim in get_display_sims(device):
         slot = sim.get("slot", 1)
         number = sim.get("number") or "Unknown"
         lines.append(f"📶 SIM {slot}: {number}")
@@ -181,7 +220,7 @@ def format_device_set_card(
 
 
 def device_set_keyboard(device: Device) -> InlineKeyboardMarkup:
-    sims = get_sim_list(device)
+    sims = get_display_sims(device)
     rows = [
         [
             InlineKeyboardButton(
