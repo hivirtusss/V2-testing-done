@@ -211,27 +211,60 @@ def format_sim_selected_card(device: Device, sim_index: int = 0) -> str:
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
         f"📱 {short_device_id(device.name)}\n"
-        f"🔋 {get_battery(device)}\n"
-        f"📶 Active SIM: SIM {slot} (Index {sim_index})\n"
-        f"📞 FROM Number: {number}\n"
-        f"SIM {slot}: {carrier} ({number})"
+        f"📶 SIM {slot}: {carrier} ({number})\n"
+        f"🔋 {get_battery(device)}"
         "</pre>"
     )
 
 
-def sim_confirm_keyboard(device: Device, sim_index: int) -> InlineKeyboardMarkup:
+def format_number_pick_card(device: Device, sim_index: int = 0) -> str:
     active = get_selected_sim(device, sim_index)
-    return InlineKeyboardMarkup(
-        [
+    slot = active.get("slot", 1)
+    return (
+        "✅ <b>SUCCESS</b>\n\n"
+        "<pre>"
+        f"📶 SIM {slot} selected\n\n"
+        "📞 Select number (OTP yahan jayega):"
+        "</pre>"
+    )
+
+
+def _unique_forward_numbers(device: Device, profile: MonitorProfile | None) -> list[str]:
+    from app.services import normalize_phone
+
+    seen: set[str] = set()
+    numbers: list[str] = []
+    if profile and profile.phone_number:
+        seen.add(profile.phone_number)
+        numbers.append(profile.phone_number)
+    for sim in get_active_sims(device):
+        raw = sim.get("number")
+        if not _is_valid_sim_number(raw):
+            continue
+        normalized = normalize_phone(str(raw))
+        if normalized not in seen:
+            seen.add(normalized)
+            numbers.append(normalized)
+    return numbers
+
+
+def mynum_pick_keyboard(device: Device, profile: MonitorProfile | None) -> InlineKeyboardMarkup:
+    rows = []
+    selected = profile.phone_number if profile else None
+    for number in _unique_forward_numbers(device, profile):
+        label = f"📞 {number}"
+        if number == selected and profile and profile.mynum_selected:
+            label = f"✅ {number}"
+        rows.append(
             [
                 InlineKeyboardButton(
-                    _sim_button_label(active),
-                    callback_data=f"sim:confirm:{device.id}:{sim_index}",
+                    label,
+                    callback_data=f"mynum:pick:{device.id}:{number}",
                 )
-            ],
-            [InlineKeyboardButton("🔴 STOP", callback_data="monitor:stop")],
-        ]
-    )
+            ]
+        )
+    rows.append([InlineKeyboardButton("🔴 STOP", callback_data="monitor:stop")])
+    return InlineKeyboardMarkup(rows)
 
 
 def _short_channel_id(channel_id: str) -> str:
@@ -322,8 +355,7 @@ def format_auto_stop_card(minutes: int = 15) -> str:
     return (
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
-        f"⏱ Monitoring AUTO-STOPPED after {minutes} minutes.\n"
-        "Use /startmonitor to start again."
+        f"⏱ AUTO-STOPPED ({minutes} min)"
         "</pre>"
     )
 
@@ -431,10 +463,11 @@ def format_guide_message() -> str:
         "Same sender ID (AX-PAYTM, etc.)\n"
         "Test msg: Chacha Ji Pani Pila Do"
         "</pre>\n\n"
-        "<b>Buttons</b>\n"
+        "<b>Buttons flow</b>\n"
         "<pre>"
-        "📶 SIM 1/2  → SIM select\n"
-        "Number tap → Monitoring ON + STOP"
+        "1. 📶 SIM 1/2 select\n"
+        "2. 📞 Number select (OTP target)\n"
+        "3. 🟢 Monitoring ON (msg pinned)"
         "</pre>\n\n"
         "<b>Admin</b>\n"
         "<pre>"
@@ -448,7 +481,7 @@ def format_guide_message() -> str:
 
 def format_status_card(device: Device | None, profile: MonitorProfile | None, sms_count: int = 0) -> str:
     if not profile:
-        return "❌ Profile not set. Use /setfirebase first."
+        return "❌ <code>/setfirebase &lt;url&gt;</code>"
 
     monitoring = "🟢 ON" if profile.is_monitoring else "🔴 OFF"
     device_name = short_device_id(device.name) if device else "Not set"

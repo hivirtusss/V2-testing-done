@@ -29,8 +29,9 @@ from app.device_ui import (
     format_monitoring_card,
     format_ping_card,
     format_send_queued,
+    format_number_pick_card,
     format_sim_selected_card,
-    sim_confirm_keyboard,
+    mynum_pick_keyboard,
     format_status_card,
     format_virtus_channel_token_card,
     format_virtus_outgoing_sent_card,
@@ -67,6 +68,7 @@ from app.services import (
     require_license_key,
     show_device_by_id,
     set_profile_phone,
+    ensure_mynum_selected,
     set_user_phone,
     start_monitoring,
     stop_monitoring,
@@ -121,6 +123,53 @@ async def _post_to_channel(bot, channel_id: str, text: str) -> None:
         await bot.send_message(chat_id=channel_id, text=text, parse_mode="HTML")
     except Exception as exc:
         logger.error("Failed to post to channel %s: %s", channel_id, exc)
+
+
+async def _pin_monitoring_message(bot, chat_id: int, message_id: int) -> None:
+    try:
+        await bot.pin_chat_message(
+            chat_id=chat_id,
+            message_id=message_id,
+            disable_notification=True,
+        )
+    except Exception as exc:
+        logger.debug("Pin message failed: %s", exc)
+
+
+async def _deliver_monitoring_started(
+    bot,
+    chat_id: int,
+    profile: MonitorProfile,
+    device: Device,
+    ignored: int,
+    *,
+    message_id: int | None = None,
+    reply_func=None,
+) -> None:
+    monitoring_card = format_monitoring_card(device, profile, ignored_sms=ignored)
+    startup_card = format_virtus_startup_card()
+    stream_card = format_virtus_stream_card(STARTUP_TEST_SENDER, STARTUP_TEST_MESSAGE)
+    keyboard = monitoring_keyboard(device)
+
+    if message_id is not None and reply_func:
+        await reply_func(
+            monitoring_card,
+            parse_mode="HTML",
+            reply_markup=keyboard,
+        )
+        await _pin_monitoring_message(bot, chat_id, message_id)
+    elif reply_func:
+        sent = await reply_func(
+            monitoring_card,
+            parse_mode="HTML",
+            reply_markup=keyboard,
+        )
+        await _pin_monitoring_message(bot, chat_id, sent.message_id)
+
+    if profile.channel_id and settings.telegram_bot_token:
+        await _post_to_channel(bot, profile.channel_id, monitoring_card)
+        await _post_to_channel(bot, profile.channel_id, startup_card)
+        await _post_to_channel(bot, profile.channel_id, stream_card)
 
 
 async def notify_new_sms(sms: SMSMessage) -> None:
@@ -252,10 +301,15 @@ async def mynum_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     finally:
         db.close()
 
-    await update.message.reply_text(
-        f"✅ <code>+{profile.phone_number}</code> | 📱 <code>{device.name}</code>",
-        parse_mode="HTML",
-    )
+    text = f"✅ <code>+{profile.phone_number}</code> | 📱 <code>{device.name}</code>"
+    if profile.sim_selected:
+        await update.message.reply_text(
+            text,
+            parse_mode="HTML",
+            reply_markup=sim_monitoring_keyboard(device),
+        )
+    else:
+        await update.message.reply_text(text, parse_mode="HTML")
 
 
 async def _prepare_monitoring(
@@ -294,34 +348,24 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
         if "channel" in message.lower():
             await update.message.reply_text("❌ <b>ERROR</b>\n\nAdd a channel first!", parse_mode="HTML")
         elif "select sim" in message.lower():
-            await update.message.reply_text(
-                "❌ <b>ERROR</b>\n\n<pre>Select SIM first! Pick SIM after ⚡ fb, /fy or /setdevice.</pre>",
-                parse_mode="HTML",
-            )
+            await update.message.reply_text("❌ Pehle SIM select karo", parse_mode="HTML")
+        elif "select number" in message.lower():
+            await update.message.reply_text("❌ Pehle number select karo", parse_mode="HTML")
         else:
             await update.message.reply_text(f"❌ {exc}")
         return
     finally:
         db.close()
 
-    monitoring_card = format_monitoring_card(device, profile, ignored_sms=ignored)
-    startup_card = format_virtus_startup_card()
-    stream_card = format_virtus_stream_card(STARTUP_TEST_SENDER, STARTUP_TEST_MESSAGE)
-
-    await update.message.reply_text(
-        monitoring_card,
-        parse_mode="HTML",
-        reply_markup=monitoring_keyboard(device),
+    bot = update.get_bot()
+    await _deliver_monitoring_started(
+        bot,
+        update.effective_chat.id,
+        profile,
+        device,
+        ignored,
+        reply_func=update.message.reply_text,
     )
-
-    if profile.channel_id and settings.telegram_bot_token:
-        from telegram import Bot
-
-        bot = Bot(token=settings.telegram_bot_token)
-        await _post_to_channel(bot, profile.channel_id, monitoring_card)
-        await _post_to_channel(bot, profile.channel_id, startup_card)
-        await _post_to_channel(bot, profile.channel_id, stream_card)
-
     schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
 
 
@@ -718,6 +762,7 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     db: Session = SessionLocal()
+    ignored = 0
     try:
         profile = get_monitor_profile(db, user.id)
         device = get_active_device(db, user.id)
@@ -727,6 +772,7 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         if device:
             await sync_profile_to_firebase(profile, device)
             await send_polling_startup_test(db, profile, device)
+            ignored = count_old_sms(db, device.id, profile.started_at) if profile.started_at else 0
     except ValueError as exc:
         await update.message.reply_text(f"❌ {exc}")
         return
@@ -734,21 +780,14 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         db.close()
 
     if device:
-        monitoring_card = format_monitoring_card(device, profile)
-        startup_card = format_virtus_startup_card()
-        stream_card = format_virtus_stream_card(STARTUP_TEST_SENDER, STARTUP_TEST_MESSAGE)
-        await update.message.reply_text(
-            monitoring_card,
-            parse_mode="HTML",
-            reply_markup=monitoring_keyboard(device),
+        await _deliver_monitoring_started(
+            update.get_bot(),
+            update.effective_chat.id,
+            profile,
+            device,
+            ignored,
+            reply_func=update.message.reply_text,
         )
-        if profile.channel_id and settings.telegram_bot_token:
-            from telegram import Bot
-
-            bot = Bot(token=settings.telegram_bot_token)
-            await _post_to_channel(bot, profile.channel_id, monitoring_card)
-            await _post_to_channel(bot, profile.channel_id, startup_card)
-            await _post_to_channel(bot, profile.channel_id, stream_card)
         schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
     else:
         await update.message.reply_text("🟢 Monitor resumed!", parse_mode="HTML")
@@ -1242,27 +1281,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     try:
         if data.startswith("sim:"):
-            parts = data.split(":")
-            action = parts[1]
-            if action == "confirm":
-                _, _, device_id, sim_index = parts
-                device = db.query(Device).filter(Device.id == int(device_id)).first()
-                if not device:
-                    await query.answer("Device nahi mili", show_alert=True)
-                    return
-                if device.firebase_source_url:
-                    device = await sync_device_from_firebase(db, device)
-                profile = get_monitor_profile(db, user.id)
-                await sync_profile_to_firebase(profile, device)
-                await query.answer("SIM ready — Monitoring ON dabao")
-                await query.edit_message_text(
-                    format_sim_selected_card(device, int(sim_index)),
-                    parse_mode="HTML",
-                    reply_markup=sim_monitoring_keyboard(device),
-                )
-                return
-
-            device_id, sim_index = parts[1], parts[2]
+            _, device_id, sim_index = data.split(":")
             device = db.query(Device).filter(Device.id == int(device_id)).first()
             if not device:
                 await query.answer("Device nahi mili", show_alert=True)
@@ -1270,13 +1289,32 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             if device.firebase_source_url:
                 device = await sync_device_from_firebase(db, device)
             profile = select_sim_slot(db, user.id, int(sim_index))
+            profile.mynum_selected = False
+            db.commit()
             await sync_profile_to_firebase(profile, device)
             active = get_selected_sim(device, int(sim_index))
             await query.answer(f"SIM {active.get('slot', int(sim_index) + 1)} selected")
             await query.edit_message_text(
-                format_sim_selected_card(device, int(sim_index)),
+                format_number_pick_card(device, int(sim_index)),
                 parse_mode="HTML",
-                reply_markup=sim_confirm_keyboard(device, int(sim_index)),
+                reply_markup=mynum_pick_keyboard(device, profile),
+            )
+            return
+
+        if data.startswith("mynum:pick:"):
+            _, _, device_id, phone = data.split(":", 3)
+            device = db.query(Device).filter(Device.id == int(device_id)).first()
+            if not device:
+                await query.answer("Device nahi mili", show_alert=True)
+                return
+            profile = set_profile_phone(db, user.id, phone)
+            await sync_profile_to_firebase(profile, device)
+            await query.answer(f"Number set: {phone}")
+            await query.edit_message_text(
+                format_sim_selected_card(device, profile.selected_sim_index or 0)
+                + f"\n\n<pre>📞 OTP → {phone}</pre>",
+                parse_mode="HTML",
+                reply_markup=sim_monitoring_keyboard(device),
             )
             return
 
@@ -1286,10 +1324,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             device = get_active_device(db, user.id)
             cancel_auto_stop(user.id)
             await sync_profile_to_firebase(profile, device)
-            await query.edit_message_text(
-                "🔴 <b>STOPPED</b>\n\nMonitoring OFF — Firebase sync ho gaya.",
-                parse_mode="HTML",
-            )
+            await query.edit_message_text("🔴 <b>STOPPED</b>", parse_mode="HTML")
             return
 
         if data.startswith("monitor:start:"):
@@ -1298,34 +1333,26 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             except ValueError as exc:
                 message = str(exc)
                 if "select sim" in message.lower():
-                    await query.answer(
-                        "Select SIM first! Pick SIM after fb, /fy or /setdevice.",
-                        show_alert=True,
-                    )
+                    await query.answer("Pehle SIM select karo", show_alert=True)
+                elif "select number" in message.lower():
+                    await query.answer("Pehle number select karo", show_alert=True)
                 elif "channel" in message.lower():
                     await query.answer("Add a channel first!", show_alert=True)
-                elif "mynum" in message.lower():
-                    await query.answer("Pehle /mynum set karo", show_alert=True)
                 else:
                     await query.answer(message, show_alert=True)
                 return
 
             await query.answer("Monitoring started")
-            monitoring_card = format_monitoring_card(device, profile, ignored_sms=ignored)
-            startup_card = format_virtus_startup_card()
-            stream_card = format_virtus_stream_card(STARTUP_TEST_SENDER, STARTUP_TEST_MESSAGE)
-            await query.edit_message_text(
-                monitoring_card,
-                parse_mode="HTML",
-                reply_markup=monitoring_keyboard(device),
+            bot = query.get_bot()
+            await _deliver_monitoring_started(
+                bot,
+                query.message.chat_id,
+                profile,
+                device,
+                ignored,
+                message_id=query.message.message_id,
+                reply_func=query.edit_message_text,
             )
-            if profile.channel_id and settings.telegram_bot_token:
-                from telegram import Bot
-
-                bot = Bot(token=settings.telegram_bot_token)
-                await _post_to_channel(bot, profile.channel_id, monitoring_card)
-                await _post_to_channel(bot, profile.channel_id, startup_card)
-                await _post_to_channel(bot, profile.channel_id, stream_card)
             schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
             return
 

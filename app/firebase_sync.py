@@ -82,9 +82,7 @@ async def push_virtus_config(profile: MonitorProfile, device: Device | None = No
         from app.license_keys import license_key_exists, push_key_config
 
         key_valid = license_key_exists(license_key)
-        if not key_valid:
-            monitoring = False
-        else:
+        if key_valid:
             firebase_bases = [profile.firebase_url] if profile.firebase_url else None
             await push_key_config(
                 license_key,

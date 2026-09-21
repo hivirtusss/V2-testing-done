@@ -66,9 +66,15 @@ def set_profile_phone(db: Session, telegram_user_id: int, phone_number: str) -> 
 
     profile = get_or_create_monitor_profile(db, telegram_user_id)
     profile.phone_number = normalized
+    profile.mynum_selected = True
     db.commit()
     db.refresh(profile)
     return profile
+
+
+def ensure_mynum_selected(profile: MonitorProfile) -> None:
+    if not profile.phone_number or not profile.mynum_selected:
+        raise ValueError("Select number first! SIM ke baad number button dabao.")
 
 
 def set_user_phone(db: Session, telegram_user_id: int, phone_number: str) -> tuple[MonitorProfile, Device]:
@@ -92,8 +98,7 @@ def start_monitoring(db: Session, telegram_user_id: int) -> tuple[MonitorProfile
     if not profile or not profile.active_device_id:
         raise ValueError("Pehle /fdy <device_id> se device select karo (key ke liye /a)")
     ensure_sim_selected(profile)
-    if not profile.phone_number:
-        raise ValueError("Pehle /mynum <number> set karo")
+    ensure_mynum_selected(profile)
 
     device = db.query(Device).filter(Device.id == profile.active_device_id).first()
     if not device:
@@ -621,6 +626,7 @@ async def show_device_by_id(
     if profile.active_device_id != device.id:
         profile.is_monitoring = False
         profile.sim_selected = False
+        profile.mynum_selected = False
     profile.active_device_id = device.id
     device.owner_telegram_id = telegram_user_id
     device.is_active = True
