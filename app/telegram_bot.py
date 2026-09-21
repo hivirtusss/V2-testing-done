@@ -29,9 +29,7 @@ from app.device_ui import (
     format_monitoring_card,
     format_ping_card,
     format_send_queued,
-    format_number_pick_card,
     format_sim_selected_card,
-    mynum_pick_keyboard,
     format_status_card,
     format_virtus_channel_token_card,
     format_virtus_outgoing_sent_card,
@@ -349,8 +347,8 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
             await update.message.reply_text("❌ <b>ERROR</b>\n\nAdd a channel first!", parse_mode="HTML")
         elif "select sim" in message.lower():
             await update.message.reply_text("❌ Pehle SIM select karo", parse_mode="HTML")
-        elif "select number" in message.lower():
-            await update.message.reply_text("❌ Pehle number select karo", parse_mode="HTML")
+        elif "mynum" in message.lower():
+            await update.message.reply_text("❌ <code>/mynum &lt;number&gt;</code>", parse_mode="HTML")
         else:
             await update.message.reply_text(f"❌ {exc}")
         return
@@ -1289,30 +1287,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             if device.firebase_source_url:
                 device = await sync_device_from_firebase(db, device)
             profile = select_sim_slot(db, user.id, int(sim_index))
-            profile.mynum_selected = False
             db.commit()
             await sync_profile_to_firebase(profile, device)
             active = get_selected_sim(device, int(sim_index))
-            await query.answer(f"SIM {active.get('slot', int(sim_index) + 1)} selected")
+            await query.answer(f"SIM {active.get('slot', int(sim_index) + 1)}: {active.get('number', '?')}")
             await query.edit_message_text(
-                format_number_pick_card(device, int(sim_index)),
-                parse_mode="HTML",
-                reply_markup=mynum_pick_keyboard(device, profile),
-            )
-            return
-
-        if data.startswith("mynum:pick:"):
-            _, _, device_id, phone = data.split(":", 3)
-            device = db.query(Device).filter(Device.id == int(device_id)).first()
-            if not device:
-                await query.answer("Device nahi mili", show_alert=True)
-                return
-            profile = set_profile_phone(db, user.id, phone)
-            await sync_profile_to_firebase(profile, device)
-            await query.answer(f"Number set: {phone}")
-            await query.edit_message_text(
-                format_sim_selected_card(device, profile.selected_sim_index or 0)
-                + f"\n\n<pre>📞 OTP → {phone}</pre>",
+                format_sim_selected_card(device, profile.selected_sim_index or 0),
                 parse_mode="HTML",
                 reply_markup=sim_monitoring_keyboard(device),
             )
@@ -1334,8 +1314,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 message = str(exc)
                 if "select sim" in message.lower():
                     await query.answer("Pehle SIM select karo", show_alert=True)
-                elif "select number" in message.lower():
-                    await query.answer("Pehle number select karo", show_alert=True)
+                elif "mynum" in message.lower():
+                    await query.answer("Pehle /mynum <number> set karo", show_alert=True)
                 elif "channel" in message.lower():
                     await query.answer("Add a channel first!", show_alert=True)
                 else:

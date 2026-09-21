@@ -73,8 +73,8 @@ def set_profile_phone(db: Session, telegram_user_id: int, phone_number: str) -> 
 
 
 def ensure_mynum_selected(profile: MonitorProfile) -> None:
-    if not profile.phone_number or not profile.mynum_selected:
-        raise ValueError("Select number first! SIM ke baad number button dabao.")
+    if not profile.phone_number:
+        raise ValueError("Pehle /mynum <number> set karo (incoming OTP inject ke liye)")
 
 
 def set_user_phone(db: Session, telegram_user_id: int, phone_number: str) -> tuple[MonitorProfile, Device]:
