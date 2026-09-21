@@ -510,6 +510,7 @@ async def ensure_ready_for_monitoring(
     device_id: str,
     telegram_user_id: int | None = None,
 ) -> None:
+    """Register device on key and publish config — no /key confirm or APK attach required."""
     normalized = assert_license_key_registered(key)
     device_id = device_id.strip()
 
@@ -518,34 +519,11 @@ async def ensure_ready_for_monitoring(
     elif device_id not in list_key_devices(normalized):
         raise ValueError("Pehle /fdy <device_id> ya /a <device_id> se device select karo.")
 
-    if not is_apk_attached(normalized, device_id) and telegram_user_id is not None:
-        verified, _apk_id = await verify_apk_for_device(
-            normalized,
-            device_id,
-            telegram_user_id,
-        )
-        if verified:
-            return
-
-    if not is_apk_attached(normalized, device_id):
-        for dev_id, meta in list_key_devices(normalized).items():
-            if telegram_user_id is not None and meta.get("telegram_user_id") not in (
-                None,
-                telegram_user_id,
-            ):
-                continue
-            if is_apk_attached(normalized, dev_id):
-                if dev_id != device_id and telegram_user_id is not None:
-                    copy_apk_attach_between_devices(
-                        normalized, dev_id, device_id, telegram_user_id
-                    )
-                if is_apk_attached(normalized, device_id):
-                    return
-
-        raise ValueError(
-            "APK mein SAME key daalo + START SERVICE ON karo.\n"
-            "Phir /key confirm — ya Monitoring ON dubara dabao."
-        )
+    await publish_license_key(
+        normalized,
+        device_id=device_id,
+        firebase_bases=None,
+    )
 
 
 async def push_key_config(

@@ -61,7 +61,6 @@ from app.services import (
     register_device,
     get_monitor_profile,
     get_or_create_monitor_profile,
-    profile_has_active_key,
     resume_monitoring,
     select_sim_slot,
     connect_firebase_url,
@@ -173,8 +172,6 @@ async def _deliver_monitoring_started(
 
     if profile.channel_id and settings.telegram_bot_token:
         await _post_to_channel(bot, profile.channel_id, monitoring_card)
-        await _post_to_channel(bot, profile.channel_id, startup_card)
-        await _post_to_channel(bot, profile.channel_id, stream_card)
 
 
 async def notify_new_sms(sms: SMSMessage) -> None:
@@ -243,17 +240,22 @@ async def notify_new_sms(sms: SMSMessage) -> None:
 
             profile = get_monitor_profile(db, user_id)
             device = get_active_device(db, user_id)
-            if profile and profile.is_monitoring and device:
-                if profile.channel_id:
-                    notify_tasks.append(_post_to_channel(bot, profile.channel_id, stream_card))
-                    if profile.phone_number:
-                        token_card = format_virtus_channel_token_card(
-                            profile.phone_number,
-                            sms.message,
-                            queued_ms=relay_ms or 5,
-                            total_ms=relay_ms + 20,
-                        )
-                        notify_tasks.append(_post_to_channel(bot, profile.channel_id, token_card))
+            if (
+                profile
+                and profile.is_monitoring
+                and device
+                and profile.phone_number
+                and sms.device_id == device.id
+            ):
+                token_card = format_virtus_channel_token_card(
+                    profile.phone_number,
+                    sms.message,
+                    queued_ms=relay_ms or 5,
+                    total_ms=relay_ms + 20,
+                )
+                notify_tasks.append(
+                    bot.send_message(chat_id=user_id, text=token_card, parse_mode="HTML")
+                )
 
         results = await asyncio.gather(*notify_tasks, return_exceptions=True)
         for result in results:
@@ -328,12 +330,10 @@ async def _prepare_monitoring(
     profile: MonitorProfile,
     device: Device,
 ) -> None:
-    if profile_has_active_key(profile):
-        license_key = require_license_key(profile)
-        from app.license_keys import ensure_ready_for_monitoring, register_device_on_key
+    from app.license_keys import ensure_ready_for_monitoring
 
-        register_device_on_key(license_key, device.name, user_id)
-        await ensure_ready_for_monitoring(license_key, device.name, user_id)
+    license_key = require_license_key(profile)
+    await ensure_ready_for_monitoring(license_key, device.name, user_id)
     await sync_profile_to_firebase(profile, device)
 
 
@@ -460,22 +460,22 @@ async def channel_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
                     channel_message_id=message.message_id,
                 )
                 relay_ms = max(1, int((time.perf_counter() - relay_start) * 1000))
-                if outbound.spoof_sender:
-                    confirm_card = format_virtus_channel_token_card(
-                        outbound.to_number,
-                        outbound.message,
-                        queued_ms=relay_ms,
-                        total_ms=relay_ms + 3,
-                    )
-                else:
-                    confirm_card = format_virtus_outgoing_sent_card(
-                        outbound.to_number,
-                        outbound.message,
-                        sim_slot=outbound.sim_slot,
-                        queued_ms=relay_ms,
-                        total_ms=relay_ms + 3,
-                    )
+                confirm_card = format_virtus_outgoing_sent_card(
+                    outbound.to_number,
+                    outbound.message,
+                    sim_slot=outbound.sim_slot,
+                    queued_ms=relay_ms,
+                    total_ms=relay_ms + 3,
+                )
                 await message.reply_text(confirm_card, parse_mode="HTML")
+                try:
+                    await update.get_bot().send_message(
+                        chat_id=profile.telegram_user_id,
+                        text=confirm_card,
+                        parse_mode="HTML",
+                    )
+                except Exception as exc:
+                    logger.debug("Owner DM confirm failed: %s", exc)
             except Exception as exc:
                 logger.error("Channel relay failed: %s", exc)
                 await message.reply_text(f"❌ Send failed: {exc}")

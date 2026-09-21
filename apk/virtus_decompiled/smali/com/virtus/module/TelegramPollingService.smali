@@ -666,11 +666,11 @@
     move-result-object v3
 
     .line 524
-    invoke-virtual {v3}, Ljava/lang/String;->isEmpty()Z
+    invoke-static {v3}, Lcom/virtus/module/LicenseKeyValidator;->isRegisteredKey(Ljava/lang/String;)Z
 
     move-result v3
 
-    if-eqz v3, :cond_0
+    if-nez v3, :cond_0
 
     goto/16 :goto_8
 

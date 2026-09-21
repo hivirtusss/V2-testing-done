@@ -97,6 +97,7 @@ def start_monitoring(db: Session, telegram_user_id: int) -> tuple[MonitorProfile
     profile = get_monitor_profile(db, telegram_user_id)
     if not profile or not profile.active_device_id:
         raise ValueError("Pehle /fdy <device_id> se device select karo (key ke liye /a)")
+    require_license_key(profile)
     ensure_sim_selected(profile)
     ensure_mynum_selected(profile)
 

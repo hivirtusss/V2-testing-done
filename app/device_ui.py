@@ -472,7 +472,7 @@ def format_commands_message() -> str:
         "<pre>"
         "/stop       /resume\n"
         "/status     /send\n"
-        "/ping       /key confirm"
+        "/ping"
         "</pre>"
     )
 
@@ -549,7 +549,7 @@ def format_guide_message() -> str:
         "/key generate → admin only\n"
         "/key KEY-XXXX → key set\n"
         "Max 2 devices per KEY\n"
-        "/key confirm → APK same key verify"
+        "APK + bot same KEY → /startmonitor"
         "</pre>\n\n"
         "<b>/allfirebase</b>\n"
         "<pre>"
