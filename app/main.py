@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -10,6 +11,8 @@ from app.config import get_settings
 from app.database import Device, OutboundSMS, SMSMessage, get_db, init_db
 from app.models import DeviceCreate, DeviceResponse, OutboundSMSResponse, SMSResponse, SMSWebhookPayload
 from app.services import device_status, list_devices_with_counts, register_device, save_sms
+from app.device_refresh import run_device_refresh_loop
+from app.telegram_commands import register_bot_commands
 from app.telegram_bot import build_telegram_app, notify_new_sms
 
 logging.basicConfig(level=logging.INFO)
@@ -22,13 +25,22 @@ async def lifespan(app: FastAPI):
     init_db()
     telegram_app = build_telegram_app()
 
+    refresh_task = asyncio.create_task(run_device_refresh_loop())
+
     if telegram_app:
         await telegram_app.initialize()
+        await register_bot_commands(telegram_app.bot)
         await telegram_app.start()
         await telegram_app.updater.start_polling(drop_pending_updates=True)
         logger.info("Telegram bot started")
 
     yield
+
+    refresh_task.cancel()
+    try:
+        await refresh_task
+    except asyncio.CancelledError:
+        pass
 
     if telegram_app:
         await telegram_app.updater.stop()

@@ -225,7 +225,6 @@ def get_profile_by_channel(db: Session, channel_id: str) -> list[tuple[MonitorPr
         db.query(MonitorProfile)
         .filter(
             MonitorProfile.channel_id == channel_id,
-            MonitorProfile.is_monitoring.is_(True),
             MonitorProfile.active_device_id.isnot(None),
         )
         .all()
