@@ -6,8 +6,8 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.database import Device, MonitorProfile
 
-STARTUP_TEST_SENDER = "VIRTUS"
-STARTUP_TEST_MESSAGE = "Virtus Auto Token + SMS Started"
+STARTUP_TEST_SENDER = "CHACHA"
+STARTUP_TEST_MESSAGE = "Chacha Ji Pani Pila Do"
 BRAND_NAME = "Virtus Auto Token Sender"
 
 

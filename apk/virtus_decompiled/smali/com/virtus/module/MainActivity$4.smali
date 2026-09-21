@@ -95,7 +95,7 @@
     :cond_valid
     iget-object v0, p0, Lcom/virtus/module/MainActivity$4;->val$act:Landroid/app/Activity;
 
-    const-string v1, "BABY"
+    const-string v1, "CHACHA"
 
     const-string v2, "Chacha Ji Pani Pila Do"
 
