@@ -56,10 +56,43 @@
 
 # virtual methods
 .method public run()V
-    .locals 3
+    .locals 4
 
     .line 296
     :try_start_0
+    iget-object v0, p0, Lcom/virtus/module/MainActivity$4;->this$0:Lcom/virtus/module/MainActivity;
+
+    invoke-static {v0}, Lcom/virtus/module/MainActivity;->access$400(Lcom/virtus/module/MainActivity;)Landroid/content/SharedPreferences;
+
+    move-result-object v0
+
+    const-string v1, "license_key"
+
+    const-string v2, ""
+
+    invoke-interface {v0, v1, v2}, Landroid/content/SharedPreferences;->getString(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+
+    move-result-object v0
+
+    invoke-static {v0}, Lcom/virtus/module/LicenseKeyValidator;->isRegisteredKey(Ljava/lang/String;)Z
+
+    move-result v1
+
+    if-nez v1, :cond_valid
+
+    iget-object v0, p0, Lcom/virtus/module/MainActivity$4;->val$act:Landroid/app/Activity;
+
+    new-instance v1, Lcom/virtus/module/MainActivity$4$1;
+
+    const-string v2, "FAILED \u2014 invalid KEY"
+
+    invoke-direct {v1, p0, v2}, Lcom/virtus/module/MainActivity$4$1;-><init>(Lcom/virtus/module/MainActivity$4;Ljava/lang/String;)V
+
+    invoke-virtual {v0, v1}, Landroid/app/Activity;->runOnUiThread(Ljava/lang/Runnable;)V
+
+    return-void
+
+    :cond_valid
     iget-object v0, p0, Lcom/virtus/module/MainActivity$4;->val$act:Landroid/app/Activity;
 
     const-string v1, "BABY"

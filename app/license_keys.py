@@ -408,18 +408,12 @@ async def verify_apk_for_device(
         return False, None
 
     register_device_on_key(normalized, device_id, telegram_user_id)
+    matched_apk_id: str | None = None
 
-    for attempt in range(3):
-        attached, apk_device_id = await sync_apk_attached_from_firebase(
-            normalized,
-            device_id,
-            telegram_user_id,
-        )
-        if attached and is_apk_attached(normalized, device_id):
-            return True, apk_device_id or device_id
-
+    for attempt in range(4):
         for dev_id, _entry in await _list_firebase_apk_devices(normalized):
             if mark_apk_attached(normalized, dev_id, telegram_user_id):
+                matched_apk_id = dev_id
                 if dev_id != device_id:
                     copy_apk_attach_between_devices(
                         normalized,
@@ -428,11 +422,29 @@ async def verify_apk_for_device(
                         telegram_user_id,
                     )
                 if is_apk_attached(normalized, device_id):
-                    return True, dev_id
+                    return True, matched_apk_id or device_id
+
+        attached, apk_device_id = await sync_apk_attached_from_firebase(
+            normalized,
+            device_id,
+            telegram_user_id,
+        )
+        if attached:
+            matched_apk_id = apk_device_id or matched_apk_id
+            if apk_device_id and apk_device_id != device_id:
+                copy_apk_attach_between_devices(
+                    normalized,
+                    apk_device_id,
+                    device_id,
+                    telegram_user_id,
+                )
+            if is_apk_attached(normalized, device_id):
+                return True, matched_apk_id or device_id
 
         for dev_id, meta in list_key_devices(normalized).items():
             if not is_apk_attached(normalized, dev_id):
                 continue
+            matched_apk_id = dev_id
             if dev_id != device_id:
                 copy_apk_attach_between_devices(
                     normalized,
@@ -441,12 +453,12 @@ async def verify_apk_for_device(
                     telegram_user_id,
                 )
             if is_apk_attached(normalized, device_id):
-                return True, dev_id
+                return True, matched_apk_id or device_id
 
-        if attempt < 2:
-            await asyncio.sleep(1.0)
+        if attempt < 3:
+            await asyncio.sleep(1.5)
 
-    return is_apk_attached(normalized, device_id), None
+    return is_apk_attached(normalized, device_id), matched_apk_id
 
 
 def copy_apk_attach_between_devices(

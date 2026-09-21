@@ -37,6 +37,12 @@
 
     if-eqz v0, :cond_2
 
+    invoke-static {p1}, Lcom/virtus/module/LicenseKeyValidator;->isRegisteredKey(Ljava/lang/String;)Z
+
+    move-result v0
+
+    if-nez v0, :cond_2
+
     new-instance v0, Ljava/lang/Thread;
 
     new-instance v1, Lcom/virtus/module/LicenseKeyReporter$1;

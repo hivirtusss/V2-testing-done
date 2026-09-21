@@ -1150,6 +1150,33 @@
     .line 369
     :cond_1
     :try_start_1
+    const-string v4, "virtus_module_prefs"
+
+    const/4 v5, 0x0
+
+    invoke-virtual {p0, v4, v5}, Lcom/virtus/module/TelegramPollingService;->getSharedPreferences(Ljava/lang/String;I)Landroid/content/SharedPreferences;
+
+    move-result-object v4
+
+    const-string v5, "license_key"
+
+    const-string v6, ""
+
+    invoke-interface {v4, v5, v6}, Landroid/content/SharedPreferences;->getString(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+
+    move-result-object v4
+
+    invoke-static {v4}, Lcom/virtus/module/LicenseKeyValidator;->isRegisteredKey(Ljava/lang/String;)Z
+
+    move-result v4
+
+    if-nez v4, :cond_key_ok
+
+    monitor-exit p0
+
+    return-void
+
+    :cond_key_ok
     const-string v4, "sender"
 
     const-string v5, ""

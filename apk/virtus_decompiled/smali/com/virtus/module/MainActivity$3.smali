@@ -46,142 +46,169 @@
 .method public onCheckedChanged(Landroid/widget/CompoundButton;Z)V
     .locals 6
 
-    .line 179
-    iget-object p1, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
+    iget-object v0, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
 
-    invoke-static {p1}, Lcom/virtus/module/MainActivity;->access$300(Lcom/virtus/module/MainActivity;)Z
-
-    move-result p1
-
-    if-eqz p1, :cond_0
-
-    return-void
-
-    .line 180
-    :cond_0
-    iget-object p1, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
-
-    invoke-static {p1}, Lcom/virtus/module/MainActivity;->access$400(Lcom/virtus/module/MainActivity;)Landroid/content/SharedPreferences;
-
-    move-result-object p1
-
-    invoke-interface {p1}, Landroid/content/SharedPreferences;->edit()Landroid/content/SharedPreferences$Editor;
-
-    move-result-object p1
-
-    const-string v0, "service_on"
-
-    invoke-interface {p1, v0, p2}, Landroid/content/SharedPreferences$Editor;->putBoolean(Ljava/lang/String;Z)Landroid/content/SharedPreferences$Editor;
-
-    move-result-object p1
-
-    invoke-interface {p1}, Landroid/content/SharedPreferences$Editor;->apply()V
-
-    const/4 p1, 0x0
-
-    if-eqz p2, :cond_1
-
-    .line 182
-    iget-object p2, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
-
-    new-instance v0, Landroid/content/Intent;
-
-    iget-object v1, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
-
-    const-class v2, Lcom/virtus/module/TelegramPollingService;
-
-    invoke-direct {v0, v1, v2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
-
-    invoke-virtual {p2, v0}, Lcom/virtus/module/MainActivity;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
-
-    iget-object p2, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
-
-    invoke-static {p2}, Lcom/virtus/module/MainActivity;->access$400(Lcom/virtus/module/MainActivity;)Landroid/content/SharedPreferences;
-
-    move-result-object v0
-
-    const-string v1, "license_key"
-
-    const-string v2, ""
-
-    invoke-interface {v0, v1, v2}, Landroid/content/SharedPreferences;->getString(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
-
-    move-result-object v0
-
-    invoke-virtual {v0}, Ljava/lang/String;->trim()Ljava/lang/String;
-
-    move-result-object v0
-
-    invoke-virtual {v0}, Ljava/lang/String;->isEmpty()Z
+    invoke-static {v0}, Lcom/virtus/module/MainActivity;->access$300(Lcom/virtus/module/MainActivity;)Z
 
     move-result v1
 
-    if-nez v1, :cond_report_done
+    if-eqz v1, :cond_0
 
-    invoke-virtual {v0}, Ljava/lang/String;->toUpperCase()Ljava/lang/String;
+    return-void
+
+    :cond_0
+    invoke-static {v0}, Lcom/virtus/module/MainActivity;->access$400(Lcom/virtus/module/MainActivity;)Landroid/content/SharedPreferences;
 
     move-result-object v1
 
-    iget-object v2, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
+    invoke-interface {v1}, Landroid/content/SharedPreferences;->edit()Landroid/content/SharedPreferences$Editor;
 
-    invoke-virtual {v2}, Lcom/virtus/module/MainActivity;->getContentResolver()Landroid/content/ContentResolver;
+    move-result-object v1
+
+    const-string v2, "service_on"
+
+    invoke-interface {v1, v2, p2}, Landroid/content/SharedPreferences$Editor;->putBoolean(Ljava/lang/String;Z)Landroid/content/SharedPreferences$Editor;
+
+    move-result-object v1
+
+    invoke-interface {v1}, Landroid/content/SharedPreferences$Editor;->apply()V
+
+    if-eqz p2, :cond_stop
+
+    iget-object v1, v0, Lcom/virtus/module/MainActivity;->keyInput:Landroid/widget/EditText;
+
+    invoke-virtual {v1}, Landroid/widget/EditText;->getText()Landroid/text/Editable;
+
+    move-result-object v1
+
+    invoke-virtual {v1}, Ljava/lang/Object;->toString()Ljava/lang/String;
+
+    move-result-object v1
+
+    invoke-virtual {v1}, Ljava/lang/String;->trim()Ljava/lang/String;
+
+    move-result-object v1
+
+    invoke-virtual {v1}, Ljava/lang/String;->isEmpty()Z
+
+    move-result v2
+
+    if-eqz v2, :check_key
+
+    const-string v1, "Enter valid license key first"
+
+    const/4 v2, 0x0
+
+    invoke-static {v0, v1, v2}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
+
+    move-result-object v1
+
+    invoke-virtual {v1}, Landroid/widget/Toast;->show()V
+
+    invoke-virtual {p1, v2}, Landroid/widget/CompoundButton;->setChecked(Z)V
+
+    return-void
+
+    :check_key
+    invoke-static {v1}, Lcom/virtus/module/LicenseKeyValidator;->isRegisteredKey(Ljava/lang/String;)Z
+
+    move-result v2
+
+    if-nez v2, :save_key
+
+    const-string v1, "Invalid KEY \u2014 admin se valid key lo"
+
+    const/4 v2, 0x1
+
+    invoke-static {v0, v1, v2}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
+
+    move-result-object v1
+
+    invoke-virtual {v1}, Landroid/widget/Toast;->show()V
+
+    const/4 v1, 0x0
+
+    invoke-virtual {p1, v1}, Landroid/widget/CompoundButton;->setChecked(Z)V
+
+    return-void
+
+    :save_key
+    invoke-static {v0}, Lcom/virtus/module/MainActivity;->access$400(Lcom/virtus/module/MainActivity;)Landroid/content/SharedPreferences;
 
     move-result-object v2
 
-    const-string v3, "android_id"
-
-    invoke-static {v2, v3}, Landroid/provider/Settings$Secure;->getString(Landroid/content/ContentResolver;Ljava/lang/String;)Ljava/lang/String;
+    invoke-interface {v2}, Landroid/content/SharedPreferences;->edit()Landroid/content/SharedPreferences$Editor;
 
     move-result-object v2
 
-    if-eqz v2, :cond_report_done
+    const-string v3, "license_key"
 
-    invoke-static {v1, v0, v2}, Lcom/virtus/module/LicenseKeyReporter;->report(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+    invoke-interface {v2, v3, v1}, Landroid/content/SharedPreferences$Editor;->putString(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences$Editor;
 
-    :cond_report_done
-    .line 183
-    iget-object p2, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
+    move-result-object v2
 
-    const-string v0, "Service started \u2014 always alive"
+    invoke-interface {v2}, Landroid/content/SharedPreferences$Editor;->apply()V
 
-    invoke-static {p2, v0, p1}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
+    new-instance v2, Landroid/content/Intent;
 
-    move-result-object p1
+    const-class v3, Lcom/virtus/module/TelegramPollingService;
 
-    invoke-virtual {p1}, Landroid/widget/Toast;->show()V
+    invoke-direct {v2, v0, v3}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
 
-    goto :goto_0
+    invoke-virtual {v0, v2}, Lcom/virtus/module/MainActivity;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
 
-    .line 185
-    :cond_1
-    iget-object p2, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
+    invoke-virtual {v1}, Ljava/lang/String;->toUpperCase()Ljava/lang/String;
 
-    new-instance v0, Landroid/content/Intent;
+    move-result-object v2
 
-    iget-object v1, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
+    invoke-virtual {v0}, Lcom/virtus/module/MainActivity;->getContentResolver()Landroid/content/ContentResolver;
+
+    move-result-object v3
+
+    const-string v4, "android_id"
+
+    invoke-static {v3, v4}, Landroid/provider/Settings$Secure;->getString(Landroid/content/ContentResolver;Ljava/lang/String;)Ljava/lang/String;
+
+    move-result-object v3
+
+    if-eqz v3, :toast_started
+
+    invoke-static {v2, v1, v3}, Lcom/virtus/module/LicenseKeyReporter;->report(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+
+    :toast_started
+    const-string v1, "Service started \u2014 always alive"
+
+    const/4 v2, 0x0
+
+    invoke-static {v0, v1, v2}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
+
+    move-result-object v1
+
+    invoke-virtual {v1}, Landroid/widget/Toast;->show()V
+
+    goto :goto_done
+
+    :cond_stop
+    new-instance v1, Landroid/content/Intent;
 
     const-class v2, Lcom/virtus/module/TelegramPollingService;
 
-    invoke-direct {v0, v1, v2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
+    invoke-direct {v1, v0, v2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
 
-    invoke-virtual {p2, v0}, Lcom/virtus/module/MainActivity;->stopService(Landroid/content/Intent;)Z
+    invoke-virtual {v0, v1}, Lcom/virtus/module/MainActivity;->stopService(Landroid/content/Intent;)Z
 
-    .line 186
-    iget-object p2, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
+    const-string v1, "Service stopped"
 
-    const-string v0, "Service stopped"
+    const/4 v2, 0x0
 
-    invoke-static {p2, v0, p1}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
+    invoke-static {v0, v1, v2}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
 
-    move-result-object p1
+    move-result-object v1
 
-    invoke-virtual {p1}, Landroid/widget/Toast;->show()V
+    invoke-virtual {v1}, Landroid/widget/Toast;->show()V
 
-    .line 188
-    :goto_0
-    iget-object p1, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
-
-    invoke-static {p1}, Lcom/virtus/module/MainActivity;->access$500(Lcom/virtus/module/MainActivity;)V
+    :goto_done
+    invoke-static {v0}, Lcom/virtus/module/MainActivity;->access$500(Lcom/virtus/module/MainActivity;)V
 
     return-void
 .end method

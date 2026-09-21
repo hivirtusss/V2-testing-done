@@ -1065,6 +1065,15 @@ async def key_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text("❌ <code>/key KEY-XXXX-XXXX-XXXX-XXXX</code>", parse_mode="HTML")
         return
 
+    from app.license_keys import license_key_exists
+
+    if not license_key_exists(key_value):
+        await update.message.reply_text(
+            "❌ Invalid KEY — sirf admin-generated key use karo.\n<code>/key generate</code> admin only",
+            parse_mode="HTML",
+        )
+        return
+
     db: Session = SessionLocal()
     try:
         profile, display_key, _key_type = await set_license_key(db, user.id, key_value)
