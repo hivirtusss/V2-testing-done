@@ -37,6 +37,7 @@ from app.device_ui import (
     format_virtus_stream_card,
     STARTUP_TEST_MESSAGE,
     STARTUP_TEST_SENDER,
+    format_commands_message,
     format_guide_message,
     format_welcome_message,
     get_selected_sim,
@@ -329,6 +330,8 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
     user = update.effective_user
     if not await reply_if_unauthorized(update):
         return
+
+    await update.message.reply_text(format_commands_message(), parse_mode="HTML")
 
     db: Session = SessionLocal()
     try:

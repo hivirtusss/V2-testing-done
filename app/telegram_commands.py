@@ -2,7 +2,8 @@ from telegram import BotCommand
 
 
 BOT_COMMANDS = [
-    BotCommand("guide", "Sab commands guide"),
+    BotCommand("startmonitar", "Sab commands list"),
+    BotCommand("guide", "Kaise kaam karta hai"),
     BotCommand("setfirebase", "Firebase connect"),
     BotCommand("fdy", "Device find"),
     BotCommand("a", "Device find (KEY)"),
