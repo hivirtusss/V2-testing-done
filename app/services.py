@@ -665,10 +665,18 @@ async def show_device_by_id(
     *,
     bind_license_key: bool = False,
 ) -> tuple[Device, MonitorProfile]:
+    import asyncio
+
     profile = get_or_create_monitor_profile(db, telegram_user_id)
     matches = search_devices(db, deviceid, limit=6)
     if not matches and profile.firebase_url:
-        await connect_firebase_url(db, telegram_user_id, profile.firebase_url)
+        try:
+            await asyncio.wait_for(
+                connect_firebase_url(db, telegram_user_id, profile.firebase_url),
+                timeout=5.0,
+            )
+        except Exception:
+            pass
         matches = search_devices(db, deviceid, limit=6)
     if not matches and profile.firebase_url:
         device = await find_device_in_firebase_url(db, deviceid, profile.firebase_url)
@@ -679,6 +687,7 @@ async def show_device_by_id(
             db,
             deviceid,
             prefer_url=profile.firebase_url,
+            scan_seconds=10.0,
         )
         if device:
             matches = [device]
