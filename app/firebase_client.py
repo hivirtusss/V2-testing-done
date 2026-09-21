@@ -18,6 +18,7 @@ def _get_client(timeout: float = 8.0) -> httpx.AsyncClient:
     return _http_client
 
 DEVICE_PATHS = ("clients", "devices", "device", "users", "phones")
+QUICK_DEVICE_PATHS = ("clients", "devices")
 
 
 def normalize_firebase_url(url: str) -> str:
@@ -176,7 +177,8 @@ async def fetch_firebase_device_live(
     if device_name:
         name = device_name.strip("/")
         candidates.append(name)
-        for path in DEVICE_PATHS:
+        path_list = QUICK_DEVICE_PATHS if quick_only else DEVICE_PATHS
+        for path in path_list:
             candidates.append(f"{path}/{name}")
 
     seen: set[str] = set()

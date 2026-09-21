@@ -647,13 +647,25 @@ async def device_select_command(
     lookup_start = time.perf_counter()
     db: Session = SessionLocal()
     try:
-        device, profile = await show_device_by_id(
-            db,
-            deviceid,
-            user.id,
-            bind_license_key=bind_license_key,
+        device, profile = await asyncio.wait_for(
+            show_device_by_id(
+                db,
+                deviceid,
+                user.id,
+                bind_license_key=bind_license_key,
+            ),
+            timeout=15.0,
         )
         found_ms = int((time.perf_counter() - lookup_start) * 1000)
+    except asyncio.TimeoutError:
+        from app.services import get_all_firebase_urls
+
+        db_count = len(get_all_firebase_urls(db))
+        await status_msg.edit_text(
+            f"❌ Device <code>{deviceid}</code> not found ({db_count} DBs scanned)",
+            parse_mode="HTML",
+        )
+        return
     except LookupError as exc:
         message = str(exc)
         if message.startswith("multiple:"):
@@ -684,8 +696,19 @@ async def device_select_command(
     finally:
         db.close()
 
-    await status_msg.delete()
-    await send_device_set_ui(update.message, device, profile, found_ms=found_ms)
+    try:
+        await status_msg.delete()
+    except Exception:
+        pass
+    try:
+        await send_device_set_ui(update.message, device, profile, found_ms=found_ms)
+    except Exception as exc:
+        logger.error("Device card send failed: %s", exc)
+        await update.message.reply_text(
+            f"✅ Device <code>{device.name}</code> found ({found_ms}ms)\n"
+            "❌ Card send error — dubara try karo",
+            parse_mode="HTML",
+        )
 
 
 async def fdy_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -706,9 +729,11 @@ async def send_device_set_ui(
     if device.firebase_source_url:
         db: Session = SessionLocal()
         try:
-            device = await sync_device_from_firebase(db, device)
+            device = await asyncio.wait_for(sync_device_from_firebase(db, device), timeout=4.0)
             if profile:
                 await sync_profile_to_firebase(profile, device)
+        except Exception:
+            pass
         finally:
             db.close()
 

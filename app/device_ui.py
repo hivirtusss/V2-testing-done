@@ -364,16 +364,8 @@ def monitoring_keyboard(device: Device | None = None) -> InlineKeyboardMarkup:
     )
 
 
-def format_welcome_message() -> str:
-    return (
-        "✅ <b>Virtus SMS Monitor</b>\n\n"
-        "Commands: <code>/startmonitar</code>\n"
-        "Guide: <code>/guide</code>"
-    )
-
-
 def format_commands_message() -> str:
-    """Full command list — /startmonitar only."""
+    """Full command list."""
     return (
         "📋 <b>Virtus SMS Monitor</b>\n\n"
         "💉 <b>Injector Setup</b> (Today r Spoof)\n"
@@ -408,6 +400,14 @@ def format_commands_message() -> str:
         "/status     /send\n"
         "/ping       /key confirm"
         "</pre>"
+    )
+
+
+def format_welcome_message() -> str:
+    return (
+        format_commands_message()
+        + "\n\n"
+        "<pre>/help\n/guide</pre>"
     )
 
 
