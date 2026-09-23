@@ -18,9 +18,7 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
-        <service android:exported="false" android:foregroundServiceType="specialUse" android:name="com.virtus.module.TelegramPollingService">
-            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="SMS polling gateway — must run 24/7 for instant injection"/>
-        </service>
+        <service android:exported="false" android:foregroundServiceType="dataSync" android:name="com.virtus.module.TelegramPollingService"/>
         <receiver android:exported="true" android:name="com.virtus.module.BootReceiver">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED"/>

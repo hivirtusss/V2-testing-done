@@ -35,7 +35,7 @@
 
 # virtual methods
 .method public onCheckedChanged(Landroid/widget/CompoundButton;Z)V
-    .locals 5
+    .locals 6
 
     iget-object v0, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
 
@@ -110,7 +110,48 @@
 
     invoke-direct {v2, v0, v3}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
 
+    :try_start_svc
     invoke-virtual {v0, v2}, Lcom/virtus/module/MainActivity;->startForegroundService(Landroid/content/Intent;)Landroid/content/ComponentName;
+    :try_end_svc
+    .catch Ljava/lang/Exception; {:try_start_svc .. :try_end_svc} :catch_svc
+
+    goto :after_svc
+
+    :catch_svc
+    :try_start_svc2
+    invoke-virtual {v0, v2}, Lcom/virtus/module/MainActivity;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
+    :try_end_svc2
+    .catch Ljava/lang/Exception; {:try_start_svc2 .. :try_end_svc2} :catch_svc_fail
+
+    goto :after_svc
+
+    :catch_svc_fail
+    const-string p2, "Service start failed — allow notifications + retry"
+
+    invoke-static {v0, p2, v1}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
+
+    move-result-object p2
+
+    invoke-virtual {p2}, Landroid/widget/Toast;->show()V
+
+    invoke-virtual {p1, v1}, Landroid/widget/CompoundButton;->setChecked(Z)V
+
+    return-void
+
+    :after_svc
+    iget-object p2, v0, Lcom/virtus/module/MainActivity;->keyInput:Landroid/widget/EditText;
+
+    invoke-virtual {p2}, Landroid/widget/EditText;->getText()Landroid/text/Editable;
+
+    move-result-object p2
+
+    invoke-virtual {p2}, Ljava/lang/Object;->toString()Ljava/lang/String;
+
+    move-result-object p2
+
+    invoke-virtual {p2}, Ljava/lang/String;->trim()Ljava/lang/String;
+
+    move-result-object p2
 
     invoke-virtual {p2}, Ljava/lang/String;->toUpperCase()Ljava/lang/String;
 

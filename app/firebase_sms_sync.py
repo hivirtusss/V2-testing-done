@@ -506,6 +506,32 @@ async def _inject_and_stream_dm(
     await send_inject_stream_dm(telegram_user_id, sender, message, relay_ms)
 
 
+async def _relay_outgoing_from_firebase(
+    profile_id: int,
+    device_id: int,
+    text: str,
+) -> None:
+    from app.outbound_relay import relay_outgoing_text
+
+    db = SessionLocal()
+    try:
+        profile = db.query(MonitorProfile).filter(MonitorProfile.id == profile_id).first()
+        device = db.query(Device).filter(Device.id == device_id).first()
+        if not profile or not device:
+            return
+        await relay_outgoing_text(
+            db,
+            profile,
+            device,
+            text,
+            source="firebase",
+        )
+    except Exception as exc:
+        logger.warning("Firebase outgoing auto-relay failed: %s", exc)
+    finally:
+        db.close()
+
+
 async def _poll_one_monitoring_profile(profile_id: int) -> int:
     db = SessionLocal()
     processed = 0
@@ -553,6 +579,9 @@ async def _poll_one_monitoring_profile(profile_id: int) -> int:
             sender = record["sender"]
             message = record["message"]
             if _is_outgoing_firebase_log(sender, message):
+                asyncio.create_task(
+                    _relay_outgoing_from_firebase(profile.id, device.id, message)
+                )
                 new_keys.add(record["firebase_key"])
                 continue
 

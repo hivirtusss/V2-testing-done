@@ -13,7 +13,6 @@ from app.database import Device, MonitorProfile, OutboundSMS, SMSMessage, Sessio
 from app.bulk_firebase import bulk_import_from_txt
 from app.channel_relay import (
     get_profile_by_channel,
-    queue_channel_sms_with_firebase,
     queue_manual_sms_with_firebase,
 )
 from app.firebase_sync import (
@@ -392,10 +391,12 @@ async def channel_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not message or not message.text:
         return
 
-    if message.from_user and message.from_user.is_bot:
+    if _is_inject_stream_message(message.text):
         return
 
-    if _is_inject_stream_message(message.text):
+    from app.outbound_relay import is_virtus_status_post, relay_outgoing_batch
+
+    if is_virtus_status_post(message.text):
         return
 
     channel_id = str(message.chat_id)
@@ -403,26 +404,18 @@ async def channel_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         linked = get_profile_by_channel(db, channel_id)
         if not linked:
+            logger.debug("No monitoring profile linked to channel %s", channel_id)
             return
 
-        tasks = []
-        for profile, device in linked:
-            if not profile.sim_selected:
-                continue
-            tasks.append(
-                queue_channel_sms_with_firebase(
-                    db,
-                    profile,
-                    device,
-                    message.text,
-                    channel_message_id=message.message_id,
-                )
-            )
-        if tasks:
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            for result in results:
-                if isinstance(result, Exception):
-                    logger.error("Channel relay failed: %s", result)
+        sent = await relay_outgoing_batch(
+            db,
+            linked,
+            message.text,
+            channel_message_id=message.message_id,
+            source="channel",
+        )
+        if sent:
+            logger.info("Channel relay queued %s outgoing SMS from %s", sent, channel_id)
     finally:
         db.close()
 

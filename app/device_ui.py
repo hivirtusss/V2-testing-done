@@ -318,6 +318,30 @@ def format_inject_startup_card(
     )
 
 
+def format_outbound_stream_card(
+    to_number: str,
+    message: str,
+    *,
+    sim_slot: int = 1,
+    source: str = "CHANNEL",
+    queued_ms: int = 3,
+    total_ms: int = 22,
+) -> str:
+    body = message.replace("<", "").replace(">", "").strip()
+    if len(body) > 500:
+        body = body[:500] + "..."
+    return (
+        "✅ <b>SUCCESS</b>\n"
+        "<pre>"
+        f"⚡ SMS SENT! [{source.upper()}]\n"
+        f"📶 SIM: {sim_slot}\n"
+        f"📞 To: {to_number}\n"
+        f"💬 {body}\n"
+        f"{format_timing_footer(queued_ms, total_ms)}"
+        "</pre>"
+    )
+
+
 def format_inject_stream_card(
     sender: str,
     message: str,
