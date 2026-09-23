@@ -341,7 +341,7 @@ def format_virtus_outgoing_sent_card(
     return (
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
-        "📤 OUTGOING SMS SENT! [CHANNEL]\n\n"
+        "📤 OUTGOING SMS SENT!\n\n"
         f"📞 To: {to_number}\n"
         f"📶 SIM: {sim_slot}\n"
         f"🔒 {body}\n\n"
