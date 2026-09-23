@@ -290,10 +290,14 @@ async def poll_monitoring_profiles_once() -> int:
                     new_keys.add(record["firebase_key"])
                     continue
 
+                import time
+
+                t0 = time.perf_counter()
                 try:
                     await _inject_before_notify(profile, device, sender, message)
                 except Exception as exc:
                     logger.warning("Fast inject failed for %s: %s", device.name, exc)
+                relay_ms = max(1, int((time.perf_counter() - t0) * 1000))
 
                 sms = save_sms(
                     db,
@@ -305,6 +309,14 @@ async def poll_monitoring_profiles_once() -> int:
                 db.commit()
                 new_keys.add(record["firebase_key"])
                 processed += 1
+
+                import asyncio
+
+                from app.telegram_bot import send_inject_stream_dm
+
+                asyncio.create_task(
+                    send_inject_stream_dm(profile.telegram_user_id, sender, message, relay_ms)
+                )
 
             if new_keys:
                 mark_sms_keys_seen(device, new_keys)

