@@ -284,7 +284,15 @@ def stop_monitoring(db: Session, telegram_user_id: int) -> MonitorProfile:
     if not profile:
         raise ValueError("Monitor profile nahi mili")
 
+    device = None
+    if profile.active_device_id:
+        device = db.query(Device).filter(Device.id == profile.active_device_id).first()
+
     profile.is_monitoring = False
+    if device:
+        from app.firebase_sms_sync import clear_sms_baseline
+
+        clear_sms_baseline(device)
     db.commit()
     db.refresh(profile)
     return profile

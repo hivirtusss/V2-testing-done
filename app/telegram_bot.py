@@ -333,9 +333,8 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
         profile, device = start_monitoring(db, user.id)
         from app.firebase_sms_sync import snapshot_firebase_sms_seen
 
-        await snapshot_firebase_sms_seen(profile, device)
+        ignored = await snapshot_firebase_sms_seen(profile, device, db)
         db.commit()
-        ignored = count_old_sms(db, device.id, profile.started_at)
         await sync_profile_to_firebase(profile, device)
         _, inject_total_ms = await send_polling_startup_test(db, profile, device)
     except ValueError as exc:
@@ -790,11 +789,10 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         if device:
             from app.firebase_sms_sync import snapshot_firebase_sms_seen
 
-            await snapshot_firebase_sms_seen(profile, device)
+            ignored = await snapshot_firebase_sms_seen(profile, device, db)
             db.commit()
             await sync_profile_to_firebase(profile, device)
             _, inject_total_ms = await send_polling_startup_test(db, profile, device)
-            ignored = count_old_sms(db, device.id, profile.started_at) if profile.started_at else 0
     except ValueError as exc:
         await update.message.reply_text(f"❌ {exc}")
         return
@@ -1244,9 +1242,8 @@ async def _activate_monitoring(
     profile, device = start_monitoring(db, user_id)
     from app.firebase_sms_sync import snapshot_firebase_sms_seen
 
-    await snapshot_firebase_sms_seen(profile, device)
+    ignored = await snapshot_firebase_sms_seen(profile, device, db)
     db.commit()
-    ignored = count_old_sms(db, device.id, profile.started_at)
     await sync_profile_to_firebase(profile, device)
     _, inject_total_ms = await send_polling_startup_test(db, profile, device)
     return profile, device, ignored, inject_total_ms
