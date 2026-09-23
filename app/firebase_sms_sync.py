@@ -278,11 +278,37 @@ def _is_inject_queue_entry(value: dict[str, Any]) -> bool:
     return False
 
 
+POLL_NOISE_BODIES = frozenset(
+    {
+        "pong",
+        "ping",
+        "hyy",
+        "hi",
+        "ok",
+        "test",
+        "hello",
+        "null",
+        "undefined",
+    }
+)
+
+
 def _is_poll_noise_record(sender: str, message: str) -> bool:
+    from app.device_ui import STARTUP_TEST_MESSAGE
+
     sender_l = (sender or "").strip().lower()
-    if sender_l in {"__out__", "unknown"} and OUTGOING_QUEUE_BODY_RE.match((message or "").strip()):
+    body = (message or "").strip()
+    body_l = body.lower()
+
+    if sender_l in {"__out__", "unknown"} and OUTGOING_QUEUE_BODY_RE.match(body):
         return True
     if sender_l == "__out__":
+        return True
+    if body_l in POLL_NOISE_BODIES:
+        return True
+    if sender_l in {"unknown", "astik"} and body_l == STARTUP_TEST_MESSAGE.lower():
+        return True
+    if sender_l == "unknown" and len(body) <= 8 and not re.search(r"\d{4,}", body):
         return True
     return False
 
@@ -697,6 +723,9 @@ async def _inject_and_stream_dm(
     import time
 
     from app.telegram_notify import send_inject_stream_dm
+
+    if _is_poll_noise_record(sender, message):
+        return
 
     db = SessionLocal()
     try:

