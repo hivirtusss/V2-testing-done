@@ -32,12 +32,6 @@ async def _notify_auto_stop(telegram_user_id: int, minutes: int, channel_id: str
     except Exception as exc:
         logger.error("Auto-stop notify user %s failed: %s", telegram_user_id, exc)
 
-    if channel_id:
-        try:
-            await bot.send_message(chat_id=channel_id, text=text, parse_mode="HTML")
-        except Exception as exc:
-            logger.error("Auto-stop notify channel %s failed: %s", channel_id, exc)
-
 
 async def _auto_stop_after(telegram_user_id: int, minutes: int) -> None:
     try:
