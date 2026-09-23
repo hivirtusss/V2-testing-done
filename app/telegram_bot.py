@@ -658,7 +658,7 @@ async def device_select_command(
                 user.id,
                 bind_license_key=bind_license_key,
             ),
-            timeout=15.0,
+            timeout=40.0,
         )
         found_ms = int((time.perf_counter() - lookup_start) * 1000)
     except asyncio.TimeoutError:

