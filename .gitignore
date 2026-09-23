@@ -14,7 +14,11 @@ apktool.jar
 jadx/
 apk/astik.apk
 apk/astik_decompiled/
+apk/astik-analysis/
 apk/jadx_out/
 apk/virtus.keystore
 apk/virtus_unsigned.apk
+apk/virtus-unsigned.apk
+apk/virtus-unsigned.apk.idsig
+apk/uber-apk-signer.jar
 apk/virtus_decompiled/build/
