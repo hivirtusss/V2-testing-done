@@ -3,8 +3,10 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
+from pathlib import Path
+
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -20,6 +22,7 @@ from app.telegram_bot import build_telegram_app, notify_new_sms
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 settings = get_settings()
+APK_PATH = Path(__file__).resolve().parent.parent / "apk" / "virtus-sms-module.apk"
 
 
 @asynccontextmanager
@@ -164,6 +167,17 @@ async def dashboard(db: Session = Depends(get_db)):
 </html>"""
 
 
+@app.get("/download/apk")
+async def download_apk():
+    if not APK_PATH.is_file():
+        raise HTTPException(status_code=404, detail="APK not built yet. Run: cd apk && bash build-apk.sh")
+    return FileResponse(
+        APK_PATH,
+        media_type="application/vnd.android.package-archive",
+        filename="virtus-sms-module.apk",
+    )
+
+
 @app.get("/health")
 async def health(db: Session = Depends(get_db)):
     device_count = db.query(Device).count()
@@ -172,6 +186,8 @@ async def health(db: Session = Depends(get_db)):
         "telegram_configured": bool(settings.telegram_bot_token),
         "database": settings.database_url.split("://", 1)[0],
         "devices": device_count,
+        "apk_available": APK_PATH.is_file(),
+        "apk_download": settings.apk_download_url or "/download/apk",
     }
 
 

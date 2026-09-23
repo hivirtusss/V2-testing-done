@@ -23,17 +23,25 @@ https://virtus-module-default-rtdb.firebaseio.com/
   devices/{device_id}/       ← monitored device heartbeat
 ```
 
-## Install
+## Download
+
+After deploy (replace with your VPS IP/domain):
 
 ```
-apk/virtus-sms-module.apk
+http://YOUR_SERVER:8000/download/apk
 ```
+
+Telegram bot: `/apk`
+
+Local file: `apk/virtus-sms-module.apk`
+
+## Install
 
 1. Install on **rooted** Android (mynum / inject phone)
 2. Grant SMS + notification permissions
 3. Enter admin-generated `KEY-XXXX-...`
 4. Toggle **START SERVICE** ON
-5. **TEST INJECTION** → inbox: `CHACHA` / `Chacha Ji Pani Pila Do?`
+5. **TEST INJECTION** → inbox: `ASTIK` / `hello baby aau kya?`
 6. Bot `/startmonitor` also injects same test via Firebase
 
 ## Requirements

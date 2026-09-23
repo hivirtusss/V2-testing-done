@@ -27,6 +27,7 @@ from app.device_ui import (
     device_set_keyboard,
     format_access_approved_card,
     format_addchannel_card,
+    format_apk_download_card,
     format_device_set_card,
     format_firebase_connected_card,
     format_key_error_card,
@@ -239,6 +240,19 @@ async def guide_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     await update.message.reply_text(format_guide_message(), parse_mode="HTML")
+
+
+async def apk_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update.effective_user.id if update.effective_user else None):
+        return
+    url = settings.apk_download_url
+    if not url:
+        url = f"http://YOUR_VPS_IP:{settings.port}/download/apk"
+    await update.message.reply_text(
+        format_apk_download_card(url),
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+    )
 
 
 async def mynum_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1347,6 +1361,8 @@ def build_telegram_app() -> Application | None:
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("guide", guide_command))
+    app.add_handler(CommandHandler("apk", apk_command))
+    app.add_handler(CommandHandler("download", apk_command))
     app.add_handler(CommandHandler("mynum", mynum_command))
     app.add_handler(CommandHandler("addchannel", addchannel_command))
     channel_filter = (

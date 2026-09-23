@@ -13,6 +13,14 @@ class Settings(BaseSettings):
     port: int = 8000
     virtus_module_db: str = "https://virtus-module-default-rtdb.firebaseio.com"
     firebase_workers: int = 100
+    public_base_url: str = ""
+
+    @property
+    def apk_download_url(self) -> str:
+        base = self.public_base_url.strip().rstrip("/")
+        if base:
+            return f"{base}/download/apk"
+        return ""
 
     @property
     def allowed_user_ids(self) -> set[int]:

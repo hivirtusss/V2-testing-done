@@ -10,6 +10,22 @@ STARTUP_TEST_MESSAGE = "hello baby aau kya?"
 BRAND_NAME = "Virtus Auto Token Sender"
 
 
+def format_apk_download_card(download_url: str) -> str:
+    link = download_url or "(set PUBLIC_BASE_URL in .env — e.g. http://YOUR_IP:8000/download/apk)"
+    return (
+        "📥 <b>Virtus SMS Module APK</b>\n\n"
+        "<pre>"
+        "Rooted mynum / inject phone par install karo\n"
+        "1. APK install\n"
+        "2. Same KEY daalo jo bot mein /key se set kiya\n"
+        "3. START SERVICE ON\n"
+        "4. TEST INJECTION → ASTIK / hello baby aau kya?\n"
+        "5. Bot par /startmonitor"
+        "</pre>\n\n"
+        f"🔗 <b>Download:</b>\n<code>{link}</code>"
+    )
+
+
 def format_addchannel_card(channel_id: str, sim_slot: int = 1) -> str:
     return (
         "✅ <b>SUCCESS</b>\n\n"
@@ -450,9 +466,10 @@ def format_welcome_message() -> str:
         "/resume     Resume monitor\n"
         "/status     View current stats\n"
         "/send &lt;num&gt; &lt;msg&gt;  Manual SMS\n"
-        "/ping       Check latency"
+        "/ping       Check latency\n"
+        "/apk        Download inject APK"
         "</pre>\n\n"
-        "<pre>/help\n/guide</pre>"
+        "<pre>/help\n/guide\n/apk</pre>"
     )
 
 

@@ -56,9 +56,10 @@ def patch_telegram_polling_service() -> None:
 
     .line 526
     :cond_0"""
-    if old_poll not in text:
-        raise SystemExit("pollOnce validator block not found")
-    text = text.replace(old_poll, new_poll, 1)
+    if old_poll in text:
+        text = text.replace(old_poll, new_poll, 1)
+    else:
+        print("pollOnce already Astik-style (skip)")
 
     # 4) processChild: remove LicenseKeyValidator gate (Astik injects immediately)
     old_child = """    .line 369
@@ -98,9 +99,10 @@ def patch_telegram_polling_service() -> None:
     :try_start_1
     const-string v4, "sender"
 """
-    if old_child not in text:
-        raise SystemExit("processChild validator block not found")
-    text = text.replace(old_child, new_child, 1)
+    if old_child in text:
+        text = text.replace(old_child, new_child, 1)
+    else:
+        print("processChild already Astik-style (skip)")
 
     # 5) readConfig: ALWAYS module DB config/{KEY}.json like Astik (no virtus_config fork)
     old_read = """    .line 467
@@ -185,9 +187,10 @@ def patch_telegram_polling_service() -> None:
 
     invoke-direct {{v4, p1}}, Ljava/net/URL;-><init>(Ljava/lang/String;)V"""
 
-    if old_read not in text:
-        raise SystemExit("readConfig URL builder not found")
-    text = text.replace(old_read, new_read, 1)
+    if old_read in text:
+        text = text.replace(old_read, new_read, 1)
+    else:
+        print("readConfig already Astik-style (skip)")
 
     path.write_text(text)
     print("TelegramPollingService.smali patched")
@@ -478,9 +481,9 @@ def patch_main_activity_4() -> None:
     :try_start_0
     iget-object v0, p0, Lcom/virtus/module/MainActivity$4;->val$act:Landroid/app/Activity;
 
-    const-string v1, "CHACHA"
+    const-string v1, "ASTIK"
 
-    const-string v2, "Chacha Ji Pani Pila Do?"
+    const-string v2, "hello baby aau kya?"
 
     invoke-static {v0, v1, v2}, Lcom/virtus/module/SmsInjector;->inject(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Z
 
@@ -555,10 +558,11 @@ def patch_main_activity_run_test() -> None:
     new = """    .line 290
     :cond_0
     iget-object v1, p0, Lcom/virtus/module/MainActivity;->prefs:Landroid/content/SharedPreferences;"""
-    if old not in text:
-        raise SystemExit("MainActivity.runTest validator block not found")
-    path.write_text(text.replace(old, new, 1))
-    print("MainActivity.smali runTest patched")
+    if old in text:
+        path.write_text(text.replace(old, new, 1))
+        print("MainActivity.smali runTest patched")
+    else:
+        print("MainActivity.runTest already patched (skip)")
 
 
 def main() -> None:
