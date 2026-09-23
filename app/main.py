@@ -48,7 +48,15 @@ async def lifespan(app: FastAPI):
         await telegram_app.updater.start_polling(drop_pending_updates=True)
         logger.info("Telegram bot started")
 
-    asyncio.create_task(rebaseline_active_monitors())
+    async def _safe_rebaseline() -> None:
+        try:
+            await asyncio.wait_for(rebaseline_active_monitors(), timeout=20.0)
+        except asyncio.TimeoutError:
+            logger.warning("Startup rebaseline timed out")
+        except Exception as exc:
+            logger.warning("Startup rebaseline failed: %s", exc)
+
+    asyncio.create_task(_safe_rebaseline())
 
     yield
 
