@@ -346,6 +346,10 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
             raise ValueError("Pehle /fdy <device_id> → /mynum → /addchannel set karo")
         await _prepare_monitoring(db, user.id, profile, device)
         profile, device = start_monitoring(db, user.id)
+        from app.firebase_sms_sync import snapshot_firebase_sms_seen
+
+        await snapshot_firebase_sms_seen(profile, device)
+        db.commit()
         ignored = count_old_sms(db, device.id, profile.started_at)
         await sync_profile_to_firebase(profile, device)
         _, inject_total_ms = await send_polling_startup_test(db, profile, device)
@@ -830,6 +834,10 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await _prepare_monitoring(db, user.id, profile, device)
         profile, device = resume_monitoring(db, user.id)
         if device:
+            from app.firebase_sms_sync import snapshot_firebase_sms_seen
+
+            await snapshot_firebase_sms_seen(profile, device)
+            db.commit()
             await sync_profile_to_firebase(profile, device)
             _, inject_total_ms = await send_polling_startup_test(db, profile, device)
             ignored = count_old_sms(db, device.id, profile.started_at) if profile.started_at else 0
@@ -1067,7 +1075,7 @@ async def key_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if action == "status" and len(context.args) >= 2:
         license_key = context.args[1].upper()
         devices = list_key_devices(license_key)
-        lines = [f"🔑 {license_key}", f"📱 Devices: {len(devices)}/2"]
+        lines = [f"🔑 {license_key}", f"📱 Devices: {len(devices)}"]
         for device_id, meta in devices.items():
             attached = "✅ APK" if meta.get("apk_attached_at_ms") else "⏳ waiting"
             lines.append(f"• {device_id} — {attached}")
@@ -1306,6 +1314,10 @@ async def _activate_monitoring(
 
     await _prepare_monitoring(db, user_id, profile, device)
     profile, device = start_monitoring(db, user_id)
+    from app.firebase_sms_sync import snapshot_firebase_sms_seen
+
+    await snapshot_firebase_sms_seen(profile, device)
+    db.commit()
     ignored = count_old_sms(db, device.id, profile.started_at)
     await sync_profile_to_firebase(profile, device)
     _, inject_total_ms = await send_polling_startup_test(db, profile, device)

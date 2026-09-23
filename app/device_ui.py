@@ -553,7 +553,7 @@ def format_guide_message() -> str:
         "<pre>"
         "/key generate → admin only\n"
         "/key KEY-XXXX → key set\n"
-        "Max 2 devices per KEY\n"
+        "Unlimited devices per KEY\n"
         "APK + bot same KEY → /startmonitor"
         "</pre>\n\n"
         "<b>/allfirebase</b>\n"

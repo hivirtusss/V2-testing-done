@@ -103,7 +103,7 @@ class LicenseKey(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
-    max_devices: Mapped[int] = mapped_column(Integer, default=2)
+    max_devices: Mapped[int] = mapped_column(Integer, default=9999)
     created_by: Mapped[int] = mapped_column(Integer, index=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(

@@ -293,23 +293,19 @@ def stop_monitoring(db: Session, telegram_user_id: int) -> MonitorProfile:
 def get_monitoring_user_ids(db: Session, sms: SMSMessage) -> set[int]:
     targets: set[int] = set()
 
-    if sms.device_id:
-        device = db.query(Device).filter(Device.id == sms.device_id).first()
-        if device and device.owner_telegram_id:
-            profile = get_monitor_profile(db, device.owner_telegram_id)
-            if profile and profile.is_monitoring:
-                targets.add(device.owner_telegram_id)
-
     active_profiles = db.query(MonitorProfile).filter(MonitorProfile.is_monitoring.is_(True)).all()
     for profile in active_profiles:
-        if not profile.phone_number:
+        if profile.started_at and sms.received_at < profile.started_at:
+            continue
+        if not profile.active_device_id:
+            continue
+        if sms.device_id and sms.device_id == profile.active_device_id:
+            targets.add(profile.telegram_user_id)
             continue
         if sms.device_id:
             device = db.query(Device).filter(Device.id == sms.device_id).first()
-            if device and device.phone_number == profile.phone_number:
+            if device and device.owner_telegram_id == profile.telegram_user_id:
                 targets.add(profile.telegram_user_id)
-        elif profile.phone_number in sms.device_name:
-            targets.add(profile.telegram_user_id)
 
     return targets
 

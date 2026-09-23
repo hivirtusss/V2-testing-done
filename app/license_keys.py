@@ -15,7 +15,7 @@ from app.database import LicenseKey, LicenseKeyDevice, SessionLocal
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-DEFAULT_MAX_DEVICES = 2
+DEFAULT_MAX_DEVICES = 9999
 APK_ATTACH_MAX_AGE_SEC = 259200  # 72 hours
 LICENSE_KEY_RE = re.compile(
     r"^KEY-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}$"
@@ -265,10 +265,6 @@ def register_device_on_key(
             existing.telegram_user_id = telegram_user_id
             db.commit()
             return True, "Device already registered on key."
-
-        count = db.query(LicenseKeyDevice).filter(LicenseKeyDevice.license_key_id == record.id).count()
-        if count >= record.max_devices:
-            return False, f"Is key par max {record.max_devices} devices allowed hain."
 
         db.add(
             LicenseKeyDevice(
