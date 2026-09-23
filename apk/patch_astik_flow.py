@@ -341,7 +341,7 @@ def patch_main_activity_3() -> None:
 
     move-result v2
 
-    if-eqz v2, :key_empty
+    if-nez v2, :key_empty
 
     invoke-static {v0}, Lcom/virtus/module/MainActivity;->access$400(Lcom/virtus/module/MainActivity;)Landroid/content/SharedPreferences;
 

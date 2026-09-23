@@ -161,24 +161,19 @@ async def relay_outgoing_batch(
     channel_message_id: int | None = None,
     source: str = "channel",
 ) -> int:
-    tasks = [
-        relay_outgoing_text(
-            db,
-            profile,
-            device,
-            text,
-            channel_message_id=channel_message_id,
-            source=source,
-        )
-        for profile, device in profiles
-    ]
-    if not tasks:
-        return 0
-    results = await asyncio.gather(*tasks, return_exceptions=True)
     sent = 0
-    for result in results:
-        if isinstance(result, Exception):
-            logger.error("Outgoing relay failed: %s", result)
-        elif result is not None:
-            sent += 1
+    for profile, device in profiles:
+        try:
+            result = await relay_outgoing_text(
+                db,
+                profile,
+                device,
+                text,
+                channel_message_id=channel_message_id,
+                source=source,
+            )
+            if result is not None:
+                sent += 1
+        except Exception as exc:
+            logger.error("Outgoing relay failed for user %s: %s", profile.telegram_user_id, exc)
     return sent

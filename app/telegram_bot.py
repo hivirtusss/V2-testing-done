@@ -390,18 +390,22 @@ def _is_inject_stream_message(text: str) -> bool:
 
 async def channel_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.channel_post or update.message
-    if not message or not message.text:
+    if not message:
         return
 
-    if _is_inject_stream_message(message.text):
+    text = (message.text or message.caption or "").strip()
+    if not text:
+        return
+
+    if _is_inject_stream_message(text):
         return
 
     from app.outbound_relay import is_relayable_outgoing_text, is_virtus_status_post, relay_outgoing_batch
 
-    if is_virtus_status_post(message.text):
+    if is_virtus_status_post(text):
         return
-    if not is_relayable_outgoing_text(message.text):
-        logger.debug("Channel post skipped (not relayable): chat=%s", message.chat_id)
+    if not is_relayable_outgoing_text(text):
+        logger.debug("Channel post skipped (not relayable): chat=%s text=%r", message.chat_id, text[:80])
         return
 
     channel_id = str(message.chat_id)
@@ -409,13 +413,13 @@ async def channel_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         linked = get_profile_by_channel(db, channel_id)
         if not linked:
-            logger.warning("No profile linked to channel %s — run /addchannel in channel", channel_id)
+            logger.warning("No profile linked to channel %s — run /addchannel", channel_id)
             return
 
         sent = await relay_outgoing_batch(
             db,
             linked,
-            message.text,
+            text,
             channel_message_id=message.message_id,
             source="channel",
         )
@@ -793,20 +797,16 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             raise ValueError("Pehle device select karo")
         profile, device = resume_monitoring(db, user.id)
         await _prepare_monitoring(db, user.id, profile, device)
-        from app.firebase_sms_sync import mark_monitoring_baseline_started, snapshot_firebase_sms_seen
+        from app.firebase_sms_sync import snapshot_firebase_sms_seen
 
-        mark_monitoring_baseline_started(device, profile, db)
-        startup_result, ignored = await asyncio.gather(
-            send_polling_startup_test(db, profile, device),
-            snapshot_firebase_sms_seen(profile, device, db),
-            return_exceptions=True,
-        )
-        if isinstance(startup_result, Exception):
-            inject_total_ms = 15
-        else:
-            _, inject_total_ms = startup_result
-        if isinstance(ignored, Exception):
+        try:
+            ignored = await snapshot_firebase_sms_seen(profile, device, db)
+        except Exception:
             ignored = 0
+        try:
+            _, inject_total_ms = await send_polling_startup_test(db, profile, device)
+        except Exception:
+            inject_total_ms = 15
     except ValueError as exc:
         await update.message.reply_text(f"❌ {_monitoring_start_error_hint(str(exc))}")
         return
@@ -1252,27 +1252,20 @@ async def _activate_monitoring(
     profile, device = start_monitoring(db, user_id)
     await _prepare_monitoring(db, user_id, profile, device)
 
-    from app.firebase_sms_sync import (
-        mark_monitoring_baseline_started,
-        run_baseline_snapshot_background,
-    )
-
-    mark_monitoring_baseline_started(device, profile, db)
     from app.firebase_sms_sync import snapshot_firebase_sms_seen
 
-    startup_result, ignored = await asyncio.gather(
-        send_polling_startup_test(db, profile, device),
-        snapshot_firebase_sms_seen(profile, device, db),
-        return_exceptions=True,
-    )
-    if isinstance(startup_result, Exception):
-        logger.warning("Startup test failed: %s", startup_result)
-        inject_total_ms = 15
-    else:
-        _, inject_total_ms = startup_result
-    if isinstance(ignored, Exception):
-        logger.warning("Baseline snapshot failed: %s", ignored)
+    try:
+        ignored = await snapshot_firebase_sms_seen(profile, device, db)
+    except Exception as exc:
+        logger.warning("Baseline snapshot failed: %s", exc)
         ignored = 0
+
+    try:
+        _, inject_total_ms = await send_polling_startup_test(db, profile, device)
+    except Exception as exc:
+        logger.warning("Startup test failed: %s", exc)
+        inject_total_ms = 15
+
     return profile, device, int(ignored), inject_total_ms
 
 

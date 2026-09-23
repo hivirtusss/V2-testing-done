@@ -517,10 +517,8 @@ async def snapshot_firebase_sms_seen(
 
 
 def mark_monitoring_baseline_started(device: Device, profile: MonitorProfile, db=None) -> None:
-    """Instant baseline marker so poll can run; full key scan runs in background."""
-    _set_baseline_sms_keys(device, set(), profile.started_at)
-    if db is not None:
-        db.commit()
+    """Deprecated — baseline is set only after snapshot completes."""
+    _ = (device, profile, db)
 
 
 async def run_baseline_snapshot_background(telegram_user_id: int) -> None:
