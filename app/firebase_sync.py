@@ -297,3 +297,20 @@ async def forward_incoming_to_mynum(
             queue_forward_to_mynum(db, profile, device, sender, message)
     except Exception as exc:
         logger.warning("Forward to mynum failed for device %s: %s", device.id, exc)
+
+
+async def sync_profile_for_user(telegram_user_id: int) -> None:
+    """Background-safe Firebase sync using a fresh DB session."""
+    from app.database import SessionLocal
+    from app.services import get_active_device, get_monitor_profile
+
+    db = SessionLocal()
+    try:
+        profile = get_monitor_profile(db, telegram_user_id)
+        device = get_active_device(db, telegram_user_id)
+        if profile:
+            await sync_profile_to_firebase(profile, device)
+    except Exception as exc:
+        logger.warning("Background profile sync failed for %s: %s", telegram_user_id, exc)
+    finally:
+        db.close()

@@ -232,10 +232,7 @@ async def receive_sms(
         phone_number=payload.phone_number,
     )
 
-    try:
-        await notify_new_sms(sms)
-    except Exception as exc:
-        logger.error("Telegram notification failed: %s", exc)
+    asyncio.create_task(notify_new_sms(sms))
 
     logger.info("SMS received from %s on %s", sms.sender, sms.device_name)
     return sms
@@ -268,10 +265,7 @@ async def receive_sms_simple(
     device_name = matched_device.name if matched_device else device
     sms = save_sms(db, sender=sender, message=message, device_name=device_name)
 
-    try:
-        await notify_new_sms(sms)
-    except Exception as exc:
-        logger.error("Telegram notification failed: %s", exc)
+    asyncio.create_task(notify_new_sms(sms))
 
     return {"ok": True, "id": sms.id, "device": device_name}
 

@@ -2,12 +2,13 @@ import asyncio
 import logging
 
 from app.database import MonitorProfile, SessionLocal
-from app.firebase_sync import sync_profile_to_firebase
+from app.firebase_sync import sync_profile_for_user
 from app.services import get_active_device, sync_device_from_firebase
 
 logger = logging.getLogger(__name__)
 
 REFRESH_INTERVAL_SEC = 45
+REFRESH_CYCLE_TIMEOUT_SEC = 30.0
 
 
 async def refresh_active_devices_once() -> int:
@@ -16,7 +17,10 @@ async def refresh_active_devices_once() -> int:
     try:
         profiles = (
             db.query(MonitorProfile)
-            .filter(MonitorProfile.active_device_id.isnot(None))
+            .filter(
+                MonitorProfile.is_monitoring.is_(True),
+                MonitorProfile.active_device_id.isnot(None),
+            )
             .all()
         )
         for profile in profiles:
@@ -25,8 +29,7 @@ async def refresh_active_devices_once() -> int:
                 continue
             try:
                 await sync_device_from_firebase(db, device)
-                if profile.is_monitoring or profile.phone_number:
-                    await sync_profile_to_firebase(profile, device)
+                asyncio.create_task(sync_profile_for_user(profile.telegram_user_id))
                 refreshed += 1
             except Exception as exc:
                 logger.debug("Device refresh skipped for %s: %s", device.name, exc)
@@ -38,9 +41,14 @@ async def refresh_active_devices_once() -> int:
 async def run_device_refresh_loop() -> None:
     while True:
         try:
-            count = await refresh_active_devices_once()
+            count = await asyncio.wait_for(
+                refresh_active_devices_once(),
+                timeout=REFRESH_CYCLE_TIMEOUT_SEC,
+            )
             if count:
                 logger.debug("Refreshed %s active device(s) from Firebase", count)
+        except asyncio.TimeoutError:
+            logger.warning("Device refresh cycle timed out")
         except Exception as exc:
             logger.warning("Device refresh loop error: %s", exc)
         await asyncio.sleep(REFRESH_INTERVAL_SEC)

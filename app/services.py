@@ -1,3 +1,4 @@
+import asyncio
 import json
 import secrets
 from datetime import datetime, timezone
@@ -849,8 +850,8 @@ async def connect_firebase_url(
     profile.firebase_url = normalized_url
 
     try:
-        remote_devices = await fetch_firebase_devices(normalized_url)
-    except ValueError:
+        remote_devices = await asyncio.wait_for(fetch_firebase_devices(normalized_url), timeout=12.0)
+    except (asyncio.TimeoutError, ValueError):
         remote_devices = []
 
     if not remote_devices:
