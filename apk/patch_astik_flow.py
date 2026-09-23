@@ -250,7 +250,7 @@ def patch_read_config_reporter() -> None:
 
 
 def patch_main_activity_3() -> None:
-    """Astik-style START SERVICE: toggle only, no key gate."""
+    """Exact Astik START SERVICE — startService only, no root/key gate on toggle."""
     path = ROOT / "MainActivity$3.smali"
     path.write_text(
         r""".class Lcom/virtus/module/MainActivity$3;
@@ -290,212 +290,82 @@ def patch_main_activity_3() -> None:
 
 # virtual methods
 .method public onCheckedChanged(Landroid/widget/CompoundButton;Z)V
-    .locals 7
+    .locals 3
 
-    iget-object v0, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
+    iget-object p1, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
 
-    invoke-static {v0}, Lcom/virtus/module/MainActivity;->access$300(Lcom/virtus/module/MainActivity;)Z
+    invoke-static {p1}, Lcom/virtus/module/MainActivity;->access$300(Lcom/virtus/module/MainActivity;)Z
 
-    move-result v1
+    move-result v0
 
-    if-eqz v1, :cond_0
+    if-eqz v0, :cond_0
 
     return-void
 
     :cond_0
-    invoke-static {v0}, Lcom/virtus/module/MainActivity;->access$400(Lcom/virtus/module/MainActivity;)Landroid/content/SharedPreferences;
+    invoke-static {p1}, Lcom/virtus/module/MainActivity;->access$400(Lcom/virtus/module/MainActivity;)Landroid/content/SharedPreferences;
 
-    move-result-object v1
+    move-result-object v0
 
-    invoke-interface {v1}, Landroid/content/SharedPreferences;->edit()Landroid/content/SharedPreferences$Editor;
+    invoke-interface {v0}, Landroid/content/SharedPreferences;->edit()Landroid/content/SharedPreferences$Editor;
 
-    move-result-object v1
+    move-result-object v0
 
-    const-string v2, "service_on"
+    const-string v1, "service_on"
 
-    invoke-interface {v1, v2, p2}, Landroid/content/SharedPreferences$Editor;->putBoolean(Ljava/lang/String;Z)Landroid/content/SharedPreferences$Editor;
+    invoke-interface {v0, v1, p2}, Landroid/content/SharedPreferences$Editor;->putBoolean(Ljava/lang/String;Z)Landroid/content/SharedPreferences$Editor;
 
-    move-result-object v1
+    move-result-object v0
 
-    invoke-interface {v1}, Landroid/content/SharedPreferences$Editor;->apply()V
+    invoke-interface {v0}, Landroid/content/SharedPreferences$Editor;->apply()V
 
-    const/4 v1, 0x0
+    const/4 v0, 0x0
 
     if-eqz p2, :cond_stop
 
-    iget-object p2, v0, Lcom/virtus/module/MainActivity;->keyInput:Landroid/widget/EditText;
+    new-instance v1, Landroid/content/Intent;
 
-    invoke-virtual {p2}, Landroid/widget/EditText;->getText()Landroid/text/Editable;
+    const-class v2, Lcom/virtus/module/TelegramPollingService;
 
-    move-result-object p2
+    invoke-direct {v1, p1, v2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
 
-    invoke-virtual {p2}, Ljava/lang/Object;->toString()Ljava/lang/String;
+    invoke-virtual {p1, v1}, Lcom/virtus/module/MainActivity;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
 
-    move-result-object p2
+    const-string v1, "Service started \u2014 always alive"
 
-    invoke-virtual {p2}, Ljava/lang/String;->trim()Ljava/lang/String;
+    invoke-static {p1, v1, v0}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
 
-    move-result-object p2
+    move-result-object v1
 
-    invoke-virtual {p2}, Ljava/lang/String;->isEmpty()Z
-
-    move-result v2
-
-    if-nez v2, :key_empty
-
-    invoke-static {v0}, Lcom/virtus/module/MainActivity;->access$400(Lcom/virtus/module/MainActivity;)Landroid/content/SharedPreferences;
-
-    move-result-object v2
-
-    invoke-interface {v2}, Landroid/content/SharedPreferences;->edit()Landroid/content/SharedPreferences$Editor;
-
-    move-result-object v2
-
-    const-string v3, "license_key"
-
-    invoke-interface {v2, v3, p2}, Landroid/content/SharedPreferences$Editor;->putString(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences$Editor;
-
-    move-result-object v2
-
-    invoke-interface {v2}, Landroid/content/SharedPreferences$Editor;->apply()V
-
-    invoke-static {}, Lcom/virtus/module/RootHelper;->hasRoot()Z
-
-    move-result v2
-
-    if-nez v2, :root_ok
-
-    const-string p2, "Grant root permission first (su)"
-
-    invoke-static {v0, p2, v1}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
-
-    move-result-object p2
-
-    invoke-virtual {p2}, Landroid/widget/Toast;->show()V
-
-    invoke-virtual {p1, v1}, Landroid/widget/CompoundButton;->setChecked(Z)V
-
-    return-void
-
-    :root_ok
-    invoke-static {v0}, Lcom/virtus/module/PermissionHelper;->ensure(Landroid/app/Activity;)V
-
-    new-instance v2, Landroid/content/Intent;
-
-    const-class v3, Lcom/virtus/module/TelegramPollingService;
-
-    invoke-direct {v2, v0, v3}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
-
-    :try_start_svc
-    invoke-virtual {v0, v2}, Lcom/virtus/module/MainActivity;->startForegroundService(Landroid/content/Intent;)Landroid/content/ComponentName;
-    :try_end_svc
-    .catch Ljava/lang/Exception; {:try_start_svc .. :try_end_svc} :catch_svc
-
-    goto :after_svc
-
-    :catch_svc
-    :try_start_svc2
-    invoke-virtual {v0, v2}, Lcom/virtus/module/MainActivity;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
-    :try_end_svc2
-    .catch Ljava/lang/Exception; {:try_start_svc2 .. :try_end_svc2} :catch_svc_fail
-
-    goto :after_svc
-
-    :catch_svc_fail
-    const-string p2, "Service start failed — allow notifications + retry"
-
-    invoke-static {v0, p2, v1}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
-
-    move-result-object p2
-
-    invoke-virtual {p2}, Landroid/widget/Toast;->show()V
-
-    invoke-virtual {p1, v1}, Landroid/widget/CompoundButton;->setChecked(Z)V
-
-    return-void
-
-    :after_svc
-    iget-object p2, v0, Lcom/virtus/module/MainActivity;->keyInput:Landroid/widget/EditText;
-
-    invoke-virtual {p2}, Landroid/widget/EditText;->getText()Landroid/text/Editable;
-
-    move-result-object p2
-
-    invoke-virtual {p2}, Ljava/lang/Object;->toString()Ljava/lang/String;
-
-    move-result-object p2
-
-    invoke-virtual {p2}, Ljava/lang/String;->trim()Ljava/lang/String;
-
-    move-result-object p2
-
-    invoke-virtual {p2}, Ljava/lang/String;->toUpperCase()Ljava/lang/String;
-
-    move-result-object v2
-
-    invoke-virtual {v0}, Lcom/virtus/module/MainActivity;->getContentResolver()Landroid/content/ContentResolver;
-
-    move-result-object v3
-
-    const-string v4, "android_id"
-
-    invoke-static {v3, v4}, Landroid/provider/Settings$Secure;->getString(Landroid/content/ContentResolver;Ljava/lang/String;)Ljava/lang/String;
-
-    move-result-object v3
-
-    if-eqz v3, :toast_started
-
-    invoke-static {v2, p2, v3}, Lcom/virtus/module/LicenseKeyReporter;->report(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
-
-    :toast_started
-    const-string p2, "Service started \u2014 always alive"
-
-    invoke-static {v0, p2, v1}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
-
-    move-result-object p2
-
-    invoke-virtual {p2}, Landroid/widget/Toast;->show()V
+    invoke-virtual {v1}, Landroid/widget/Toast;->show()V
 
     goto :goto_done
 
-    :key_empty
-    const-string p2, "Enter license key first"
+    :cond_stop
+    new-instance p2, Landroid/content/Intent;
 
-    invoke-static {v0, p2, v1}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
+    const-class v1, Lcom/virtus/module/TelegramPollingService;
+
+    invoke-direct {p2, p1, v1}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
+
+    invoke-virtual {p1, p2}, Lcom/virtus/module/MainActivity;->stopService(Landroid/content/Intent;)Z
+
+    const-string p2, "Service stopped"
+
+    invoke-static {p1, p2, v0}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
 
     move-result-object p2
 
     invoke-virtual {p2}, Landroid/widget/Toast;->show()V
 
-    invoke-virtual {p1, v1}, Landroid/widget/CompoundButton;->setChecked(Z)V
-
-    return-void
-
-    :cond_stop
-    new-instance p1, Landroid/content/Intent;
-
-    const-class p2, Lcom/virtus/module/TelegramPollingService;
-
-    invoke-direct {p1, v0, p2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
-
-    invoke-virtual {v0, p1}, Lcom/virtus/module/MainActivity;->stopService(Landroid/content/Intent;)Z
-
-    const-string p1, "Service stopped"
-
-    invoke-static {v0, p1, v1}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
-
-    move-result-object p1
-
-    invoke-virtual {p1}, Landroid/widget/Toast;->show()V
-
     :goto_done
-    invoke-static {v0}, Lcom/virtus/module/MainActivity;->access$500(Lcom/virtus/module/MainActivity;)V
+    invoke-static {p1}, Lcom/virtus/module/MainActivity;->access$500(Lcom/virtus/module/MainActivity;)V
 
     return-void
 .end method
 """
     )
-    print("MainActivity$3.smali rewritten (Astik START SERVICE flow)")
+    print("MainActivity$3.smali rewritten (exact Astik startService flow)")
 
 
 def patch_main_activity_4() -> None:
@@ -548,9 +418,9 @@ def patch_main_activity_4() -> None:
     :try_start_0
     iget-object v0, p0, Lcom/virtus/module/MainActivity$4;->val$act:Landroid/app/Activity;
 
-    const-string v1, "ASTIK"
+    const-string v1, "BABY"
 
-    const-string v2, "hello baby aau kya?"
+    const-string v2, "ASTIK TEST OK \u2014 module alive"
 
     invoke-static {v0, v1, v2}, Lcom/virtus/module/SmsInjector;->inject(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Z
 
@@ -646,44 +516,51 @@ def patch_apk_poll_speed() -> None:
 
 
 def patch_android_manifest_fgs() -> None:
+    """Match Astik manifest — specialUse FGS (works on user's Android 13-16)."""
     path = Path("/workspace/apk/virtus_decompiled/AndroidManifest.xml")
     text = path.read_text()
-    old = 'android:foregroundServiceType="specialUse"'
-    new = 'android:foregroundServiceType="dataSync"'
-    if old in text:
-        text = text.replace(old, new, 1)
-        text = text.replace(
-            '            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="SMS polling gateway — must run 24/7 for instant injection"/>\n',
-            "",
-        )
-        path.write_text(text)
-        print("AndroidManifest: dataSync FGS")
+    service_line = '<service android:exported="false" android:foregroundServiceType="dataSync" android:name="com.virtus.module.TelegramPollingService"/>'
+    astik_service = (
+        '<service android:exported="false" android:foregroundServiceType="specialUse" '
+        'android:name="com.virtus.module.TelegramPollingService">\n'
+        '            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" '
+        'android:value="SMS polling gateway — must run 24/7 for instant injection"/>\n'
+        "        </service>"
+    )
+    if service_line in text:
+        path.write_text(text.replace(service_line, astik_service, 1))
+        print("AndroidManifest: specialUse FGS (Astik match)")
+    elif 'foregroundServiceType="specialUse"' in text:
+        print("AndroidManifest FGS already Astik-style (skip)")
     else:
-        print("AndroidManifest FGS already patched (skip)")
+        print("AndroidManifest FGS marker missing (skip)")
 
 
 def patch_on_start_command_foreground() -> None:
+    """Astik onStartCommand uses NotificationManager.notify, not startForeground."""
     path = ROOT / "TelegramPollingService.smali"
     text = path.read_text()
-    old = """    invoke-direct {p0, p3}, Lcom/virtus/module/TelegramPollingService;->buildNotification(Ljava/lang/String;)Landroid/app/Notification;
-
-    move-result-object p3
-
-    const/16 v0, 0x3e7
-
-    invoke-virtual {p2, v0, p3}, Landroid/app/NotificationManager;->notify(ILandroid/app/Notification;)V"""
-    new = """    invoke-direct {p0, p3}, Lcom/virtus/module/TelegramPollingService;->buildNotification(Ljava/lang/String;)Landroid/app/Notification;
+    wrong = """    invoke-direct {p0, p3}, Lcom/virtus/module/TelegramPollingService;->buildNotification(Ljava/lang/String;)Landroid/app/Notification;
 
     move-result-object p3
 
     const/16 v0, 0x3e7
 
     invoke-virtual {p0, v0, p3}, Lcom/virtus/module/TelegramPollingService;->startForeground(ILandroid/app/Notification;)V"""
-    if old in text:
-        path.write_text(text.replace(old, new, 1))
-        print("onStartCommand startForeground restored")
+    right = """    invoke-direct {p0, p3}, Lcom/virtus/module/TelegramPollingService;->buildNotification(Ljava/lang/String;)Landroid/app/Notification;
+
+    move-result-object p3
+
+    const/16 v0, 0x3e7
+
+    invoke-virtual {p2, v0, p3}, Landroid/app/NotificationManager;->notify(ILandroid/app/Notification;)V"""
+    if wrong in text:
+        path.write_text(text.replace(wrong, right, 1))
+        print("onStartCommand: notify only (Astik match)")
+    elif "NotificationManager;->notify(ILandroid/app/Notification;)V" in text.split("onStartCommand")[1].split("onTaskRemoved")[0]:
+        print("onStartCommand already Astik-style (skip)")
     else:
-        print("onStartCommand foreground already patched (skip)")
+        print("onStartCommand marker missing (skip)")
 
 
 def write_permission_helper() -> None:
@@ -772,70 +649,40 @@ def patch_main_activity_permissions() -> None:
 
 
 def patch_main_activity_autostart() -> None:
+    """Restore Astik onCreate autostart when service_on was saved."""
     path = ROOT / "MainActivity.smali"
     text = path.read_text()
-    blocks = [
-        """    if-eqz v1, :cond_1
-
-    .line 233
-    new-instance v1, Landroid/content/Intent;
-
-    const-class v2, Lcom/virtus/module/TelegramPollingService;
-
-    invoke-direct {v1, v0, v2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
-
-    :try_start_auto
-    invoke-virtual {v0, v1}, Lcom/virtus/module/MainActivity;->startForegroundService(Landroid/content/Intent;)Landroid/content/ComponentName;
-    :try_end_auto
-    .catch Ljava/lang/Exception; {:try_start_auto .. :try_end_auto} :catch_auto
-
-    goto :after_auto
-
-    :catch_auto
-    invoke-virtual {v0, v1}, Lcom/virtus/module/MainActivity;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
-
-    :after_auto
-    .line 235
-    :cond_1""",
-        """    if-eqz v1, :cond_1
-
-    .line 233
-    new-instance v1, Landroid/content/Intent;
-
-    const-class v2, Lcom/virtus/module/TelegramPollingService;
-
-    invoke-direct {v1, v0, v2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
-
-    invoke-virtual {v0, v1}, Lcom/virtus/module/MainActivity;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
-
-    .line 235
-    :cond_1""",
-    ]
-    replacement = """    if-eqz v1, :cond_1
+    broken = """    if-eqz v1, :cond_1
 
     .line 235
     :cond_1"""
-    if "new-instance v1, Landroid/content/Intent;" in text and "TelegramPollingService" in text:
-        for block in blocks:
-            if block in text:
-                path.write_text(text.replace(block, replacement, 1))
-                print("MainActivity onCreate autostart disabled")
-                return
-        print("MainActivity autostart already disabled (skip)")
+    fixed = """    if-eqz v1, :cond_1
+
+    .line 233
+    new-instance v1, Landroid/content/Intent;
+
+    const-class v2, Lcom/virtus/module/TelegramPollingService;
+
+    invoke-direct {v1, v0, v2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
+
+    invoke-virtual {v0, v1}, Lcom/virtus/module/MainActivity;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
+
+    .line 235
+    :cond_1"""
+    if broken in text:
+        path.write_text(text.replace(broken, fixed, 1))
+        print("MainActivity onCreate autostart restored (Astik)")
+    elif "startService(Landroid/content/Intent;)Landroid/content/ComponentName;" in text.split("onCreate")[1].split("onDestroy")[0]:
+        print("MainActivity autostart already enabled (skip)")
     else:
         print("MainActivity autostart marker missing (skip)")
 
 
 def patch_service_oncreate_foreground() -> None:
+    """Match Astik — direct startForeground in onCreate (no try/catch wrapper)."""
     path = ROOT / "TelegramPollingService.smali"
     text = path.read_text()
-    old = """    const/16 v1, 0x3e7
-
-    invoke-virtual {p0, v1, v0}, Lcom/virtus/module/TelegramPollingService;->startForeground(ILandroid/app/Notification;)V
-
-    .line 84
-    :try_start_0"""
-    new = """    const/16 v1, 0x3e7
+    wrapped = """    const/16 v1, 0x3e7
 
     :try_start_fg
     invoke-virtual {p0, v1, v0}, Lcom/virtus/module/TelegramPollingService;->startForeground(ILandroid/app/Notification;)V
@@ -856,11 +703,17 @@ def patch_service_oncreate_foreground() -> None:
     :after_fg
     .line 84
     :try_start_0"""
-    if ":try_start_fg" in text:
-        print("Service onCreate foreground guard already patched (skip)")
-    elif old in text:
-        path.write_text(text.replace(old, new, 1))
-        print("Service onCreate startForeground guarded")
+    plain = """    const/16 v1, 0x3e7
+
+    invoke-virtual {p0, v1, v0}, Lcom/virtus/module/TelegramPollingService;->startForeground(ILandroid/app/Notification;)V
+
+    .line 84
+    :try_start_0"""
+    if wrapped in text:
+        path.write_text(text.replace(wrapped, plain, 1))
+        print("Service onCreate: Astik-style startForeground")
+    elif plain.split(":try_start_0")[0] in text:
+        print("Service onCreate already Astik-style (skip)")
     else:
         print("Service onCreate foreground marker missing (skip)")
 

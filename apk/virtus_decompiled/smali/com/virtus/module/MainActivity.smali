@@ -1418,6 +1418,15 @@
 
     if-eqz v1, :cond_1
 
+    .line 233
+    new-instance v1, Landroid/content/Intent;
+
+    const-class v2, Lcom/virtus/module/TelegramPollingService;
+
+    invoke-direct {v1, v0, v2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
+
+    invoke-virtual {v0, v1}, Lcom/virtus/module/MainActivity;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
+
     .line 235
     :cond_1
     iget-object v1, v0, Lcom/virtus/module/MainActivity;->uiHandler:Landroid/os/Handler;

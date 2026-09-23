@@ -2584,23 +2584,8 @@
 
     const/16 v1, 0x3e7
 
-    :try_start_fg
     invoke-virtual {p0, v1, v0}, Lcom/virtus/module/TelegramPollingService;->startForeground(ILandroid/app/Notification;)V
-    :try_end_fg
-    .catch Ljava/lang/Exception; {:try_start_fg .. :try_end_fg} :catch_fg
 
-    goto :after_fg
-
-    :catch_fg
-    move-exception v0
-
-    const-string v1, "VirtusModule"
-
-    const-string v2, "startForeground failed in onCreate"
-
-    invoke-static {v1, v2, v0}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Throwable;)I
-
-    :after_fg
     .line 84
     :try_start_0
     const-string v0, "power"
@@ -2815,7 +2800,7 @@
 
     const/16 v0, 0x3e7
 
-    invoke-virtual {p0, v0, p3}, Lcom/virtus/module/TelegramPollingService;->startForeground(ILandroid/app/Notification;)V
+    invoke-virtual {p2, v0, p3}, Landroid/app/NotificationManager;->notify(ILandroid/app/Notification;)V
     :try_end_0
     .catch Ljava/lang/Exception; {:try_start_0 .. :try_end_0} :catch_0
 
