@@ -309,7 +309,7 @@ async def _prepare_monitoring(
         target_number=profile.phone_number,
         firebase_url=firebase_url,
     )
-    asyncio.create_task(sync_profile_to_firebase(profile, device))
+    await sync_profile_to_firebase(profile, device)
 
 
 async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

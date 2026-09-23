@@ -204,6 +204,7 @@ async def bind_device_to_license_key(
         target_number=profile.phone_number,
         sim_index=profile.selected_sim_index or 0,
         firebase_bases=firebase_bases,
+        firebase_url=profile.firebase_url,
     )
 
 

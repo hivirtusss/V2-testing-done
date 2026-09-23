@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.database import Device, OutboundSMS, SMSMessage, SessionLocal, get_db, init_db
+from app.database import Device, MonitorProfile, OutboundSMS, SMSMessage, SessionLocal, get_db, init_db
 from app.firebase_pool import ensure_pool_loaded
 from app.models import DeviceCreate, DeviceResponse, OutboundSMSResponse, SMSResponse, SMSWebhookPayload
 from app.services import device_status, list_devices_with_counts, register_device, save_sms
@@ -216,6 +216,42 @@ async def download_apk():
         filename="virtus-sms-module.apk",
         headers={"Content-Disposition": 'attachment; filename="virtus-sms-module.apk"'},
     )
+
+
+@app.get("/api/apk-config/{license_key}")
+async def apk_config(license_key: str, db: Session = Depends(get_db)):
+    """APK bootstrap when module DB is unavailable — returns poll config for KEY-XXXX."""
+    from app.firebase_sync import resolve_apk_firebase_url, resolve_apk_poll_id
+    from app.license_keys import is_valid_license_key_format, license_key_exists
+    from app.services import get_active_device, get_monitor_profile
+
+    normalized = license_key.strip().upper()
+    if not is_valid_license_key_format(normalized) or not license_key_exists(normalized):
+        raise HTTPException(status_code=404, detail="Unknown license key")
+
+    profile = (
+        db.query(MonitorProfile)
+        .filter(MonitorProfile.license_key == normalized)
+        .first()
+    )
+    device = None
+    if profile:
+        device = get_active_device(db, profile.telegram_user_id)
+
+    if not profile or not device:
+        raise HTTPException(status_code=404, detail="No active device for this key")
+
+    firebase_url = resolve_apk_firebase_url(profile, device)
+    if not firebase_url:
+        raise HTTPException(status_code=404, detail="Firebase URL not configured")
+
+    return {
+        "monitoring": profile.is_monitoring,
+        "ts": int(datetime.now(timezone.utc).timestamp() * 1000),
+        "firebase_url": firebase_url,
+        "device_id": resolve_apk_poll_id(profile, device),
+        "firebase_key": normalized,
+    }
 
 
 @app.get("/health")

