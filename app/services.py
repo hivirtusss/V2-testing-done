@@ -303,7 +303,7 @@ def get_monitoring_user_ids(db: Session, sms: SMSMessage) -> set[int]:
 
     active_profiles = db.query(MonitorProfile).filter(MonitorProfile.is_monitoring.is_(True)).all()
     for profile in active_profiles:
-        if profile.started_at and sms.received_at < profile.started_at:
+        if profile.started_at and sms.received_at and sms.received_at < profile.started_at:
             continue
         if not profile.active_device_id:
             continue

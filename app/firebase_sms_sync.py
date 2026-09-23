@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -16,7 +17,9 @@ from app.services import get_active_device, get_monitor_profile, save_sms
 
 logger = logging.getLogger(__name__)
 
-POLL_INTERVAL_SEC = 0.5
+POLL_INTERVAL_SEC = 1.0
+POLL_FETCH_TIMEOUT_SEC = 8.0
+SNAPSHOT_TIMEOUT_SEC = 45.0
 SMS_PARENT_PATHS = ("clients", "client", "devices", "device", "users", "phones")
 SMS_CHILD_PATHS = (
     "sms",
@@ -113,8 +116,24 @@ def _set_baseline_sms_keys(device: Device, keys: set[str], started_at: datetime 
     meta[BASELINE_META_KEY] = list(keys)
     meta[SEEN_META_KEY] = list(keys)
     if started_at:
-        meta[BASELINE_AT_META_KEY] = started_at.isoformat()
+        meta[BASELINE_AT_META_KEY] = _started_iso(started_at)
     _save_meta(device, meta)
+
+
+def _started_iso(started_at: datetime | None) -> str | None:
+    if not started_at:
+        return None
+    if started_at.tzinfo is None:
+        started_at = started_at.replace(tzinfo=timezone.utc)
+    return started_at.replace(microsecond=0).isoformat()
+
+
+def baseline_ready(device: Device, profile: MonitorProfile) -> bool:
+    started = _started_iso(profile.started_at)
+    if not started:
+        return False
+    meta = _meta_dict(device)
+    return meta.get(BASELINE_AT_META_KEY) == started
 
 
 def clear_sms_baseline(device: Device) -> None:
@@ -308,7 +327,18 @@ async def snapshot_firebase_sms_seen(
     firebase_url = _resolve_device_firebase_url(profile, device)
     if not firebase_url:
         return 0
-    records = await fetch_firebase_sms_for_device(firebase_url, device)
+    try:
+        records = await asyncio.wait_for(
+            fetch_firebase_sms_for_device(firebase_url, device, timeout=SNAPSHOT_TIMEOUT_SEC),
+            timeout=SNAPSHOT_TIMEOUT_SEC + 5,
+        )
+    except (asyncio.TimeoutError, httpx.HTTPError) as exc:
+        logger.warning("Firebase SMS baseline fetch failed for %s: %s", device.name, exc)
+        _set_baseline_sms_keys(device, set(), profile.started_at)
+        if db is not None:
+            db.commit()
+        return 0
+
     keys = {record["firebase_key"] for record in records}
     _set_baseline_sms_keys(device, keys, profile.started_at)
     if db is not None:
@@ -321,14 +351,21 @@ async def snapshot_firebase_sms_seen(
     return len(keys)
 
 
-async def ensure_firebase_baseline(db, profile: MonitorProfile, device: Device) -> None:
-    """Ensure baseline exists for current monitoring session (handles race on start)."""
-    meta = _meta_dict(device)
-    baseline_at = meta.get(BASELINE_AT_META_KEY)
-    started = profile.started_at.isoformat() if profile.started_at else None
-    if baseline_at and started and baseline_at == started:
-        return
-    await snapshot_firebase_sms_seen(profile, device, db)
+async def rebaseline_active_monitors() -> None:
+    """Once on bot startup — do not run inside the hot poll loop."""
+    db = SessionLocal()
+    try:
+        profiles = db.query(MonitorProfile).filter(MonitorProfile.is_monitoring.is_(True)).all()
+        for profile in profiles:
+            device = get_active_device(db, profile.telegram_user_id)
+            if not device or baseline_ready(device, profile):
+                continue
+            try:
+                await snapshot_firebase_sms_seen(profile, device, db)
+            except Exception as exc:
+                logger.warning("Startup rebaseline failed for %s: %s", device.name, exc)
+    finally:
+        db.close()
 
 
 async def _inject_before_notify(profile: MonitorProfile, device: Device, sender: str, message: str) -> None:
@@ -352,11 +389,19 @@ async def poll_monitoring_profiles_once() -> int:
             if not firebase_url:
                 continue
 
-            await ensure_firebase_baseline(db, profile, device)
+            if not baseline_ready(device, profile):
+                continue
 
             try:
-                records = await fetch_firebase_sms_for_device(firebase_url, device, timeout=2.0)
-            except Exception as exc:
+                records = await asyncio.wait_for(
+                    fetch_firebase_sms_for_device(
+                        firebase_url,
+                        device,
+                        timeout=POLL_FETCH_TIMEOUT_SEC,
+                    ),
+                    timeout=POLL_FETCH_TIMEOUT_SEC + 2,
+                )
+            except (asyncio.TimeoutError, httpx.HTTPError, Exception) as exc:
                 logger.debug("Firebase SMS poll failed for %s: %s", device.name, exc)
                 continue
 
@@ -419,13 +464,16 @@ async def poll_monitoring_profiles_once() -> int:
 
 
 async def run_firebase_sms_poll_loop() -> None:
-    import asyncio
-
     while True:
         try:
-            count = await poll_monitoring_profiles_once()
+            count = await asyncio.wait_for(
+                poll_monitoring_profiles_once(),
+                timeout=POLL_FETCH_TIMEOUT_SEC + 10,
+            )
             if count:
                 logger.info("Firebase SMS poll delivered %s message(s)", count)
+        except asyncio.TimeoutError:
+            logger.warning("Firebase SMS poll cycle timed out")
         except Exception as exc:
-            logger.warning("Firebase SMS poll loop error: %s", exc)
+            logger.exception("Firebase SMS poll loop error: %s", exc)
         await asyncio.sleep(POLL_INTERVAL_SEC)

@@ -13,7 +13,7 @@ from app.firebase_pool import ensure_pool_loaded
 from app.models import DeviceCreate, DeviceResponse, OutboundSMSResponse, SMSResponse, SMSWebhookPayload
 from app.services import device_status, list_devices_with_counts, register_device, save_sms
 from app.device_refresh import run_device_refresh_loop
-from app.firebase_sms_sync import run_firebase_sms_poll_loop
+from app.firebase_sms_sync import rebaseline_active_monitors, run_firebase_sms_poll_loop
 from app.telegram_commands import register_bot_commands
 from app.telegram_bot import build_telegram_app, notify_new_sms
 
@@ -44,6 +44,8 @@ async def lifespan(app: FastAPI):
         await telegram_app.start()
         await telegram_app.updater.start_polling(drop_pending_updates=True)
         logger.info("Telegram bot started")
+
+    asyncio.create_task(rebaseline_active_monitors())
 
     yield
 
