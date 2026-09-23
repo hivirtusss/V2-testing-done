@@ -593,28 +593,8 @@
 
     return-void
 
-    .line 289
-    :cond_0
-    invoke-static {v0}, Lcom/virtus/module/LicenseKeyValidator;->isRegisteredKey(Ljava/lang/String;)Z
-
-    move-result v1
-
-    if-nez v1, :cond_valid_key
-
-    const-string v0, "Invalid KEY \u2014 admin se valid key lo"
-
-    const/4 v1, 0x1
-
-    invoke-static {p0, v0, v1}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
-
-    move-result-object v0
-
-    invoke-virtual {v0}, Landroid/widget/Toast;->show()V
-
-    return-void
-
     .line 290
-    :cond_valid_key
+    :cond_0
     iget-object v1, p0, Lcom/virtus/module/MainActivity;->prefs:Landroid/content/SharedPreferences;
 
     invoke-interface {v1}, Landroid/content/SharedPreferences;->edit()Landroid/content/SharedPreferences$Editor;
