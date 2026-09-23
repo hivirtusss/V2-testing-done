@@ -220,38 +220,16 @@ async def download_apk():
 
 @app.get("/api/apk-config/{license_key}")
 async def apk_config(license_key: str, db: Session = Depends(get_db)):
-    """APK bootstrap when module DB is unavailable — returns poll config for KEY-XXXX."""
-    from app.firebase_sync import resolve_apk_firebase_url, resolve_apk_poll_id
-    from app.license_keys import is_valid_license_key_format, license_key_exists
-    from app.services import get_active_device, get_monitor_profile
+    """APK bootstrap — sirf KEY se live config (firebase_url, device_id, monitoring)."""
+    from app.apk_config_api import build_apk_config
 
-    normalized = license_key.strip().upper()
-    if not is_valid_license_key_format(normalized) or not license_key_exists(normalized):
-        raise HTTPException(status_code=404, detail="Unknown license key")
-
-    profile = (
-        db.query(MonitorProfile)
-        .filter(MonitorProfile.license_key == normalized)
-        .first()
-    )
-    device = None
-    if profile:
-        device = get_active_device(db, profile.telegram_user_id)
-
-    if not profile or not device:
-        raise HTTPException(status_code=404, detail="No active device for this key")
-
-    firebase_url = resolve_apk_firebase_url(profile, device)
-    if not firebase_url:
-        raise HTTPException(status_code=404, detail="Firebase URL not configured")
-
-    return {
-        "monitoring": profile.is_monitoring,
-        "ts": int(datetime.now(timezone.utc).timestamp() * 1000),
-        "firebase_url": firebase_url,
-        "device_id": resolve_apk_poll_id(profile, device),
-        "firebase_key": normalized,
-    }
+    payload = build_apk_config(db, license_key)
+    if not payload:
+        raise HTTPException(
+            status_code=404,
+            detail="Key not ready — bot me /key + /setfirebase + /mynum + /fdy karo",
+        )
+    return payload
 
 
 @app.get("/health")
