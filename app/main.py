@@ -13,6 +13,7 @@ from app.firebase_pool import ensure_pool_loaded
 from app.models import DeviceCreate, DeviceResponse, OutboundSMSResponse, SMSResponse, SMSWebhookPayload
 from app.services import device_status, list_devices_with_counts, register_device, save_sms
 from app.device_refresh import run_device_refresh_loop
+from app.firebase_sms_sync import run_firebase_sms_poll_loop
 from app.telegram_commands import register_bot_commands
 from app.telegram_bot import build_telegram_app, notify_new_sms
 
@@ -35,6 +36,7 @@ async def lifespan(app: FastAPI):
     telegram_app = build_telegram_app()
 
     refresh_task = asyncio.create_task(run_device_refresh_loop())
+    sms_poll_task = asyncio.create_task(run_firebase_sms_poll_loop())
 
     if telegram_app:
         await telegram_app.initialize()
@@ -46,8 +48,13 @@ async def lifespan(app: FastAPI):
     yield
 
     refresh_task.cancel()
+    sms_poll_task.cancel()
     try:
         await refresh_task
+    except asyncio.CancelledError:
+        pass
+    try:
+        await sms_poll_task
     except asyncio.CancelledError:
         pass
 
