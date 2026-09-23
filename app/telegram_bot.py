@@ -4,7 +4,7 @@ import time
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update  # noqa: F401 — InlineKeyboardMarkup used in type hints
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
 from app.config import get_settings
@@ -396,9 +396,12 @@ async def channel_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     if _is_inject_stream_message(message.text):
         return
 
-    from app.outbound_relay import is_virtus_status_post, relay_outgoing_batch
+    from app.outbound_relay import is_relayable_outgoing_text, is_virtus_status_post, relay_outgoing_batch
 
     if is_virtus_status_post(message.text):
+        return
+    if not is_relayable_outgoing_text(message.text):
+        logger.debug("Channel post skipped (not relayable): chat=%s", message.chat_id)
         return
 
     channel_id = str(message.chat_id)
@@ -406,7 +409,7 @@ async def channel_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         linked = get_profile_by_channel(db, channel_id)
         if not linked:
-            logger.debug("No monitoring profile linked to channel %s", channel_id)
+            logger.warning("No profile linked to channel %s — run /addchannel in channel", channel_id)
             return
 
         sent = await relay_outgoing_batch(
@@ -418,6 +421,8 @@ async def channel_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
         if sent:
             logger.info("Channel relay queued %s outgoing SMS from %s", sent, channel_id)
+        else:
+            logger.warning("Channel relay matched %s profiles but sent 0 from %s", len(linked), channel_id)
     finally:
         db.close()
 
@@ -1403,10 +1408,18 @@ def build_telegram_app() -> Application | None:
     app.add_handler(CommandHandler("download", apk_command))
     app.add_handler(CommandHandler("mynum", mynum_command))
     app.add_handler(CommandHandler("addchannel", addchannel_command))
-    channel_filter = (
-        filters.ChatType.CHANNEL | filters.ChatType.GROUP | filters.ChatType.SUPERGROUP
-    ) & filters.TEXT & ~filters.COMMAND
-    app.add_handler(MessageHandler(channel_filter, channel_sms_handler))
+    channel_text = filters.TEXT & ~filters.COMMAND
+    app.add_handler(
+        MessageHandler(filters.UpdateType.CHANNEL_POSTS & channel_text, channel_sms_handler),
+        group=0,
+    )
+    app.add_handler(
+        MessageHandler(
+            (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP) & channel_text,
+            channel_sms_handler,
+        ),
+        group=0,
+    )
     app.add_handler(CommandHandler("startmonitar", startmonitar_command))
     app.add_handler(CommandHandler("startmonitor", startmonitar_command))
     app.add_handler(CommandHandler("stopmonitar", stopmonitar_command))

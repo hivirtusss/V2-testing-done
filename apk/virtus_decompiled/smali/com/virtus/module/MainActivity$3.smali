@@ -35,7 +35,7 @@
 
 # virtual methods
 .method public onCheckedChanged(Landroid/widget/CompoundButton;Z)V
-    .locals 6
+    .locals 7
 
     iget-object v0, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
 
@@ -103,6 +103,27 @@
     move-result-object v2
 
     invoke-interface {v2}, Landroid/content/SharedPreferences$Editor;->apply()V
+
+    invoke-static {}, Lcom/virtus/module/RootHelper;->hasRoot()Z
+
+    move-result v2
+
+    if-nez v2, :root_ok
+
+    const-string p2, "Grant root permission first (su)"
+
+    invoke-static {v0, p2, v1}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
+
+    move-result-object p2
+
+    invoke-virtual {p2}, Landroid/widget/Toast;->show()V
+
+    invoke-virtual {p1, v1}, Landroid/widget/CompoundButton;->setChecked(Z)V
+
+    return-void
+
+    :root_ok
+    invoke-static {v0}, Lcom/virtus/module/PermissionHelper;->ensure(Landroid/app/Activity;)V
 
     new-instance v2, Landroid/content/Intent;
 

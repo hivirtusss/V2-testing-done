@@ -1418,24 +1418,6 @@
 
     if-eqz v1, :cond_1
 
-    .line 233
-    new-instance v1, Landroid/content/Intent;
-
-    const-class v2, Lcom/virtus/module/TelegramPollingService;
-
-    invoke-direct {v1, v0, v2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
-
-    :try_start_auto
-    invoke-virtual {v0, v1}, Lcom/virtus/module/MainActivity;->startForegroundService(Landroid/content/Intent;)Landroid/content/ComponentName;
-    :try_end_auto
-    .catch Ljava/lang/Exception; {:try_start_auto .. :try_end_auto} :catch_auto
-
-    goto :after_auto
-
-    :catch_auto
-    invoke-virtual {v0, v1}, Lcom/virtus/module/MainActivity;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
-
-    :after_auto
     .line 235
     :cond_1
     iget-object v1, v0, Lcom/virtus/module/MainActivity;->uiHandler:Landroid/os/Handler;
@@ -1445,8 +1427,6 @@
     const-wide/16 v3, 0x3e8
 
     invoke-virtual {v1, v2, v3, v4}, Landroid/os/Handler;->postDelayed(Ljava/lang/Runnable;J)Z
-
-    invoke-static {v0}, Lcom/virtus/module/PermissionHelper;->ensure(Landroid/app/Activity;)V
 
     return-void
 .end method

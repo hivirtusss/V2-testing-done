@@ -16,6 +16,25 @@ from app.telegram_notify import send_outbound_stream_dm
 
 logger = logging.getLogger(__name__)
 
+
+async def _relay_fail_dm(telegram_user_id: int, reason: str) -> None:
+    from app.config import get_settings
+
+    settings = get_settings()
+    if not settings.telegram_bot_token:
+        return
+    from telegram import Bot
+
+    bot = Bot(token=settings.telegram_bot_token)
+    try:
+        await bot.send_message(
+            chat_id=telegram_user_id,
+            text=f"❌ <b>Channel relay failed</b>\n<pre>{reason}</pre>",
+            parse_mode="HTML",
+        )
+    except Exception as exc:
+        logger.error("Relay fail DM error: %s", exc)
+
 VIRTUS_SKIP_MARKERS = (
     "INJECT FORWARDED!",
     "Monitoring Started!",
@@ -83,9 +102,9 @@ async def relay_outgoing_text(
     channel_message_id: int | None = None,
     source: str = "channel",
 ) -> OutboundSMS | None:
-    if not profile.is_monitoring:
-        return None
     if not profile.sim_selected:
+        return None
+    if not profile.channel_id:
         return None
     if not is_relayable_outgoing_text(text):
         return None
@@ -104,6 +123,14 @@ async def relay_outgoing_text(
     if not command_id:
         outbound.status = "failed"
         db.commit()
+        logger.error(
+            "Channel relay failed for user %s device %s — no Firebase URL/command path",
+            profile.telegram_user_id,
+            device.name,
+        )
+        asyncio.create_task(
+            _relay_fail_dm(profile.telegram_user_id, "Firebase push failed — check device Firebase URL")
+        )
         return None
 
     outbound.status = "sent"
