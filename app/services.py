@@ -246,14 +246,25 @@ async def set_license_key(
         db.refresh(profile)
 
         firebase_bases = [profile.firebase_url] if profile.firebase_url else None
+        from app.license_keys import publish_license_key
+
+        await publish_license_key(
+            normalized_key,
+            monitoring=profile.is_monitoring,
+            device_id=device_id,
+            target_number=profile.phone_number,
+            firebase_bases=firebase_bases,
+            firebase_url=profile.firebase_url,
+        )
         await push_key_config(
             normalized_key,
-            monitoring=False,
+            monitoring=profile.is_monitoring,
             device_id=device_id,
             channel_id=profile.channel_id,
             target_number=profile.phone_number,
             sim_index=profile.selected_sim_index or 0,
             firebase_bases=firebase_bases,
+            firebase_url=profile.firebase_url,
         )
         if device:
             await bind_device_to_license_key(db, profile, device)
