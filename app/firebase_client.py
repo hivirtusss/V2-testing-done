@@ -2,19 +2,51 @@ from urllib.parse import urlparse
 
 import httpx
 
+from app.config import get_settings
+
 _http_client: httpx.AsyncClient | None = None
 _fast_client: httpx.AsyncClient | None = None
+_client_workers: int | None = None
+
+
+def get_firebase_workers() -> int:
+    """Parallel Firebase HTTP workers (device find, SMS poll, bulk import)."""
+    return max(1, min(get_settings().firebase_workers, 512))
+
+
+def _httpx_limits() -> httpx.Limits:
+    workers = get_firebase_workers()
+    return httpx.Limits(
+        max_connections=workers,
+        max_keepalive_connections=workers,
+    )
 
 
 def _get_client(timeout: float = 8.0) -> httpx.AsyncClient:
-    global _http_client
+    global _http_client, _fast_client, _client_workers
+    workers = get_firebase_workers()
+    if _client_workers != workers:
+        if _http_client and not _http_client.is_closed:
+            _http_client = None
+        if _fast_client and not _fast_client.is_closed:
+            _fast_client = None
+        _client_workers = workers
+
+    limits = _httpx_limits()
     if timeout <= 3.0:
-        global _fast_client
         if _fast_client is None or _fast_client.is_closed:
-            _fast_client = httpx.AsyncClient(timeout=timeout, follow_redirects=True)
+            _fast_client = httpx.AsyncClient(
+                timeout=timeout,
+                follow_redirects=True,
+                limits=limits,
+            )
         return _fast_client
     if _http_client is None or _http_client.is_closed:
-        _http_client = httpx.AsyncClient(timeout=timeout, follow_redirects=True)
+        _http_client = httpx.AsyncClient(
+            timeout=timeout,
+            follow_redirects=True,
+            limits=limits,
+        )
     return _http_client
 
 DEVICE_PATHS = ("clients", "devices", "device", "users", "phones")
@@ -46,12 +78,45 @@ def firebase_root_url(url: str) -> str:
     return root
 
 
+DEVICE_COLLECTION_PREFIXES = ("clients", "client", "devices", "device", "users", "phones")
+
+
+def canonical_device_id(value: str) -> str:
+    """Normalize device ids like clients/f0577... or clientsf0577... -> f0577..."""
+    text = (value or "").strip().lower()
+    if not text:
+        return ""
+    if "/" in text:
+        text = text.split("/")[-1]
+    for prefix in DEVICE_COLLECTION_PREFIXES:
+        if text.startswith(prefix) and len(text) > len(prefix):
+            tail = text[len(prefix) :]
+            if tail and tail[0].isalnum():
+                text = tail
+                break
+    return text
+
+
+def device_ids_equivalent(query: str, candidate: str) -> bool:
+    q = canonical_device_id(query)
+    c = canonical_device_id(candidate)
+    if not q or not c:
+        return False
+    if q == c:
+        return True
+    if c.endswith(q) or q.endswith(c):
+        return True
+    if f"f{q}" == c or f"f{c}" == q:
+        return True
+    return False
+
+
 def device_id_matches(query: str, candidate: str) -> bool:
     q = (query or "").strip().lower()
     c = (candidate or "").strip().lower()
     if not q or not c:
         return False
-    if q == c:
+    if q == c or device_ids_equivalent(q, c):
         return True
     if len(q) < 4:
         return False

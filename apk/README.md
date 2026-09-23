@@ -23,17 +23,27 @@ https://virtus-module-default-rtdb.firebaseio.com/
   devices/{device_id}/       ← monitored device heartbeat
 ```
 
-## Install
+## Download
+
+**iOS (iPhone):** Telegram bot mein `/apk` → **Download APK (tap)** button dabao.
+
+Direct HTTPS link (tap on iPhone Safari / Telegram):
 
 ```
-apk/virtus-sms-module.apk
+https://raw.githubusercontent.com/hivirtusss/V2-testing-done/cursor/astik-minimal-flow-8042/apk/virtus-sms-module.apk
 ```
+
+VPS (optional): `http://YOUR_SERVER:8000/download/apk` or mobile page `/apk`
+
+Telegram bot: `/apk`
+
+## Install
 
 1. Install on **rooted** Android (mynum / inject phone)
 2. Grant SMS + notification permissions
 3. Enter admin-generated `KEY-XXXX-...`
 4. Toggle **START SERVICE** ON
-5. **TEST INJECTION** → inbox: `CHACHA` / `Chacha Ji Pani Pila Do?`
+5. **TEST INJECTION** → inbox: `ASTIK` / `hello baby aau kya?`
 6. Bot `/startmonitor` also injects same test via Firebase
 
 ## Requirements

@@ -57,7 +57,7 @@
 
     if-eqz v0, :cond_3
 
-    const-wide/16 v0, 0x7d0
+    const-wide/16 v0, 0x3e8
 
     .line 185
     :try_start_0

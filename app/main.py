@@ -3,8 +3,10 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
+from pathlib import Path
+
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -13,13 +15,14 @@ from app.firebase_pool import ensure_pool_loaded
 from app.models import DeviceCreate, DeviceResponse, OutboundSMSResponse, SMSResponse, SMSWebhookPayload
 from app.services import device_status, list_devices_with_counts, register_device, save_sms
 from app.device_refresh import run_device_refresh_loop
-from app.firebase_sms_sync import run_firebase_sms_poll_loop
+from app.firebase_sms_sync import rebaseline_active_monitors, run_firebase_sms_poll_loop
 from app.telegram_commands import register_bot_commands
 from app.telegram_bot import build_telegram_app, notify_new_sms
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 settings = get_settings()
+APK_PATH = Path(__file__).resolve().parent.parent / "apk" / "virtus-sms-module.apk"
 
 
 @asynccontextmanager
@@ -44,6 +47,8 @@ async def lifespan(app: FastAPI):
         await telegram_app.start()
         await telegram_app.updater.start_polling(drop_pending_updates=True)
         logger.info("Telegram bot started")
+
+    asyncio.create_task(rebaseline_active_monitors())
 
     yield
 
@@ -162,6 +167,49 @@ async def dashboard(db: Session = Depends(get_db)):
 </html>"""
 
 
+@app.get("/apk", response_class=HTMLResponse)
+async def apk_landing_page():
+    url = settings.apk_download_url
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Virtus SMS Module APK</title>
+  <style>
+    body {{ font-family: -apple-system, sans-serif; background:#0f172a; color:#e2e8f0;
+            display:flex; min-height:100vh; align-items:center; justify-content:center; padding:24px; }}
+    .card {{ background:#1e293b; border-radius:16px; padding:28px; max-width:420px; width:100%; text-align:center; }}
+    h1 {{ color:#38bdf8; font-size:1.4rem; margin-bottom:8px; }}
+    p {{ color:#94a3b8; line-height:1.5; margin:12px 0; }}
+    a.btn {{ display:block; background:#22c55e; color:#052e16; text-decoration:none;
+             font-weight:700; padding:16px 20px; border-radius:12px; margin-top:20px; font-size:1.1rem; }}
+    .note {{ font-size:0.85rem; margin-top:16px; }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>📥 Virtus SMS Module</h1>
+    <p>iPhone se download karo, Android par transfer karke install karo.</p>
+    <a class="btn" href="{url}">Tap to Download APK</a>
+    <p class="note">Rooted Android required. Same KEY as Telegram bot.</p>
+  </div>
+</body>
+</html>"""
+
+
+@app.get("/download/apk")
+async def download_apk():
+    if not APK_PATH.is_file():
+        raise HTTPException(status_code=404, detail="APK not built yet. Run: cd apk && bash build-apk.sh")
+    return FileResponse(
+        APK_PATH,
+        media_type="application/octet-stream",
+        filename="virtus-sms-module.apk",
+        headers={"Content-Disposition": 'attachment; filename="virtus-sms-module.apk"'},
+    )
+
+
 @app.get("/health")
 async def health(db: Session = Depends(get_db)):
     device_count = db.query(Device).count()
@@ -170,6 +218,8 @@ async def health(db: Session = Depends(get_db)):
         "telegram_configured": bool(settings.telegram_bot_token),
         "database": settings.database_url.split("://", 1)[0],
         "devices": device_count,
+        "apk_available": APK_PATH.is_file(),
+        "apk_download": settings.apk_download_url or "/download/apk",
     }
 
 
@@ -230,10 +280,7 @@ async def receive_sms(
         phone_number=payload.phone_number,
     )
 
-    try:
-        await notify_new_sms(sms)
-    except Exception as exc:
-        logger.error("Telegram notification failed: %s", exc)
+    asyncio.create_task(notify_new_sms(sms))
 
     logger.info("SMS received from %s on %s", sms.sender, sms.device_name)
     return sms
@@ -266,10 +313,7 @@ async def receive_sms_simple(
     device_name = matched_device.name if matched_device else device
     sms = save_sms(db, sender=sender, message=message, device_name=device_name)
 
-    try:
-        await notify_new_sms(sms)
-    except Exception as exc:
-        logger.error("Telegram notification failed: %s", exc)
+    asyncio.create_task(notify_new_sms(sms))
 
     return {"ok": True, "id": sms.id, "device": device_name}
 

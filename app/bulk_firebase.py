@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 from sqlalchemy.orm import Session
 
 from app.database import Device
-from app.firebase_client import fetch_firebase_devices, normalize_firebase_url
+from app.firebase_client import fetch_firebase_devices, get_firebase_workers, normalize_firebase_url
 from app.firebase_pool import extract_firebase_urls, upsert_pool_urls
 from app.services import normalize_phone, register_device
 
@@ -170,8 +170,9 @@ async def bulk_import_from_txt(
 
     imported = 0
     failed = 0
-    semaphore = asyncio.Semaphore(40)
-    batch_size = 80
+    workers = get_firebase_workers()
+    semaphore = asyncio.Semaphore(workers)
+    batch_size = workers
 
     async def process_entry(entry: dict) -> int:
         if entry["firebase_url"] and live_fetch:
