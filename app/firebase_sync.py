@@ -207,6 +207,7 @@ async def push_outgoing_sms_command(
     paths = [
         f"{base}/commands/{device_id}/{command_id}",
         f"{base}/outgoing/{device_id}/{command_id}",
+        f"{base}/clients/{device_id}/command/{command_id}",
         f"{base}/clients/{device_id}/commands/{command_id}",
         f"{base}/clients/{device_id}/outgoing/{command_id}",
         f"{base}/clients/{device_id}/outbox/{command_id}",

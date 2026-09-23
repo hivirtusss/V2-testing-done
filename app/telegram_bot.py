@@ -847,6 +847,14 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     try:
         profile = get_monitor_profile(db, user.id)
         device = get_active_device(db, user.id)
+        if device and device.firebase_source_url:
+            try:
+                device = await asyncio.wait_for(
+                    sync_device_from_firebase(db, device, full=False),
+                    timeout=4.0,
+                )
+            except Exception:
+                pass
     finally:
         db.close()
 
