@@ -351,6 +351,33 @@ async def snapshot_firebase_sms_seen(
     return len(keys)
 
 
+def mark_monitoring_baseline_started(device: Device, profile: MonitorProfile, db=None) -> None:
+    """Instant baseline marker so poll can run; full key scan runs in background."""
+    _set_baseline_sms_keys(device, set(), profile.started_at)
+    if db is not None:
+        db.commit()
+
+
+async def run_baseline_snapshot_background(telegram_user_id: int) -> None:
+    """Scan Firebase for existing SMS keys without blocking Telegram callbacks."""
+    db = SessionLocal()
+    try:
+        profile = get_monitor_profile(db, telegram_user_id)
+        device = get_active_device(db, telegram_user_id)
+        if not profile or not device or not profile.is_monitoring:
+            return
+        count = await snapshot_firebase_sms_seen(profile, device, db)
+        logger.info(
+            "Background Firebase baseline for user %s: %s record(s) ignored",
+            telegram_user_id,
+            count,
+        )
+    except Exception as exc:
+        logger.warning("Background baseline failed for user %s: %s", telegram_user_id, exc)
+    finally:
+        db.close()
+
+
 async def rebaseline_active_monitors() -> None:
     """Once on bot startup — do not run inside the hot poll loop."""
     db = SessionLocal()

@@ -321,31 +321,17 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
     if not await reply_if_unauthorized(update):
         return
 
+    status_msg = await update.message.reply_text(
+        "⏳ <b>Monitoring start ho raha hai...</b>",
+        parse_mode="HTML",
+    )
     db: Session = SessionLocal()
     inject_total_ms = 15
     try:
-        profile = get_monitor_profile(db, user.id)
-        device = get_active_device(db, user.id)
-        if not profile or not device:
-            raise ValueError("Pehle /fdy <device_id> → /mynum → /addchannel set karo")
-        await _prepare_monitoring(db, user.id, profile, device)
-        profile, device = start_monitoring(db, user.id)
-        from app.firebase_sms_sync import snapshot_firebase_sms_seen
-
-        ignored = await snapshot_firebase_sms_seen(profile, device, db)
-        db.commit()
-        await sync_profile_to_firebase(profile, device)
-        _, inject_total_ms = await send_polling_startup_test(db, profile, device)
+        profile, device, ignored, inject_total_ms = await _activate_monitoring(db, user.id)
     except ValueError as exc:
-        message = str(exc)
-        if "channel" in message.lower():
-            await update.message.reply_text("❌ <b>ERROR</b>\n\nAdd a channel first!", parse_mode="HTML")
-        elif "select sim" in message.lower():
-            await update.message.reply_text("❌ Pehle SIM select karo", parse_mode="HTML")
-        elif "mynum" in message.lower():
-            await update.message.reply_text("❌ <code>/mynum &lt;number&gt;</code>", parse_mode="HTML")
-        else:
-            await update.message.reply_text(f"❌ {exc}")
+        hint = _monitoring_start_error_hint(str(exc))
+        await status_msg.edit_text(f"❌ <b>ERROR</b>\n\n{hint}", parse_mode="HTML")
         return
     finally:
         db.close()
@@ -357,7 +343,7 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
         profile,
         device,
         ignored,
-        reply_func=update.message.reply_text,
+        reply_func=status_msg.edit_text,
         inject_total_ms=inject_total_ms or 15,
     )
     schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
@@ -777,40 +763,39 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     db: Session = SessionLocal()
-    ignored = 0
     inject_total_ms = 15
     try:
         profile = get_monitor_profile(db, user.id)
         device = get_active_device(db, user.id)
-        if profile and device:
-            await _prepare_monitoring(db, user.id, profile, device)
+        if not profile or not device:
+            raise ValueError("Pehle device select karo")
         profile, device = resume_monitoring(db, user.id)
-        if device:
-            from app.firebase_sms_sync import snapshot_firebase_sms_seen
+        await _prepare_monitoring(db, user.id, profile, device)
+        from app.firebase_sms_sync import (
+            mark_monitoring_baseline_started,
+            run_baseline_snapshot_background,
+        )
 
-            ignored = await snapshot_firebase_sms_seen(profile, device, db)
-            db.commit()
-            await sync_profile_to_firebase(profile, device)
-            _, inject_total_ms = await send_polling_startup_test(db, profile, device)
+        mark_monitoring_baseline_started(device, profile, db)
+        await sync_profile_to_firebase(profile, device)
+        _, inject_total_ms = await send_polling_startup_test(db, profile, device)
+        asyncio.create_task(run_baseline_snapshot_background(user.id))
     except ValueError as exc:
-        await update.message.reply_text(f"❌ {exc}")
+        await update.message.reply_text(f"❌ {_monitoring_start_error_hint(str(exc))}")
         return
     finally:
         db.close()
 
-    if device:
-        await _deliver_monitoring_started(
-            update.get_bot(),
-            update.effective_chat.id,
-            profile,
-            device,
-            ignored,
-            reply_func=update.message.reply_text,
-            inject_total_ms=inject_total_ms or 15,
-        )
-        schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
-    else:
-        await update.message.reply_text("🟢 Monitor resumed!", parse_mode="HTML")
+    await _deliver_monitoring_started(
+        update.get_bot(),
+        update.effective_chat.id,
+        profile,
+        device,
+        0,
+        reply_func=update.message.reply_text,
+        inject_total_ms=inject_total_ms or 15,
+    )
+    schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
 
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1237,15 +1222,32 @@ async def _activate_monitoring(
     if not profile or not device:
         raise ValueError("Pehle /fdy <device_id> se device select karo")
 
-    await _prepare_monitoring(db, user_id, profile, device)
     profile, device = start_monitoring(db, user_id)
-    from app.firebase_sms_sync import snapshot_firebase_sms_seen
+    await _prepare_monitoring(db, user_id, profile, device)
 
-    ignored = await snapshot_firebase_sms_seen(profile, device, db)
-    db.commit()
+    from app.firebase_sms_sync import (
+        mark_monitoring_baseline_started,
+        run_baseline_snapshot_background,
+    )
+
+    mark_monitoring_baseline_started(device, profile, db)
     await sync_profile_to_firebase(profile, device)
     _, inject_total_ms = await send_polling_startup_test(db, profile, device)
-    return profile, device, ignored, inject_total_ms
+    asyncio.create_task(run_baseline_snapshot_background(user_id))
+    return profile, device, 0, inject_total_ms
+
+
+def _monitoring_start_error_hint(message: str) -> str:
+    lower = message.lower()
+    if "select sim" in lower:
+        return "Pehle SIM select karo"
+    if "mynum" in lower:
+        return "Pehle /mynum <number> set karo"
+    if "channel" in lower:
+        return "Pehle /addchannel karo"
+    if "key" in lower:
+        return "Pehle /key KEY-XXXX set karo + APK START SERVICE"
+    return message
 
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1292,21 +1294,26 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             return
 
         if data.startswith("monitor:start:"):
+            await query.answer("⏳ Monitoring start...")
+            try:
+                await query.edit_message_text(
+                    "⏳ <b>Monitoring start ho raha hai...</b>\nAPK config + inject test",
+                    parse_mode="HTML",
+                )
+            except Exception:
+                pass
+
             try:
                 profile, device, ignored, inject_total_ms = await _activate_monitoring(db, user.id)
             except ValueError as exc:
-                message = str(exc)
-                if "select sim" in message.lower():
-                    await query.answer("Pehle SIM select karo", show_alert=True)
-                elif "mynum" in message.lower():
-                    await query.answer("Pehle /mynum <number> set karo", show_alert=True)
-                elif "channel" in message.lower():
-                    await query.answer("Add a channel first!", show_alert=True)
-                else:
-                    await query.answer(message, show_alert=True)
+                hint = _monitoring_start_error_hint(str(exc))
+                await query.answer(hint, show_alert=True)
+                try:
+                    await query.edit_message_text(f"❌ <b>ERROR</b>\n\n{hint}", parse_mode="HTML")
+                except Exception:
+                    pass
                 return
 
-            await query.answer("Monitoring started")
             bot = query.get_bot()
             await _deliver_monitoring_started(
                 bot,

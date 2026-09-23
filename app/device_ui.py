@@ -252,7 +252,7 @@ def sim_monitoring_keyboard(device: Device) -> InlineKeyboardMarkup:
         [
             [
                 InlineKeyboardButton(
-                    "🟢 Monitoring ON...",
+                    "🟢 START Monitoring",
                     callback_data=f"monitor:start:{device.id}",
                 ),
                 InlineKeyboardButton("🔴 STOP", callback_data="monitor:stop"),
@@ -384,7 +384,7 @@ def monitoring_keyboard(device: Device | None = None) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("🟢 Monitoring ON...", callback_data=start_data),
+                InlineKeyboardButton("🟢 START Monitoring", callback_data=start_data),
                 InlineKeyboardButton("🔴 STOP", callback_data="monitor:stop"),
             ]
         ]
