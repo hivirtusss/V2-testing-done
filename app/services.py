@@ -2,7 +2,7 @@ import json
 import secrets
 from datetime import datetime, timezone
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.database import Device, MonitorProfile, SMSMessage, get_or_create_device
@@ -106,7 +106,7 @@ def set_user_phone(db: Session, telegram_user_id: int, phone_number: str) -> tup
 def start_monitoring(db: Session, telegram_user_id: int) -> tuple[MonitorProfile, Device]:
     profile = get_monitor_profile(db, telegram_user_id)
     if not profile or not profile.active_device_id:
-        raise ValueError("Pehle /fdy <device_id> se device select karo (key ke liye /a)")
+        raise ValueError("Pehle /fdy ya /fy <device_id> se device select karo (inject ke liye /a)")
     require_license_key(profile)
     ensure_sim_selected(profile)
     ensure_mynum_selected(profile)
@@ -408,8 +408,6 @@ def search_devices(db: Session, deviceid: str, limit: int = 10) -> list[Device]:
     if len(query) >= 4:
         filters.append(Device.name.startswith(query))
         filters.append(Device.firebase_key.startswith(query))
-    from sqlalchemy import or_
-
     partial = (
         db.query(Device)
         .filter(or_(*filters))

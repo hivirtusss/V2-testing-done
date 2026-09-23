@@ -628,11 +628,23 @@ async def device_select_command(
     context: ContextTypes.DEFAULT_TYPE,
     *,
     bind_license_key: bool = False,
+    require_key: bool = False,
 ) -> None:
-    """Find device from pool — /fdy /fy /fb /setdevice."""
+    """Find device — /fdy /fy /fb without key; /a with license key for inject."""
     user = update.effective_user
     if not await reply_if_unauthorized(update):
         return
+
+    if require_key:
+        db: Session = SessionLocal()
+        try:
+            profile = get_monitor_profile(db, user.id)
+            require_license_key(profile)
+        except ValueError as exc:
+            await update.message.reply_text(f"❌ {exc}", parse_mode="HTML")
+            return
+        finally:
+            db.close()
 
     if not context.args:
         cmd = (update.message.text or "").split()[0]
@@ -739,7 +751,7 @@ async def setdevice_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 
 async def fy_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await device_select_command(update, context, bind_license_key=True)
+    await device_select_command(update, context, bind_license_key=False)
 
 
 async def send_device_set_ui(
@@ -791,17 +803,12 @@ async def a_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("❌ <code>/a &lt;device_id&gt;</code>", parse_mode="HTML")
         return
 
-    db: Session = SessionLocal()
-    try:
-        profile = get_monitor_profile(db, user.id)
-        require_license_key(profile)
-    except ValueError as exc:
-        await update.message.reply_text(f"❌ {exc}", parse_mode="HTML")
-        return
-    finally:
-        db.close()
-
-    await device_select_command(update, context, bind_license_key=True)
+    await device_select_command(
+        update,
+        context,
+        bind_license_key=True,
+        require_key=True,
+    )
 
 
 async def stop_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
