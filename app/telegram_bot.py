@@ -4,7 +4,7 @@ import time
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update  # noqa: F401 — InlineKeyboardMarkup used in type hints
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
 from app.config import get_settings
@@ -49,6 +49,7 @@ from app.device_ui import (
     get_selected_sim,
     get_sim_list,
     monitoring_keyboard,
+    device_set_keyboard,
     sim_monitoring_keyboard,
 )
 from app.license_keys import (
@@ -421,6 +422,23 @@ async def channel_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         db.close()
 
 
+async def _sim_menu_after_stop(
+    db: Session,
+    user_id: int,
+    device: Device | None,
+    profile: MonitorProfile | None,
+) -> tuple[str, InlineKeyboardMarkup | None]:
+    if not device:
+        return format_stop_card(), None
+    if device.firebase_source_url:
+        device = await sync_device_from_firebase(db, device)
+    sim_index = (profile.selected_sim_index or 0) if profile else 0
+    return (
+        format_device_set_card(device, sim_index),
+        device_set_keyboard(device),
+    )
+
+
 async def stopmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     if not is_authorized(user.id if user else None):
@@ -432,16 +450,17 @@ async def stopmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         profile = stop_monitoring(db, user.id)
         device = get_active_device(db, user.id)
+        cancel_auto_stop(user.id)
+        if profile:
+            asyncio.create_task(sync_profile_for_user(user.id))
+        text, keyboard = await _sim_menu_after_stop(db, user.id, device, profile)
     except ValueError as exc:
         await update.message.reply_text(f"❌ {exc}")
         return
     finally:
         db.close()
 
-    cancel_auto_stop(user.id)
-    if profile:
-        asyncio.create_task(sync_profile_for_user(user.id))
-    await update.message.reply_text(format_stop_card(), parse_mode="HTML")
+    await update.message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
 
 
 async def allfirebase_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -761,6 +780,7 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     db: Session = SessionLocal()
     inject_total_ms = 15
+    ignored = 0
     try:
         profile = get_monitor_profile(db, user.id)
         device = get_active_device(db, user.id)
@@ -1306,13 +1326,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             return
 
         if data.startswith("stop:") or data == "monitor:stop":
-            await query.answer()
+            await query.answer("Monitoring stopped")
             answered = True
             profile = stop_monitoring(db, user.id)
             device = get_active_device(db, user.id)
             cancel_auto_stop(user.id)
             asyncio.create_task(sync_profile_for_user(user.id))
-            await query.edit_message_text(format_stop_card(), parse_mode="HTML")
+            text, keyboard = await _sim_menu_after_stop(db, user.id, device, profile)
+            await query.edit_message_text(text, parse_mode="HTML", reply_markup=keyboard)
             return
 
         if data.startswith("monitor:start:"):
