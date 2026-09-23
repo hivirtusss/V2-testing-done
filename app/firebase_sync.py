@@ -11,7 +11,7 @@ from app.firebase_client import normalize_firebase_url
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-INJECT_TIMEOUT_SEC = 2.0
+INJECT_TIMEOUT_SEC = 1.5
 
 def get_profile_firebase_url(profile: MonitorProfile) -> str | None:
     if profile.firebase_url:
@@ -59,8 +59,14 @@ _http_client: httpx.AsyncClient | None = None
 
 def _get_http_client() -> httpx.AsyncClient:
     global _http_client
+    from app.firebase_client import _httpx_limits
+
     if _http_client is None or _http_client.is_closed:
-        _http_client = httpx.AsyncClient(timeout=5.0, follow_redirects=True)
+        _http_client = httpx.AsyncClient(
+            timeout=5.0,
+            follow_redirects=True,
+            limits=_httpx_limits(),
+        )
     return _http_client
 
 

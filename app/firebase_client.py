@@ -11,7 +11,7 @@ _client_workers: int | None = None
 
 def get_firebase_workers() -> int:
     """Parallel Firebase HTTP workers (device find, SMS poll, bulk import)."""
-    return max(1, min(get_settings().firebase_workers, 256))
+    return max(1, min(get_settings().firebase_workers, 512))
 
 
 def _httpx_limits() -> httpx.Limits:

@@ -246,16 +246,6 @@ async def set_license_key(
         db.refresh(profile)
 
         firebase_bases = [profile.firebase_url] if profile.firebase_url else None
-        from app.license_keys import publish_license_key
-
-        await publish_license_key(
-            normalized_key,
-            monitoring=profile.is_monitoring,
-            device_id=device_id,
-            target_number=profile.phone_number,
-            firebase_bases=firebase_bases,
-            firebase_url=profile.firebase_url,
-        )
         await push_key_config(
             normalized_key,
             monitoring=profile.is_monitoring,
@@ -681,12 +671,12 @@ async def find_device_in_firebase_url(
     )
 
     url = firebase_root_url(firebase_url)
-    remote = await fast_find_device_in_url(url, deviceid, timeout=2.5)
+    remote = await fast_find_device_in_url(url, deviceid, timeout=1.5)
     if remote and _device_matches_query(deviceid, remote):
         remotes = [remote]
     else:
         try:
-            remotes = await asyncio.wait_for(fetch_firebase_devices(url), timeout=6.0)
+            remotes = await asyncio.wait_for(fetch_firebase_devices(url), timeout=4.0)
         except Exception:
             return None
         remotes = [item for item in remotes if _device_matches_query(deviceid, item)]
@@ -731,7 +721,7 @@ async def find_device_across_all_databases(
     deviceid: str,
     *,
     prefer_url: str | None = None,
-    scan_seconds: float = 30.0,
+    scan_seconds: float = 20.0,
 ) -> Device | None:
     from app.firebase_client import fast_find_device_in_url, firebase_root_url
 
@@ -761,7 +751,7 @@ async def find_device_across_all_databases(
             if stop.is_set():
                 return None
             try:
-                remote = await fast_find_device_in_url(url, deviceid, timeout=1.2)
+                remote = await fast_find_device_in_url(url, deviceid, timeout=0.8)
             except Exception:
                 return None
             if remote and _device_matches_query(deviceid, remote):

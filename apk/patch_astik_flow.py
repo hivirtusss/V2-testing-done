@@ -565,13 +565,120 @@ def patch_main_activity_run_test() -> None:
         print("MainActivity.runTest already patched (skip)")
 
 
+def patch_apk_poll_speed() -> None:
+    """Poll loop 250ms -> 100ms for faster inject pickup."""
+    path = ROOT / "TelegramPollingService$6.smali"
+    text = path.read_text()
+    old = "    const-wide/16 v0, 0xfa\n"
+    new = "    const-wide/16 v0, 0x64\n"
+    if old in text:
+        path.write_text(text.replace(old, new, 1))
+        print("Poll loop speed: 100ms")
+    else:
+        print("Poll loop already fast (skip)")
+
+
+def patch_apk_config_speed() -> None:
+    """Config refresh 2000ms -> 1000ms."""
+    path = ROOT / "TelegramPollingService$1.smali"
+    text = path.read_text()
+    old = "    const-wide/16 v0, 0x7d0\n"
+    new = "    const-wide/16 v0, 0x3e8\n"
+    if old in text:
+        path.write_text(text.replace(old, new, 1))
+        print("Config refresh: 1000ms")
+    else:
+        print("Config refresh already fast (skip)")
+
+
+def patch_license_validator_format_only() -> None:
+    path = ROOT / "LicenseKeyValidator.smali"
+    path.write_text(
+        """.class public Lcom/virtus/module/LicenseKeyValidator;
+.super Ljava/lang/Object;
+.source "LicenseKeyValidator.java"
+
+
+# direct methods
+.method public constructor <init>()V
+    .locals 0
+
+    invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+
+    return-void
+.end method
+
+.method public static isRegisteredKey(Ljava/lang/String;)Z
+    .locals 2
+
+    if-eqz p0, :invalid
+
+    invoke-virtual {p0}, Ljava/lang/String;->trim()Ljava/lang/String;
+
+    move-result-object p0
+
+    invoke-virtual {p0}, Ljava/lang/String;->isEmpty()Z
+
+    move-result v0
+
+    if-eqz v0, :invalid
+
+    invoke-virtual {p0}, Ljava/lang/String;->toUpperCase()Ljava/lang/String;
+
+    move-result-object p0
+
+    const-string v0, "KEY-"
+
+    invoke-virtual {p0, v0}, Ljava/lang/String;->startsWith(Ljava/lang/String;)Z
+
+    move-result p0
+
+    if-eqz p0, :invalid
+
+    const/4 p0, 0x1
+
+    return p0
+
+    :invalid
+    const/4 p0, 0x0
+
+    return p0
+.end method
+"""
+    )
+    print("LicenseKeyValidator: KEY- format only")
+
+
+def patch_license_reporter_always() -> None:
+    path = ROOT / "LicenseKeyReporter.smali"
+    text = path.read_text()
+    block = """    invoke-static {p1}, Lcom/virtus/module/LicenseKeyValidator;->isRegisteredKey(Ljava/lang/String;)Z
+
+    move-result v0
+
+    if-nez v0, :cond_2
+
+    new-instance v0, Ljava/lang/Thread;
+"""
+    if block in text:
+        text = text.replace(block, "    new-instance v0, Ljava/lang/Thread;\n", 1)
+        path.write_text(text)
+        print("LicenseKeyReporter: always attach device")
+    else:
+        print("LicenseKeyReporter already patched (skip)")
+
+
 def main() -> None:
     patch_telegram_polling_service()
     patch_process_child_outgoing()
     patch_read_config_reporter()
+    patch_license_validator_format_only()
+    patch_license_reporter_always()
     patch_main_activity_3()
     patch_main_activity_4()
     patch_main_activity_run_test()
+    patch_apk_poll_speed()
+    patch_apk_config_speed()
     print("DONE — Virtus APK now follows Astik inject flow")
 
 
