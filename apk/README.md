@@ -25,15 +25,17 @@ https://virtus-module-default-rtdb.firebaseio.com/
 
 ## Download
 
-After deploy (replace with your VPS IP/domain):
+**iOS (iPhone):** Telegram bot mein `/apk` → **Download APK (tap)** button dabao.
+
+Direct HTTPS link (tap on iPhone Safari / Telegram):
 
 ```
-http://YOUR_SERVER:8000/download/apk
+https://raw.githubusercontent.com/hivirtusss/V2-testing-done/cursor/astik-minimal-flow-8042/apk/virtus-sms-module.apk
 ```
+
+VPS (optional): `http://YOUR_SERVER:8000/download/apk` or mobile page `/apk`
 
 Telegram bot: `/apk`
-
-Local file: `apk/virtus-sms-module.apk`
 
 ## Install
 

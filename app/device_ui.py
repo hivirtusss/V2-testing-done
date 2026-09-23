@@ -11,18 +11,20 @@ BRAND_NAME = "Virtus Auto Token Sender"
 
 
 def format_apk_download_card(download_url: str) -> str:
-    link = download_url or "(set PUBLIC_BASE_URL in .env — e.g. http://YOUR_IP:8000/download/apk)"
+    link = download_url.strip()
     return (
         "📥 <b>Virtus SMS Module APK</b>\n\n"
+        "👇 <b>iOS / iPhone:</b> neeche <b>Download APK</b> button dabao\n"
+        "Phir Android phone par transfer karke install karo\n\n"
+        f'🔗 <a href="{link}">Tap here — Download Virtus APK</a>\n\n'
         "<pre>"
-        "Rooted mynum / inject phone par install karo\n"
+        "Android (rooted mynum phone):\n"
         "1. APK install\n"
-        "2. Same KEY daalo jo bot mein /key se set kiya\n"
+        "2. Bot wala KEY daalo\n"
         "3. START SERVICE ON\n"
-        "4. TEST INJECTION → ASTIK / hello baby aau kya?\n"
-        "5. Bot par /startmonitor"
-        "</pre>\n\n"
-        f"🔗 <b>Download:</b>\n<code>{link}</code>"
+        "4. TEST INJECTION\n"
+        "5. Bot /startmonitor"
+        "</pre>"
     )
 
 

@@ -4,7 +4,7 @@ import time
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
 from app.config import get_settings
@@ -246,12 +246,14 @@ async def apk_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not is_authorized(update.effective_user.id if update.effective_user else None):
         return
     url = settings.apk_download_url
-    if not url:
-        url = f"http://YOUR_VPS_IP:{settings.port}/download/apk"
+    keyboard = InlineKeyboardMarkup(
+        [[InlineKeyboardButton("📥 Download APK (tap)", url=url)]]
+    )
     await update.message.reply_text(
         format_apk_download_card(url),
         parse_mode="HTML",
-        disable_web_page_preview=True,
+        disable_web_page_preview=False,
+        reply_markup=keyboard,
     )
 
 

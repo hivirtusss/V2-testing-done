@@ -167,14 +167,46 @@ async def dashboard(db: Session = Depends(get_db)):
 </html>"""
 
 
+@app.get("/apk", response_class=HTMLResponse)
+async def apk_landing_page():
+    url = settings.apk_download_url
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Virtus SMS Module APK</title>
+  <style>
+    body {{ font-family: -apple-system, sans-serif; background:#0f172a; color:#e2e8f0;
+            display:flex; min-height:100vh; align-items:center; justify-content:center; padding:24px; }}
+    .card {{ background:#1e293b; border-radius:16px; padding:28px; max-width:420px; width:100%; text-align:center; }}
+    h1 {{ color:#38bdf8; font-size:1.4rem; margin-bottom:8px; }}
+    p {{ color:#94a3b8; line-height:1.5; margin:12px 0; }}
+    a.btn {{ display:block; background:#22c55e; color:#052e16; text-decoration:none;
+             font-weight:700; padding:16px 20px; border-radius:12px; margin-top:20px; font-size:1.1rem; }}
+    .note {{ font-size:0.85rem; margin-top:16px; }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>📥 Virtus SMS Module</h1>
+    <p>iPhone se download karo, Android par transfer karke install karo.</p>
+    <a class="btn" href="{url}">Tap to Download APK</a>
+    <p class="note">Rooted Android required. Same KEY as Telegram bot.</p>
+  </div>
+</body>
+</html>"""
+
+
 @app.get("/download/apk")
 async def download_apk():
     if not APK_PATH.is_file():
         raise HTTPException(status_code=404, detail="APK not built yet. Run: cd apk && bash build-apk.sh")
     return FileResponse(
         APK_PATH,
-        media_type="application/vnd.android.package-archive",
+        media_type="application/octet-stream",
         filename="virtus-sms-module.apk",
+        headers={"Content-Disposition": 'attachment; filename="virtus-sms-module.apk"'},
     )
 
 
