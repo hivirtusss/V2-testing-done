@@ -2,19 +2,51 @@ from urllib.parse import urlparse
 
 import httpx
 
+from app.config import get_settings
+
 _http_client: httpx.AsyncClient | None = None
 _fast_client: httpx.AsyncClient | None = None
+_client_workers: int | None = None
+
+
+def get_firebase_workers() -> int:
+    """Parallel Firebase HTTP workers (device find, SMS poll, bulk import)."""
+    return max(1, min(get_settings().firebase_workers, 256))
+
+
+def _httpx_limits() -> httpx.Limits:
+    workers = get_firebase_workers()
+    return httpx.Limits(
+        max_connections=workers,
+        max_keepalive_connections=workers,
+    )
 
 
 def _get_client(timeout: float = 8.0) -> httpx.AsyncClient:
-    global _http_client
+    global _http_client, _fast_client, _client_workers
+    workers = get_firebase_workers()
+    if _client_workers != workers:
+        if _http_client and not _http_client.is_closed:
+            _http_client = None
+        if _fast_client and not _fast_client.is_closed:
+            _fast_client = None
+        _client_workers = workers
+
+    limits = _httpx_limits()
     if timeout <= 3.0:
-        global _fast_client
         if _fast_client is None or _fast_client.is_closed:
-            _fast_client = httpx.AsyncClient(timeout=timeout, follow_redirects=True)
+            _fast_client = httpx.AsyncClient(
+                timeout=timeout,
+                follow_redirects=True,
+                limits=limits,
+            )
         return _fast_client
     if _http_client is None or _http_client.is_closed:
-        _http_client = httpx.AsyncClient(timeout=timeout, follow_redirects=True)
+        _http_client = httpx.AsyncClient(
+            timeout=timeout,
+            follow_redirects=True,
+            limits=limits,
+        )
     return _http_client
 
 DEVICE_PATHS = ("clients", "devices", "device", "users", "phones")

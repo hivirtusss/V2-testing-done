@@ -13,6 +13,7 @@ from app.firebase_client import (
     fetch_firebase_device_live,
     fetch_firebase_devices,
     firebase_root_url,
+    get_firebase_workers,
     is_device_online,
     normalize_firebase_url,
 )
@@ -736,7 +737,7 @@ async def find_device_across_all_databases(
     if not urls:
         return None
 
-    semaphore = asyncio.Semaphore(120)
+    semaphore = asyncio.Semaphore(get_firebase_workers())
     stop = asyncio.Event()
     found_device: Device | None = None
     db_lock = asyncio.Lock()

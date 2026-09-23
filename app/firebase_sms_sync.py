@@ -12,7 +12,7 @@ from typing import Any
 import httpx
 
 from app.database import Device, MonitorProfile, SessionLocal
-from app.firebase_client import _fetch_json, firebase_root_url
+from app.firebase_client import _fetch_json, firebase_root_url, get_firebase_workers
 from app.services import get_active_device, get_monitor_profile, save_sms
 
 logger = logging.getLogger(__name__)
@@ -43,7 +43,6 @@ BASELINE_AT_META_KEY = "firebase_sms_baseline_at"
 SMS_PATHS_META_KEY = "firebase_sms_paths"
 MAX_SEEN_KEYS = 20000
 MAX_CACHED_SMS_PATHS = 50
-FETCH_CONCURRENCY = 25
 BODY_DATE_RE = re.compile(
     r"\b(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})(?:\s+\d{1,2}:\d{2})?\b"
 )
@@ -336,7 +335,7 @@ async def _fetch_paths_parallel(
     if not paths:
         return [], []
 
-    semaphore = asyncio.Semaphore(FETCH_CONCURRENCY)
+    semaphore = asyncio.Semaphore(get_firebase_workers())
 
     async def fetch_one(path: str) -> tuple[str, list[dict[str, Any]]]:
         async with semaphore:
