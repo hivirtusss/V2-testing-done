@@ -821,10 +821,6 @@ def main() -> None:
     patch_apk_config_speed()
     patch_android_manifest_fgs()
     patch_on_start_command_foreground()
-    write_permission_helper()
-    path = ROOT / "RootHelper.smali"
-    if not path.exists():
-        print("RootHelper.smali missing — copy from repo")
     patch_main_activity_permissions()
     patch_main_activity_autostart()
     patch_service_oncreate_foreground()

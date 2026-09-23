@@ -1376,8 +1376,6 @@
     goto/16 :goto_5
 
     :cond_0
-    invoke-static {p0, p1}, Lcom/virtus/module/BotConfigSync;->syncFromBot(Landroid/content/Context;Ljava/lang/String;)Z
-
     invoke-static {p0}, Lcom/virtus/module/BotConfigSync;->getCachedConfig(Landroid/content/Context;)Lorg/json/JSONObject;
 
     move-result-object v7
@@ -1385,6 +1383,8 @@
     if-eqz v7, :virtus_no_bot_cache
 
     move-object v4, v7
+
+    const/4 p1, 0x0
 
     goto :virtus_apply_cfg
 

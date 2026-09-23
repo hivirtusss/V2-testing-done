@@ -3,7 +3,7 @@
 .source "BotConfigSync.java"
 
 
-.field private static final BOT_BASE:Ljava/lang/String; = "https://sms.example.com"
+.field private static final BOT_BASE:Ljava/lang/String; = ""
 
 .field private static final PREFS:Ljava/lang/String; = "virtus_module_prefs"
 
@@ -56,7 +56,7 @@
 
     move-result v1
 
-    if-eqz v1, :cond_fail
+    if-nez v1, :cond_fail
 
     new-instance v1, Lorg/json/JSONObject;
 
@@ -200,7 +200,7 @@
 
     move-result v2
 
-    if-eqz v2, :cond_fail
+    if-nez v2, :cond_fail
 
     new-instance v2, Lorg/json/JSONObject;
 
