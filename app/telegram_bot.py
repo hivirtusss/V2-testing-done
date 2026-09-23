@@ -53,7 +53,6 @@ from app.license_keys import (
     publish_license_key,
 )
 from app.services import (
-    count_old_sms,
     device_status,
     get_active_device,
     get_monitoring_user_ids,
