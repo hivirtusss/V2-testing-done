@@ -3,15 +3,22 @@ from urllib.parse import urlparse
 import httpx
 
 _http_client: httpx.AsyncClient | None = None
+_fast_client: httpx.AsyncClient | None = None
 
 
-def _get_client() -> httpx.AsyncClient:
+def _get_client(timeout: float = 8.0) -> httpx.AsyncClient:
     global _http_client
+    if timeout <= 3.0:
+        global _fast_client
+        if _fast_client is None or _fast_client.is_closed:
+            _fast_client = httpx.AsyncClient(timeout=timeout, follow_redirects=True)
+        return _fast_client
     if _http_client is None or _http_client.is_closed:
-        _http_client = httpx.AsyncClient(timeout=8.0, follow_redirects=True)
+        _http_client = httpx.AsyncClient(timeout=timeout, follow_redirects=True)
     return _http_client
 
 DEVICE_PATHS = ("clients", "devices", "device", "users", "phones")
+QUICK_DEVICE_PATHS = ("clients", "devices")
 
 
 def normalize_firebase_url(url: str) -> str:
@@ -25,8 +32,8 @@ def normalize_firebase_url(url: str) -> str:
     return cleaned
 
 
-async def _fetch_json(url: str) -> dict | list | None:
-    client = _get_client()
+async def _fetch_json(url: str, *, timeout: float = 8.0) -> dict | list | None:
+    client = _get_client(timeout)
     response = await client.get(url)
     response.raise_for_status()
     data = response.json()
@@ -159,6 +166,8 @@ async def fetch_firebase_device_live(
     *,
     firebase_key: str | None = None,
     device_name: str | None = None,
+    quick_only: bool = False,
+    timeout: float = 8.0,
 ) -> dict | None:
     """Fetch one device node live from Firebase (battery, sims, online)."""
     base_url = normalize_firebase_url(firebase_url)
@@ -168,7 +177,8 @@ async def fetch_firebase_device_live(
     if device_name:
         name = device_name.strip("/")
         candidates.append(name)
-        for path in DEVICE_PATHS:
+        path_list = QUICK_DEVICE_PATHS if quick_only else DEVICE_PATHS
+        for path in path_list:
             candidates.append(f"{path}/{name}")
 
     seen: set[str] = set()
@@ -177,7 +187,7 @@ async def fetch_firebase_device_live(
             continue
         seen.add(path)
         try:
-            data = await _fetch_json(f"{base_url}/{path}.json")
+            data = await _fetch_json(f"{base_url}/{path}.json", timeout=timeout)
         except httpx.HTTPError:
             continue
         if not isinstance(data, dict):
@@ -191,6 +201,9 @@ async def fetch_firebase_device_live(
             else:
                 prefix, key = "", path
             return _build_device_record(key, data, prefix=prefix)
+
+    if quick_only:
+        return None
 
     all_devices = await fetch_firebase_devices(firebase_url)
     query = (device_name or "").strip().lower()

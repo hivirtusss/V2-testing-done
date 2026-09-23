@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import Device
 from app.firebase_client import fetch_firebase_devices, normalize_firebase_url
+from app.firebase_pool import extract_firebase_urls, upsert_pool_urls
 from app.services import normalize_phone, register_device
 
 URL_PATTERN = re.compile(r"^https?://", re.IGNORECASE)
@@ -124,13 +125,46 @@ async def _import_firebase_url(
         return len(remote_devices), 0
 
 
+async def bulk_import_pool_urls(
+    db: Session,
+    content: str,
+    on_progress: Callable[[int, int, int], Awaitable[None]] | None = None,
+) -> dict:
+    from app.firebase_pool import get_pool_urls
+
+    urls = extract_firebase_urls(content)
+    if not urls:
+        raise ValueError("Txt file mein Firebase URL nahi mili")
+
+    imported = 0
+    batch_size = 200
+    for start in range(0, len(urls), batch_size):
+        batch = urls[start : start + batch_size]
+        imported += upsert_pool_urls(db, batch)
+        if on_progress:
+            await on_progress(min(start + batch_size, len(urls)), len(urls), imported)
+
+    total_pool = len(get_pool_urls(db))
+    return {
+        "lines": len(urls),
+        "imported": imported,
+        "failed": 0,
+        "pool_total": total_pool,
+        "pool_urls": total_pool,
+    }
+
+
 async def bulk_import_from_txt(
     db: Session,
     content: str,
     live_fetch: bool = True,
     on_progress: Callable[[int, int, int], Awaitable[None]] | None = None,
 ) -> dict:
-    entries = parse_txt_content(content)
+    pool_urls = extract_firebase_urls(content)
+    if len(pool_urls) >= 3:
+        return await bulk_import_pool_urls(db, content, on_progress=on_progress)
+
+    entries = structured_entries
     if not entries:
         raise ValueError("Txt file khali hai ya format galat hai")
 

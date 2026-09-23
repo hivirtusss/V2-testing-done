@@ -24,16 +24,7 @@
 # direct methods
 .method constructor <init>(Lcom/virtus/module/MainActivity;)V
     .locals 0
-    .annotation system Ldalvik/annotation/MethodParameters;
-        accessFlags = {
-            0x8010
-        }
-        names = {
-            null
-        }
-    .end annotation
 
-    .line 176
     iput-object p1, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
 
     invoke-direct {p0}, Ljava/lang/Object;-><init>()V
@@ -44,9 +35,8 @@
 
 # virtual methods
 .method public onCheckedChanged(Landroid/widget/CompoundButton;Z)V
-    .locals 6
+    .locals 3
 
-    .line 179
     iget-object p1, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
 
     invoke-static {p1}, Lcom/virtus/module/MainActivity;->access$300(Lcom/virtus/module/MainActivity;)Z
@@ -57,7 +47,6 @@
 
     return-void
 
-    .line 180
     :cond_0
     iget-object p1, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
 
@@ -81,7 +70,6 @@
 
     if-eqz p2, :cond_1
 
-    .line 182
     iget-object p2, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
 
     new-instance v0, Landroid/content/Intent;
@@ -96,52 +84,6 @@
 
     iget-object p2, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
 
-    invoke-static {p2}, Lcom/virtus/module/MainActivity;->access$400(Lcom/virtus/module/MainActivity;)Landroid/content/SharedPreferences;
-
-    move-result-object v0
-
-    const-string v1, "license_key"
-
-    const-string v2, ""
-
-    invoke-interface {v0, v1, v2}, Landroid/content/SharedPreferences;->getString(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
-
-    move-result-object v0
-
-    invoke-virtual {v0}, Ljava/lang/String;->trim()Ljava/lang/String;
-
-    move-result-object v0
-
-    invoke-virtual {v0}, Ljava/lang/String;->isEmpty()Z
-
-    move-result v1
-
-    if-nez v1, :cond_report_done
-
-    invoke-virtual {v0}, Ljava/lang/String;->toUpperCase()Ljava/lang/String;
-
-    move-result-object v1
-
-    iget-object v2, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
-
-    invoke-virtual {v2}, Lcom/virtus/module/MainActivity;->getContentResolver()Landroid/content/ContentResolver;
-
-    move-result-object v2
-
-    const-string v3, "android_id"
-
-    invoke-static {v2, v3}, Landroid/provider/Settings$Secure;->getString(Landroid/content/ContentResolver;Ljava/lang/String;)Ljava/lang/String;
-
-    move-result-object v2
-
-    if-eqz v2, :cond_report_done
-
-    invoke-static {v1, v0, v2}, Lcom/virtus/module/LicenseKeyReporter;->report(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
-
-    :cond_report_done
-    .line 183
-    iget-object p2, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
-
     const-string v0, "Service started \u2014 always alive"
 
     invoke-static {p2, v0, p1}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
@@ -152,7 +94,6 @@
 
     goto :goto_0
 
-    .line 185
     :cond_1
     iget-object p2, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
 
@@ -166,7 +107,6 @@
 
     invoke-virtual {p2, v0}, Lcom/virtus/module/MainActivity;->stopService(Landroid/content/Intent;)Z
 
-    .line 186
     iget-object p2, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
 
     const-string v0, "Service stopped"
@@ -177,7 +117,6 @@
 
     invoke-virtual {p1}, Landroid/widget/Toast;->show()V
 
-    .line 188
     :goto_0
     iget-object p1, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
 

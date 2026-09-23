@@ -26,24 +26,7 @@
 # direct methods
 .method constructor <init>(Lcom/virtus/module/MainActivity;Landroid/app/Activity;)V
     .locals 0
-    .annotation system Ldalvik/annotation/MethodParameters;
-        accessFlags = {
-            0x8010,
-            0x1010
-        }
-        names = {
-            null,
-            null
-        }
-    .end annotation
 
-    .annotation system Ldalvik/annotation/Signature;
-        value = {
-            "()V"
-        }
-    .end annotation
-
-    .line 292
     iput-object p1, p0, Lcom/virtus/module/MainActivity$4;->this$0:Lcom/virtus/module/MainActivity;
 
     iput-object p2, p0, Lcom/virtus/module/MainActivity$4;->val$act:Landroid/app/Activity;
@@ -58,13 +41,12 @@
 .method public run()V
     .locals 3
 
-    .line 296
     :try_start_0
     iget-object v0, p0, Lcom/virtus/module/MainActivity$4;->val$act:Landroid/app/Activity;
 
-    const-string v1, "BABY"
+    const-string v1, "CHACHA"
 
-    const-string v2, "Chacha Ji Pani Pila Do"
+    const-string v2, "Chacha Ji Pani Pila Do?"
 
     invoke-static {v0, v1, v2}, Lcom/virtus/module/SmsInjector;->inject(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Z
 
@@ -72,7 +54,6 @@
 
     if-eqz v0, :cond_0
 
-    .line 297
     const-string v0, "OK \u2014 SMS injected"
 
     goto :goto_0
@@ -80,7 +61,6 @@
     :cond_0
     const-string v0, "FAILED"
 
-    .line 298
     :goto_0
     iget-object v1, p0, Lcom/virtus/module/MainActivity$4;->val$act:Landroid/app/Activity;
 
@@ -97,7 +77,6 @@
     :catch_0
     move-exception v0
 
-    .line 305
     iget-object v1, p0, Lcom/virtus/module/MainActivity$4;->val$act:Landroid/app/Activity;
 
     new-instance v2, Lcom/virtus/module/MainActivity$4$2;
