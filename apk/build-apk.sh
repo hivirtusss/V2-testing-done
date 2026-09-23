@@ -4,6 +4,14 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
+# Bake bot URL into APK for KEY-only auto-config (PUBLIC_BASE_URL / VIRTUS_BOT_URL)
+if [ -f "$ROOT/../.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$ROOT/../.env"
+  set +a
+fi
+
 APKTOOL="${APKTOOL:-/workspace/apktool.jar}"
 SIGNER="${SIGNER:-$ROOT/uber-apk-signer.jar}"
 
