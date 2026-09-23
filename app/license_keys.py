@@ -169,10 +169,6 @@ async def publish_license_key(
         "firebase_url": inject_db,
         "device_id": poll_id,
         "firebase_key": normalized,
-        "channel_id": channel_id or "",
-        "target_number": target_number or "",
-        "sim_index": sim_index,
-        "apk_attached": False,
     }
     bases = list(firebase_bases or [])
     if inject_db not in bases and inject_db != _module_db():

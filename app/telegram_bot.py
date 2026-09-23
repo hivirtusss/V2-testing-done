@@ -34,7 +34,6 @@ from app.device_ui import (
     format_send_queued,
     format_sim_selected_card,
     format_status_card,
-    format_virtus_channel_token_card,
     format_virtus_outgoing_sent_card,
     format_virtus_startup_card,
     format_virtus_stream_card,
@@ -244,25 +243,6 @@ async def notify_new_sms(sms: SMSMessage) -> None:
             notify_tasks.append(
                 bot.send_message(chat_id=user_id, text=stream_card, parse_mode="HTML")
             )
-
-            profile = get_monitor_profile(db, user_id)
-            device = get_active_device(db, user_id)
-            if (
-                profile
-                and profile.is_monitoring
-                and device
-                and profile.phone_number
-                and sms.device_id == device.id
-            ):
-                token_card = format_virtus_channel_token_card(
-                    profile.phone_number,
-                    sms.message,
-                    queued_ms=relay_ms or 5,
-                    total_ms=relay_ms + 20,
-                )
-                notify_tasks.append(
-                    bot.send_message(chat_id=user_id, text=token_card, parse_mode="HTML")
-                )
 
         results = await asyncio.gather(*notify_tasks, return_exceptions=True)
         for result in results:
@@ -1073,14 +1053,6 @@ async def key_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             db.close()
         await update.message.reply_text(
             format_key_generated_card(new_key),
-            parse_mode="HTML",
-        )
-        return
-
-    if action in {"confirm", "keyconfirm"}:
-        await update.message.reply_text(
-            "✅ <b>KEY OK</b>\n"
-            "<pre>APK + bot same KEY → /startmonitor\n/key confirm ki zaroorat nahi.</pre>",
             parse_mode="HTML",
         )
         return
