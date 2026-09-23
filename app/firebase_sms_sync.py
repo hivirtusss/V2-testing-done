@@ -175,11 +175,11 @@ def _is_old_for_monitoring(record: dict[str, Any], profile: MonitorProfile) -> b
         return received_at < started
 
     body_date = _parse_body_date(record.get("message", ""))
-    if body_date and body_date < started:
-        return True
+    if body_date:
+        return body_date < started
 
-    # No reliable timestamp on a backlog entry — treat as old.
-    return True
+    # New Firebase key without timestamp — treat as live SMS after monitoring start.
+    return False
 
 
 def _is_outgoing_firebase_log(sender: str, body: str) -> bool:
@@ -262,6 +262,69 @@ def _parse_sms_entry(firebase_key: str, value: Any) -> dict[str, Any] | None:
     }
 
 
+_SKIP_SMS_NODE_KEYS = frozenset(
+    {
+        "config",
+        "meta",
+        "device",
+        "sim",
+        "battery",
+        "online",
+        "last_seen",
+        "model",
+        "name",
+        "phone",
+        "phone_number",
+        "mobile",
+        "carrier",
+        "carrier1",
+        "carrier2",
+        "sim1",
+        "sim2",
+        "phone2",
+        "status",
+        "monitoring",
+        "commands",
+        "outgoing",
+    }
+)
+
+
+def _extract_sms_records(path: str, value: Any) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            if isinstance(item, dict):
+                parsed = _parse_sms_entry(f"{path}/{index}", item)
+                if parsed:
+                    records.append(parsed)
+        return records
+
+    if not isinstance(value, dict):
+        return records
+
+    direct = _parse_sms_entry(path, value)
+    if direct:
+        records.append(direct)
+
+    for child_key, child_val in value.items():
+        if child_key.startswith("num-"):
+            continue
+        if child_key in _SKIP_SMS_NODE_KEYS:
+            continue
+        child_path = f"{path}/{child_key}"
+        if isinstance(child_val, dict):
+            nested = child_val.get("lastSms") or child_val.get("last_sms") or child_val.get("sms")
+            if isinstance(nested, dict):
+                parsed = _parse_sms_entry(f"{child_path}/lastSms", nested)
+                if parsed:
+                    records.append(parsed)
+            records.extend(_extract_sms_records(child_path, child_val))
+        elif isinstance(child_val, list):
+            records.extend(_extract_sms_records(child_path, child_val))
+    return records
+
+
 async def _fetch_path_records(root: str, path: str, timeout: float) -> list[dict[str, Any]]:
     url = f"{root}/{path}.json"
     try:
@@ -269,24 +332,30 @@ async def _fetch_path_records(root: str, path: str, timeout: float) -> list[dict
     except httpx.HTTPError:
         return []
 
-    records: list[dict[str, Any]] = []
-    if isinstance(data, dict):
-        for child_key, child_val in data.items():
-            if child_key.startswith("num-"):
-                continue
-            parsed = _parse_sms_entry(f"{path}/{child_key}", child_val)
-            if parsed:
-                records.append(parsed)
-        if not records:
-            parsed = _parse_sms_entry(path, data)
-            if parsed:
-                records.append(parsed)
-    return records
+    return _extract_sms_records(path, data)
 
 
 def _generate_sms_paths(device: Device) -> list[str]:
     paths: list[str] = []
     seen_paths: set[str] = set()
+
+    if device.firebase_key:
+        fk = device.firebase_key.strip("/")
+        if fk:
+            seen_paths.add(fk)
+            paths.append(fk)
+            for child in SMS_CHILD_PATHS:
+                child_path = f"{fk}/{child}"
+                if child_path not in seen_paths:
+                    seen_paths.add(child_path)
+                    paths.append(child_path)
+            if "/" in fk:
+                parent, leaf = fk.rsplit("/", 1)
+                for child in SMS_CHILD_PATHS:
+                    child_path = f"{parent}/{leaf}/{child}"
+                    if child_path not in seen_paths:
+                        seen_paths.add(child_path)
+                        paths.append(child_path)
 
     for device_id in _device_ids(device):
         for parent in SMS_PARENT_PATHS:

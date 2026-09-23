@@ -141,7 +141,10 @@ async def push_outgoing_sms_command(
     paths = [
         f"{base}/commands/{device_id}/{command_id}",
         f"{base}/outgoing/{device_id}/{command_id}",
+        f"{base}/clients/{device_id}/commands/{command_id}",
+        f"{base}/clients/{device_id}/send/{command_id}",
         f"{base}/sms/send/{command_id}",
+        f"{base}/send/{device_id}/{command_id}",
     ]
     await asyncio.gather(
         *(_firebase_put(path, payload) for path in paths),
@@ -343,6 +346,14 @@ async def send_polling_startup_test(
             STARTUP_TEST_SENDER,
             STARTUP_TEST_MESSAGE,
         )
+        module_db = settings.virtus_module_db.rstrip("/")
+        if module_db and module_db.rstrip("/") != firebase_url.rstrip("/"):
+            await push_inject_message(
+                module_db,
+                poll_id,
+                STARTUP_TEST_SENDER,
+                STARTUP_TEST_MESSAGE,
+            )
         total_ms = max(1, int((time.perf_counter() - t0) * 1000))
         return 1, total_ms
     except Exception as exc:

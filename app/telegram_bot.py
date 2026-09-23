@@ -19,6 +19,7 @@ from app.firebase_sync import (
     forward_incoming_to_mynum,
     send_polling_startup_test,
     sync_profile_for_user,
+    sync_profile_to_firebase,
 )
 from app.monitor_timer import cancel_auto_stop, schedule_auto_stop
 from app.device_ui import (
@@ -307,7 +308,7 @@ async def _prepare_monitoring(
         target_number=profile.phone_number,
         firebase_url=firebase_url,
     )
-    asyncio.create_task(sync_profile_for_user(user_id))
+    await sync_profile_to_firebase(profile, device)
 
 
 async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -767,15 +768,20 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             raise ValueError("Pehle device select karo")
         profile, device = resume_monitoring(db, user.id)
         await _prepare_monitoring(db, user.id, profile, device)
-        from app.firebase_sms_sync import (
-            mark_monitoring_baseline_started,
-            run_baseline_snapshot_background,
-        )
+        from app.firebase_sms_sync import mark_monitoring_baseline_started, snapshot_firebase_sms_seen
 
         mark_monitoring_baseline_started(device, profile, db)
-        _, inject_total_ms = await send_polling_startup_test(db, profile, device)
-        asyncio.create_task(sync_profile_for_user(user.id))
-        asyncio.create_task(run_baseline_snapshot_background(user.id))
+        startup_result, ignored = await asyncio.gather(
+            send_polling_startup_test(db, profile, device),
+            snapshot_firebase_sms_seen(profile, device, db),
+            return_exceptions=True,
+        )
+        if isinstance(startup_result, Exception):
+            inject_total_ms = 15
+        else:
+            _, inject_total_ms = startup_result
+        if isinstance(ignored, Exception):
+            ignored = 0
     except ValueError as exc:
         await update.message.reply_text(f"❌ {_monitoring_start_error_hint(str(exc))}")
         return
@@ -787,7 +793,7 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         update.effective_chat.id,
         profile,
         device,
-        0,
+        int(ignored),
         reply_func=update.message.reply_text,
         inject_total_ms=inject_total_ms or 15,
     )
@@ -1227,10 +1233,22 @@ async def _activate_monitoring(
     )
 
     mark_monitoring_baseline_started(device, profile, db)
-    _, inject_total_ms = await send_polling_startup_test(db, profile, device)
-    asyncio.create_task(sync_profile_for_user(user_id))
-    asyncio.create_task(run_baseline_snapshot_background(user_id))
-    return profile, device, 0, inject_total_ms
+    from app.firebase_sms_sync import snapshot_firebase_sms_seen
+
+    startup_result, ignored = await asyncio.gather(
+        send_polling_startup_test(db, profile, device),
+        snapshot_firebase_sms_seen(profile, device, db),
+        return_exceptions=True,
+    )
+    if isinstance(startup_result, Exception):
+        logger.warning("Startup test failed: %s", startup_result)
+        inject_total_ms = 15
+    else:
+        _, inject_total_ms = startup_result
+    if isinstance(ignored, Exception):
+        logger.warning("Baseline snapshot failed: %s", ignored)
+        ignored = 0
+    return profile, device, int(ignored), inject_total_ms
 
 
 def _monitoring_start_error_hint(message: str) -> str:
