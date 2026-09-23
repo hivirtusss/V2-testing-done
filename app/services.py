@@ -8,8 +8,11 @@ from sqlalchemy.orm import Session
 
 from app.database import Device, MonitorProfile, SMSMessage, get_or_create_device
 from app.firebase_client import (
+    canonical_device_id,
+    device_ids_equivalent,
     fetch_firebase_device_live,
     fetch_firebase_devices,
+    firebase_root_url,
     is_device_online,
     normalize_firebase_url,
 )
@@ -376,6 +379,82 @@ def get_device_by_identifier(db: Session, deviceid: str, exact: bool = False) ->
     return matches[0]
 
 
+def _device_match_score(deviceid: str, device: Device) -> int:
+    query = (deviceid or "").strip().lower()
+    name = (device.name or "").lower()
+    key_leaf = (device.firebase_key or "").split("/")[-1].lower()
+    score = 0
+
+    if name == query or key_leaf == query:
+        score += 1000
+    if canonical_device_id(name) == canonical_device_id(query):
+        score += 900
+    if name == f"f{query}" or key_leaf == f"f{query}":
+        score += 850
+    if name.endswith(query) or key_leaf.endswith(query):
+        score += 500
+    if query in name or query in key_leaf:
+        score += 200
+
+    if not name.startswith(("clients", "client", "devices", "device")):
+        score += 50
+    score -= len(name) // 10
+
+    if device.device_meta:
+        score += 30
+    if device.firebase_source_url:
+        score += 20
+    if device.last_seen:
+        score += 10
+    return score
+
+
+def dedupe_device_matches(deviceid: str, matches: list[Device]) -> list[Device]:
+    if len(matches) <= 1:
+        return matches
+
+    groups: dict[str, Device] = {}
+    for device in matches:
+        canon = canonical_device_id(device.name) or canonical_device_id(device.firebase_key or "")
+        if not canon:
+            canon = (device.name or "").lower()
+
+        group_key = canon
+        for existing_key in list(groups.keys()):
+            if device_ids_equivalent(canon, existing_key):
+                group_key = existing_key
+                break
+
+        current = groups.get(group_key)
+        if not current or _device_match_score(deviceid, device) > _device_match_score(deviceid, current):
+            groups[group_key] = device
+
+    return list(groups.values())
+
+
+def pick_best_device_match(
+    deviceid: str,
+    matches: list[Device],
+    *,
+    prefer_url: str | None = None,
+) -> Device | None:
+    deduped = dedupe_device_matches(deviceid, matches)
+    if not deduped:
+        return None
+    if len(deduped) == 1:
+        return deduped[0]
+
+    prefer_root = firebase_root_url(prefer_url) if prefer_url else ""
+
+    def rank(device: Device) -> tuple[int, int]:
+        url_match = 0
+        if prefer_root and firebase_root_url(device.firebase_source_url or "") == prefer_root:
+            url_match = 1
+        return (url_match, _device_match_score(deviceid, device))
+
+    return max(deduped, key=rank)
+
+
 def search_devices(db: Session, deviceid: str, limit: int = 10) -> list[Device]:
     query = (deviceid or "").strip()
     if not query:
@@ -420,7 +499,7 @@ def search_devices(db: Session, deviceid: str, limit: int = 10) -> list[Device]:
         .limit(limit)
         .all()
     )
-    return partial
+    return dedupe_device_matches(deviceid, partial)[:limit]
 
 
 def _meta_from_remote(remote: dict, phone_fallback: str | None = None) -> dict:
@@ -432,6 +511,36 @@ def _meta_from_remote(remote: dict, phone_fallback: str | None = None) -> dict:
         or raw.get("battery_level")
     )
     sims = remote.get("sims") or []
+    if not sims:
+        built: list[dict] = []
+        phone1 = (
+            remote.get("phone_number")
+            or raw.get("phone")
+            or raw.get("phone_number")
+            or raw.get("mobile")
+            or raw.get("sim1")
+            or phone_fallback
+        )
+        phone2 = raw.get("phone2") or raw.get("sim2") or raw.get("mobile2")
+        if phone1:
+            built.append(
+                {
+                    "slot": 1,
+                    "index": 0,
+                    "carrier": raw.get("carrier1") or raw.get("carrier") or "SIM 1",
+                    "number": str(phone1),
+                }
+            )
+        if phone2:
+            built.append(
+                {
+                    "slot": 2,
+                    "index": 1,
+                    "carrier": raw.get("carrier2") or "SIM 2",
+                    "number": str(phone2),
+                }
+            )
+        sims = built
     meta: dict = {
         "battery": battery,
         "model": remote.get("model") or raw.get("model") or raw.get("device_model") or "Unknown",
@@ -458,7 +567,12 @@ def apply_remote_to_device(db: Session, device: Device, remote: dict) -> Device:
     return device
 
 
-async def sync_device_from_firebase(db: Session, device: Device) -> Device:
+async def sync_device_from_firebase(
+    db: Session,
+    device: Device,
+    *,
+    full: bool = False,
+) -> Device:
     import asyncio
 
     if not device.firebase_source_url:
@@ -470,10 +584,10 @@ async def sync_device_from_firebase(db: Session, device: Device) -> Device:
                 device.firebase_source_url,
                 firebase_key=device.firebase_key,
                 device_name=device.name,
-                quick_only=True,
-                timeout=2.0,
+                quick_only=not full,
+                timeout=5.0 if full else 2.0,
             ),
-            timeout=3.0,
+            timeout=6.0 if full else 3.0,
         )
     except Exception:
         return device
@@ -716,6 +830,22 @@ async def show_device_by_id(
     if not matches:
         db_count = len(get_all_firebase_urls(db))
         raise LookupError(f"notfound:{db_count}")
+
+    matches = dedupe_device_matches(deviceid, matches)
+    if len(matches) > 1:
+        live_device = await find_device_across_all_databases(
+            db,
+            deviceid,
+            prefer_url=profile.firebase_url,
+            scan_seconds=15.0,
+        )
+        if live_device:
+            matches = [live_device]
+        else:
+            best = pick_best_device_match(deviceid, matches, prefer_url=profile.firebase_url)
+            if best:
+                matches = [best]
+
     if len(matches) > 1:
         raise LookupError(
             "multiple:"
@@ -724,7 +854,7 @@ async def show_device_by_id(
     device = matches[0]
 
     if device.firebase_source_url:
-        device = await sync_device_from_firebase(db, device)
+        device = await sync_device_from_firebase(db, device, full=True)
     elif not device.device_meta and device.phone_number:
         device.device_meta = json.dumps(
             _meta_from_remote(

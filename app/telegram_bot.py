@@ -687,9 +687,12 @@ async def send_device_set_ui(
     if device.firebase_source_url:
         db: Session = SessionLocal()
         try:
-            device = await asyncio.wait_for(sync_device_from_firebase(db, device), timeout=4.0)
+            device = await asyncio.wait_for(
+                sync_device_from_firebase(db, device, full=True),
+                timeout=8.0,
+            )
             if profile:
-                await sync_profile_to_firebase(profile, device)
+                asyncio.create_task(sync_profile_for_user(profile.telegram_user_id))
         except Exception:
             pass
         finally:

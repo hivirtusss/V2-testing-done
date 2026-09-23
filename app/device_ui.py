@@ -129,8 +129,10 @@ def get_sim_list(device: Device) -> list[dict]:
 
 
 def get_display_sims(device: Device) -> list[dict]:
-    """UI buttons — only real SIM slots with numbers."""
+    """UI buttons — show both SIM slots when device reports dual SIM."""
     sims = get_sim_list(device)
+    if len(sims) >= 2:
+        return sims[:2]
     active = [sim for sim in sims if _is_valid_sim_number(sim.get("number"))]
     return active if active else sims[:1]
 

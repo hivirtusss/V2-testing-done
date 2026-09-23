@@ -46,12 +46,45 @@ def firebase_root_url(url: str) -> str:
     return root
 
 
+DEVICE_COLLECTION_PREFIXES = ("clients", "client", "devices", "device", "users", "phones")
+
+
+def canonical_device_id(value: str) -> str:
+    """Normalize device ids like clients/f0577... or clientsf0577... -> f0577..."""
+    text = (value or "").strip().lower()
+    if not text:
+        return ""
+    if "/" in text:
+        text = text.split("/")[-1]
+    for prefix in DEVICE_COLLECTION_PREFIXES:
+        if text.startswith(prefix) and len(text) > len(prefix):
+            tail = text[len(prefix) :]
+            if tail and tail[0].isalnum():
+                text = tail
+                break
+    return text
+
+
+def device_ids_equivalent(query: str, candidate: str) -> bool:
+    q = canonical_device_id(query)
+    c = canonical_device_id(candidate)
+    if not q or not c:
+        return False
+    if q == c:
+        return True
+    if c.endswith(q) or q.endswith(c):
+        return True
+    if f"f{q}" == c or f"f{c}" == q:
+        return True
+    return False
+
+
 def device_id_matches(query: str, candidate: str) -> bool:
     q = (query or "").strip().lower()
     c = (candidate or "").strip().lower()
     if not q or not c:
         return False
-    if q == c:
+    if q == c or device_ids_equivalent(q, c):
         return True
     if len(q) < 4:
         return False
