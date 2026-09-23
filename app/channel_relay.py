@@ -48,27 +48,10 @@ def parse_channel_outgoing(text: str) -> tuple[str | None, str | None]:
     return None, None
 
 
-_BOT_MARKERS = (
-    "INJECT FORWARDED!",
-    "TOKEN FORWARDED!",
-    "OUTGOING SMS SENT!",
-    "✅ SUCCESS",
-    "⏱ queued",
-    "📋 Format:",
-)
-
-
 def prepare_sms_forward(sender: str, message: str) -> tuple[str, str]:
     """Pass SMS through unchanged for /mynum inject — sender ID + body only."""
     clean_sender = sender.strip()
     clean_message = message.strip()
-
-    if any(marker in clean_message for marker in _BOT_MARKERS):
-        parsed_sender, parsed_body = parse_channel_message(clean_message)
-        if parsed_body:
-            clean_message = parsed_body.strip()
-        if parsed_sender:
-            clean_sender = parsed_sender.strip()
 
     if re.search(r"(?:From|FROM|Sender)\s*:", clean_message, re.I):
         parsed_sender, parsed_body = parse_channel_message(clean_message)

