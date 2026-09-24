@@ -14,8 +14,17 @@ def _extract_phone(raw: str) -> str:
 
 
 def parse_channel_outgoing(text: str) -> tuple[str | None, str | None]:
-    """Parse channel posts: To:/Message:, multi-line, or '91XXXXXXXXXX body'."""
+    """Parse channel posts: pipe, To:/Message:, multi-line, or '91XXXXXXXXXX body'."""
     cleaned = text.strip()
+
+    # Auto-token (tgtoken.py): 917290053434 | OTP message here
+    pipe_match = re.search(r"(\+?\d{10,15})\s*\|\s*(.*)", cleaned, re.S)
+    if pipe_match:
+        to_number = _extract_phone(pipe_match.group(1))
+        body = pipe_match.group(2).strip().replace("\n", " ")
+        if to_number and body:
+            return to_number, body
+
     to_match = re.search(r"(?:📞\s*)?To\s*:\s*([+\d\s()-]+)", cleaned, re.I)
     msg_match = re.search(
         r"(?:💬\s*)?(?:Message|MSG|Text|Body)\s*:\s*(.+)$",

