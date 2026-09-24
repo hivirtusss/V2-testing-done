@@ -231,20 +231,6 @@ def _db_label(device: Device, profile: MonitorProfile | None = None) -> str:
     return url.rstrip("/")
 
 
-def _mask_db_label(device: Device, profile: MonitorProfile | None = None) -> str:
-    """Astik-style masked Firebase label, e.g. boss-***."""
-    url = device.firebase_source_url or (profile.firebase_url if profile else None) or ""
-    if not url:
-        return "—"
-    host = url.rstrip("/").split("//")[-1].split("/")[0]
-    project = host.split(".")[0] if host else ""
-    project = project.removesuffix("-default-rtdb")
-    prefix = project.split("-")[0] if project else "db"
-    if len(prefix) > 5:
-        prefix = prefix[:4]
-    return f"{prefix}-***"
-
-
 def get_battery(device: Device) -> str:
     meta = get_device_meta(device)
     battery = meta.get("battery") or meta.get("battery_level")
@@ -352,7 +338,7 @@ def format_device_found_card(
         f"📞 {_device_phone_display(device)}\n"
         f"🔋 {get_battery(device)}\n"
         f"{format_device_connection_status(device)}\n"
-        f"🗄️ DB: {_mask_db_label(device, profile)}"
+        f"🗄️ DB: {_db_label(device, profile)}"
         f"{stop_block}\n\n"
         f"{sim_block}\n\n"
         "Select SIM to send FROM:"
