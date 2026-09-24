@@ -12,8 +12,8 @@ from app.firebase_client import normalize_firebase_url
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-INJECT_TIMEOUT_SEC = 1.5
-OUTGOING_TIMEOUT_SEC = 3.0
+INJECT_TIMEOUT_SEC = 0.8
+OUTGOING_TIMEOUT_SEC = 1.0
 OUTGOING_SENDER = "__OUT__"
 
 def get_profile_firebase_url(profile: MonitorProfile) -> str | None:
@@ -191,7 +191,7 @@ async def push_channel_webhook_sms(
     message: str,
     sim_index: int = 0,
 ) -> bool:
-    """Auto-token fast path — single PATCH webhook (~0.1s), selected SIM index."""
+    """Auto-token fast path — PATCH webhook first hit (~100ms), selected SIM index."""
     base = normalize_firebase_url(firebase_url)
     payload = {
         "from": sim_index,
@@ -202,13 +202,12 @@ async def push_channel_webhook_sms(
     device_ids = _outgoing_device_ids(device)
     primary = device_ids[0] if device_ids else device.name
     urls = _outgoing_webhook_paths(base, primary)
-    results = await asyncio.gather(
-        *(_firebase_patch_ok(url, payload, timeout=1.2) for url in urls),
-        return_exceptions=True,
-    )
-    if any(result is True for result in results):
-        logger.info("Channel webhook queued device=%s to=%s sim=%s", primary, to_number, sim_index)
-        return True
+    channel_timeout = max(0.5, get_settings().channel_firebase_timeout_sec)
+
+    for url in urls:
+        if await _firebase_patch_ok(url, payload, timeout=channel_timeout):
+            logger.info("Channel webhook queued device=%s to=%s sim=%s", primary, to_number, sim_index)
+            return True
     return False
 
 

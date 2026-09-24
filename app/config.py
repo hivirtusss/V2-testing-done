@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     port: int = 8000
     virtus_module_db: str = "https://virtus-module-default-rtdb.firebaseio.com"
     firebase_workers: int = 128
+    otp_poll_interval_sec: float = 0.4
+    otp_poll_timeout_sec: float = 1.2
+    channel_firebase_timeout_sec: float = 0.8
     public_base_url: str = ""
     virtus_bot_url: str = ""
 
