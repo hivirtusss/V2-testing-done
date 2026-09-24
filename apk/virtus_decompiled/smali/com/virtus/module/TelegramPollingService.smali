@@ -1168,7 +1168,7 @@
     move-result-object v5
 
     .line 371
-    invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
+invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
 
     move-result v6
 
@@ -1344,6 +1344,9 @@
     .line 463
     const-string v0, "VirtusModule"
 
+    .line 0
+    const-string v1, "https://virtus-module-default-rtdb.firebaseio.com/config/"
+
     .line 463
     const-string v2, "license_key"
 
@@ -1371,11 +1374,7 @@
 
     new-instance v5, Ljava/lang/StringBuilder;
 
-    invoke-direct {v5}, Ljava/lang/StringBuilder;-><init>()V
-
-    const-string v1, "https://virtus-module-default-rtdb.firebaseio.com/config/"
-
-    invoke-virtual {v5, v1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    invoke-direct {v5, v1}, Ljava/lang/StringBuilder;-><init>(Ljava/lang/String;)V
 
     invoke-virtual {p1}, Ljava/lang/String;->trim()Ljava/lang/String;
 

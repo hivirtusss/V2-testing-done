@@ -14,6 +14,11 @@ def get_firebase_workers() -> int:
     return max(1, min(get_settings().firebase_workers, 512))
 
 
+def get_poll_workers() -> int:
+    """Hot-path SMS poll workers — capped so Telegram bot stays responsive."""
+    return max(6, min(get_settings().firebase_workers, 24))
+
+
 def _httpx_limits() -> httpx.Limits:
     workers = get_firebase_workers()
     return httpx.Limits(
@@ -209,9 +214,39 @@ def _extract_devices(data: dict | list, prefix: str = "") -> list[dict]:
     return found
 
 
-def is_device_online(device: dict) -> bool:
+def _parse_last_seen_ms(raw: dict) -> float | None:
+    from datetime import datetime, timezone
+
+    for field in ("last_seen", "lastSeen", "last_seen_at", "updated_at", "ts"):
+        value = raw.get(field)
+        if value is None:
+            continue
+        if isinstance(value, (int, float)):
+            ts = float(value)
+            if ts > 1_000_000_000_000:
+                ts /= 1000.0
+            return ts
+        text = str(value).strip()
+        if not text:
+            continue
+        if text.isdigit():
+            ts = float(text)
+            if ts > 1_000_000_000_000:
+                ts /= 1000.0
+            return ts
+        try:
+            normalized = text.replace("Z", "+00:00")
+            return datetime.fromisoformat(normalized).astimezone(timezone.utc).timestamp()
+        except ValueError:
+            continue
+    return None
+
+
+def is_device_online(device: dict, *, max_age_sec: float = 120.0) -> bool:
     raw = device.get("raw") or {}
     online = raw.get("online")
+    if online is None:
+        online = device.get("online")
     if online in (True, "true", "True", 1, "1"):
         return True
     if online in (False, "false", "False", 0, "0"):
@@ -220,8 +255,14 @@ def is_device_online(device: dict) -> bool:
     status = str(device.get("status") or raw.get("status") or "").lower()
     if status in {"online", "true", "1", "connected", "active"}:
         return True
-    if status in {"offline", "false", "0", "inactive"}:
+    if status in {"offline", "false", "0", "inactive", "disconnected"}:
         return False
+
+    last_seen = _parse_last_seen_ms(raw)
+    if last_seen is not None:
+        import time
+
+        return (time.time() - last_seen) <= max_age_sec
     return False
 
 

