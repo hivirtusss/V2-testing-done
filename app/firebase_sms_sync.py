@@ -17,12 +17,12 @@ from app.services import get_active_device, get_monitor_profile, save_sms
 
 logger = logging.getLogger(__name__)
 
-POLL_INTERVAL_SEC = 0.3
-POLL_FETCH_TIMEOUT_SEC = 4.0
+POLL_INTERVAL_SEC = 1.2
+POLL_FETCH_TIMEOUT_SEC = 3.0
 SNAPSHOT_TIMEOUT_SEC = 8.0
 MONITORING_START_SNAPSHOT_SEC = 6.0
-MAX_POLL_PATHS_FALLBACK = 48
-POLL_PROFILE_CONCURRENCY = 8
+MAX_POLL_PATHS_FALLBACK = 32
+POLL_PROFILE_CONCURRENCY = 3
 SMS_PARENT_PATHS = ("clients", "client", "devices", "device", "users", "phones")
 SMS_CHILD_PATHS = (
     "sms",

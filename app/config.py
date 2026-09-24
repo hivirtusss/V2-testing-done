@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./sms_monitor.db"
     port: int = 8000
     virtus_module_db: str = "https://virtus-module-default-rtdb.firebaseio.com"
-    firebase_workers: int = 512
+    firebase_workers: int = 16
     public_base_url: str = ""
     virtus_bot_url: str = ""
 
