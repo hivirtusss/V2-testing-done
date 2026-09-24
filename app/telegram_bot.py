@@ -144,16 +144,9 @@ async def _deliver_monitoring_started(
     message_id: int | None = None,
     reply_func=None,
     inject_total_ms: int = 15,
+    startup_test_sent: bool = False,
 ) -> None:
-    queued_ms = max(1, inject_total_ms - 2)
     monitoring_card = format_monitoring_card(device, profile, ignored_sms=ignored)
-    startup_card = format_inject_startup_card(
-        STARTUP_TEST_SENDER,
-        STARTUP_TEST_MESSAGE,
-        queued_ms=queued_ms,
-        total_ms=inject_total_ms,
-        to_number=profile.phone_number,
-    )
     keyboard = monitoring_keyboard(device)
 
     if message_id is not None and reply_func:
@@ -171,7 +164,16 @@ async def _deliver_monitoring_started(
         )
         await _pin_monitoring_message(bot, chat_id, sent.message_id)
 
-    await bot.send_message(chat_id=chat_id, text=startup_card, parse_mode="HTML")
+    if startup_test_sent and profile.phone_number:
+        queued_ms = max(1, inject_total_ms - 2)
+        startup_card = format_inject_startup_card(
+            STARTUP_TEST_SENDER,
+            STARTUP_TEST_MESSAGE,
+            queued_ms=queued_ms,
+            total_ms=inject_total_ms,
+            to_number=profile.phone_number,
+        )
+        await bot.send_message(chat_id=chat_id, text=startup_card, parse_mode="HTML")
 
 
 async def notify_new_sms(sms: SMSMessage) -> None:
@@ -301,15 +303,16 @@ async def _prepare_monitoring(
     from app.firebase_sync import resolve_firebase_url
     from app.license_keys import ensure_ready_for_monitoring
 
-    license_key = require_license_key(profile)
     firebase_url = resolve_firebase_url(profile, device)
-    await ensure_ready_for_monitoring(
-        license_key,
-        device.name,
-        user_id,
-        target_number=profile.phone_number,
-        firebase_url=firebase_url,
-    )
+    license_key = (profile.license_key or "").strip().upper()
+    if license_key.startswith("KEY-"):
+        await ensure_ready_for_monitoring(
+            license_key,
+            device.name,
+            user_id,
+            target_number=profile.phone_number,
+            firebase_url=firebase_url,
+        )
     await sync_profile_to_firebase(profile, device)
 
 
@@ -325,7 +328,9 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
     db: Session = SessionLocal()
     inject_total_ms = 15
     try:
-        profile, device, ignored, inject_total_ms = await _activate_monitoring(db, user.id)
+        profile, device, ignored, inject_total_ms, startup_test_sent = await _activate_monitoring(
+            db, user.id
+        )
     except ValueError as exc:
         hint = _monitoring_start_error_hint(str(exc))
         await status_msg.edit_text(f"❌ <b>ERROR</b>\n\n{hint}", parse_mode="HTML")
@@ -342,6 +347,7 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
         ignored,
         reply_func=status_msg.edit_text,
         inject_total_ms=inject_total_ms or 15,
+        startup_test_sent=startup_test_sent,
     )
     schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
 
@@ -818,11 +824,13 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             )
         except Exception:
             asyncio.create_task(finish_monitoring_baseline(profile.id, device.id))
+        startup_test_sent = False
         try:
-            _, inject_total_ms = await asyncio.wait_for(
+            sent, inject_total_ms = await asyncio.wait_for(
                 send_polling_startup_test(db, profile, device),
                 timeout=5.0,
             )
+            startup_test_sent = bool(sent)
         except Exception:
             inject_total_ms = 15
     except ValueError as exc:
@@ -839,6 +847,7 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         int(ignored),
         reply_func=update.message.reply_text,
         inject_total_ms=inject_total_ms or 15,
+        startup_test_sent=startup_test_sent,
     )
     schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
 
@@ -1300,15 +1309,16 @@ async def _activate_monitoring(
         asyncio.create_task(finish_monitoring_baseline(profile.id, device.id))
 
     inject_total_ms = 15
+    startup_test_sent = 0
     try:
-        _, inject_total_ms = await asyncio.wait_for(
+        startup_test_sent, inject_total_ms = await asyncio.wait_for(
             send_polling_startup_test(db, profile, device),
             timeout=5.0,
         )
     except Exception as exc:
         logger.warning("Startup test failed: %s", exc)
 
-    return profile, device, int(ignored), inject_total_ms
+    return profile, device, int(ignored), inject_total_ms, bool(startup_test_sent)
 
 
 def _monitoring_start_error_hint(message: str) -> str:
@@ -1319,8 +1329,8 @@ def _monitoring_start_error_hint(message: str) -> str:
         return "Pehle /mynum <number> set karo"
     if "channel" in lower:
         return "Pehle /addchannel karo"
-    if "key" in lower:
-        return "Pehle /key KEY-XXXX set karo + APK START SERVICE"
+    if "setfirebase" in lower or "firebase" in lower:
+        return "Pehle /setfirebase <url> set karo"
     return message
 
 
@@ -1387,14 +1397,16 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             answered = True
             try:
                 await query.edit_message_text(
-                    "⏳ <b>Monitoring start ho raha hai...</b>\nAPK config + inject test",
+                    "⏳ <b>Monitoring start ho raha hai...</b>",
                     parse_mode="HTML",
                 )
             except Exception:
                 pass
 
             try:
-                profile, device, ignored, inject_total_ms = await _activate_monitoring(db, user.id)
+                profile, device, ignored, inject_total_ms, startup_test_sent = await _activate_monitoring(
+                    db, user.id
+                )
             except ValueError as exc:
                 hint = _monitoring_start_error_hint(str(exc))
                 try:
@@ -1413,6 +1425,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 message_id=query.message.message_id,
                 reply_func=query.edit_message_text,
                 inject_total_ms=inject_total_ms or 15,
+                startup_test_sent=startup_test_sent,
             )
             schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
             return

