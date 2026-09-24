@@ -143,14 +143,11 @@ async def _deliver_monitoring_started(
     inject_total_ms: int = 15,
     startup_test_sent: bool = False,
 ) -> None:
-    from app.firebase_sync import resolve_firebase_url
-
     monitoring_card = format_monitoring_card(
         device,
         profile,
         ignored_sms=ignored,
         startup_test_sent=startup_test_sent,
-        firebase_url=resolve_firebase_url(profile, device),
     )
     keyboard = monitoring_keyboard(device)
 
@@ -1393,7 +1390,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             db.commit()
             asyncio.create_task(sync_profile_for_user(user.id))
             await query.edit_message_text(
-                format_sim_selected_card(device, profile.selected_sim_index or 0),
+                format_sim_selected_card(device, profile.selected_sim_index or 0, profile),
                 parse_mode="HTML",
                 reply_markup=sim_monitoring_keyboard(device),
             )

