@@ -713,6 +713,16 @@ def format_ping_card(latency_ms: int) -> str:
     )
 
 
+def format_device_not_found_card(device_id: str, db_count: int) -> str:
+    """Astik-style — device missing from entire leak DB pool."""
+    return (
+        "❌ <b>ERROR</b>\n\n"
+        "<pre>"
+        f"Device {device_id} not found in any of the {db_count} databases!"
+        "</pre>"
+    )
+
+
 def format_key_error_card() -> str:
     return (
         "❌ <b>ERROR</b>\n\n"

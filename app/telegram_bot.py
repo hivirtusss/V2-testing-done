@@ -27,6 +27,7 @@ from app.device_ui import (
     format_access_approved_card,
     format_addchannel_card,
     format_device_found_card,
+    format_device_not_found_card,
     format_device_set_card,
     format_firebase_connected_card,
     format_key_error_card,
@@ -659,7 +660,7 @@ async def device_select_command(
                 user.id,
                 bind_license_key=bind_license_key,
             ),
-            timeout=25.0,
+            timeout=90.0,
         )
         found_ms = max(1, int((time.perf_counter() - t0) * 1000))
         monitoring_stopped = was_monitoring and (
@@ -670,7 +671,7 @@ async def device_select_command(
 
         db_count = len(get_all_firebase_urls(db))
         await status_msg.edit_text(
-            f"❌ Device <code>{deviceid}</code> not found ({db_count} DBs scanned)",
+            format_device_not_found_card(deviceid, db_count),
             parse_mode="HTML",
         )
         return
@@ -685,9 +686,9 @@ async def device_select_command(
             await status_msg.edit_text("\n".join(lines), parse_mode="HTML")
             return
         if message.startswith("notfound:"):
-            db_count = message.removeprefix("notfound:")
+            db_count = int(message.removeprefix("notfound:") or "0")
             await status_msg.edit_text(
-                f"❌ Device <code>{deviceid}</code> not found ({db_count} DBs)",
+                format_device_not_found_card(deviceid, db_count),
                 parse_mode="HTML",
             )
             return
