@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
-# Bake bot URL into APK for KEY-only auto-config (PUBLIC_BASE_URL / VIRTUS_BOT_URL)
+# Astik-style APK — config from Firebase config/{KEY} (no BotConfigSync)
 if [ -f "$ROOT/../.env" ]; then
   set -a
   # shellcheck disable=SC1091

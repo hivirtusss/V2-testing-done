@@ -232,6 +232,7 @@ async def queue_manual_sms_with_firebase(
 
 
 def get_profile_by_channel(db: Session, channel_id: str) -> list[tuple[MonitorProfile, Device]]:
+    from app.firebase_sync import resolve_firebase_url
     from app.outbound_relay import channel_ids_match
 
     profiles = (
@@ -247,6 +248,6 @@ def get_profile_by_channel(db: Session, channel_id: str) -> list[tuple[MonitorPr
     results: list[tuple[MonitorProfile, Device]] = []
     for profile in profiles:
         device = db.query(Device).filter(Device.id == profile.active_device_id).first()
-        if device:
+        if device and resolve_firebase_url(profile, device):
             results.append((profile, device))
     return results

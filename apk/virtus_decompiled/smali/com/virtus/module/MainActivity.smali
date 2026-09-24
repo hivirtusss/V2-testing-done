@@ -654,16 +654,6 @@
 
     invoke-interface {v0}, Landroid/content/SharedPreferences$Editor;->apply()V
 
-    new-instance v1, Ljava/lang/Thread;
-
-    new-instance v2, Lcom/virtus/module/MainActivity$BotSync;
-
-    invoke-direct {v2, p0, v3}, Lcom/virtus/module/MainActivity$BotSync;-><init>(Lcom/virtus/module/MainActivity;Ljava/lang/String;)V
-
-    invoke-direct {v1, v2}, Ljava/lang/Thread;-><init>(Ljava/lang/Runnable;)V
-
-    invoke-virtual {v1}, Ljava/lang/Thread;->start()V
-
     .line 292
     new-instance v0, Ljava/lang/Thread;
 
@@ -1462,32 +1452,6 @@
 
     .line 230
     iput-boolean v2, v0, Lcom/virtus/module/MainActivity;->isRestoring:Z
-
-    iget-object v3, v0, Lcom/virtus/module/MainActivity;->prefs:Landroid/content/SharedPreferences;
-
-    const-string v5, "license_key"
-
-    const-string v6, ""
-
-    invoke-interface {v3, v5, v6}, Landroid/content/SharedPreferences;->getString(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
-
-    move-result-object v3
-
-    invoke-virtual {v3}, Ljava/lang/String;->isEmpty()Z
-
-    move-result v5
-
-    if-nez v5, :cond_0
-
-    new-instance v5, Ljava/lang/Thread;
-
-    new-instance v6, Lcom/virtus/module/MainActivity$BotSync;
-
-    invoke-direct {v6, v0, v3}, Lcom/virtus/module/MainActivity$BotSync;-><init>(Lcom/virtus/module/MainActivity;Ljava/lang/String;)V
-
-    invoke-direct {v5, v6}, Ljava/lang/Thread;-><init>(Ljava/lang/Runnable;)V
-
-    invoke-virtual {v5}, Ljava/lang/Thread;->start()V
 
     .line 232
     :cond_0

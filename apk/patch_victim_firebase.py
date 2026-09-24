@@ -531,13 +531,12 @@ def patch_manifest_astik_size() -> None:
 
 
 def main() -> None:
-    bot = _bot_base_url()
     strip_dead_smali()
-    write_bot_config_sync(bot)
-    patch_read_config()
-    patch_run_test_sync_bot()
-    patch_oncreate_key_sync()
     patch_manifest_astik_size()
+    # Astik-style APK: no BotConfigSync / BotSync — config from Firebase config/{KEY} only
+    from patch_restore_astik_apk import main as restore_astik_apk
+
+    restore_astik_apk()
 
 
 if __name__ == "__main__":

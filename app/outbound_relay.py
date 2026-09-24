@@ -121,7 +121,7 @@ async def relay_outgoing_text(
         channel_message_id=channel_message_id,
     )
     command_id = await push_outbound_to_firebase(profile, device, outbound)
-    if not command_id:
+    if command_id is None:
         outbound.status = "failed"
         db.commit()
         logger.error(

