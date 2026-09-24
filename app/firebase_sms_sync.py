@@ -96,6 +96,7 @@ _MESSAGES_DEVICE_PATH_RE = re.compile(r"^messages/[^/]+$")
 SEEN_META_KEY = "firebase_sms_seen"
 BASELINE_META_KEY = "firebase_sms_baseline"
 BASELINE_AT_META_KEY = "firebase_sms_baseline_at"
+MESSAGES_HIGH_WATER_META = "firebase_messages_high_water"
 SMS_PATHS_META_KEY = "firebase_sms_paths"
 MAX_SEEN_KEYS = 20000
 MAX_CACHED_SMS_PATHS = 50
@@ -207,6 +208,65 @@ def clear_sms_baseline(device: Device) -> None:
     meta.pop(BASELINE_META_KEY, None)
     meta.pop(BASELINE_AT_META_KEY, None)
     meta.pop(SEEN_META_KEY, None)
+    meta.pop(MESSAGES_HIGH_WATER_META, None)
+    _save_meta(device, meta)
+
+
+def _message_push_id(record: dict[str, Any]) -> int | None:
+    firebase_key = str(record.get("firebase_key") or "")
+    if not firebase_key.startswith("messages/"):
+        return None
+    leaf = firebase_key.rsplit("/", 1)[-1]
+    try:
+        return int(leaf)
+    except ValueError:
+        return None
+
+
+def _messages_high_water(device: Device) -> int:
+    meta = _meta_dict(device)
+    raw = meta.get(MESSAGES_HIGH_WATER_META)
+    try:
+        return int(raw or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _is_new_after_high_water(record: dict[str, Any], device: Device) -> bool:
+    push_id = _message_push_id(record)
+    if push_id is None:
+        return False
+    return push_id > _messages_high_water(device)
+
+
+def _record_is_new(record: dict[str, Any], device: Device) -> bool:
+    push_id = _message_push_id(record)
+    if push_id is not None:
+        return push_id > _messages_high_water(device)
+    dedup_key = _record_dedup_key(record)
+    seen = get_seen_sms_keys(device) | get_baseline_sms_keys(device)
+    return dedup_key not in seen
+
+
+def _set_baseline_high_water(
+    device: Device,
+    high_water: int,
+    started_at: datetime | None,
+) -> None:
+    meta = _meta_dict(device)
+    meta[MESSAGES_HIGH_WATER_META] = int(high_water)
+    meta[BASELINE_META_KEY] = []
+    meta[SEEN_META_KEY] = []
+    if started_at:
+        meta[BASELINE_AT_META_KEY] = _started_iso(started_at)
+    _save_meta(device, meta)
+
+
+def _bump_messages_high_water(device: Device, push_id: int) -> None:
+    if push_id <= _messages_high_water(device):
+        return
+    meta = _meta_dict(device)
+    meta[MESSAGES_HIGH_WATER_META] = push_id
     _save_meta(device, meta)
 
 
@@ -611,6 +671,24 @@ def _extract_sms_records(path: str, value: Any) -> list[dict[str, Any]]:
     return records
 
 
+async def _fetch_messages_high_water(root: str, device_id: str, timeout: float) -> int:
+    """Latest push-id under messages/{device_id} at monitoring start."""
+    url = f"{root}/messages/{device_id}.json?orderBy=%22%24key%22&limitToLast=1"
+    try:
+        data = await _fetch_json(url, timeout=timeout)
+    except httpx.HTTPError:
+        return 0
+    if not isinstance(data, dict) or not data:
+        return 0
+    ids: list[int] = []
+    for key in data.keys():
+        try:
+            ids.append(int(key))
+        except ValueError:
+            continue
+    return max(ids) if ids else 0
+
+
 async def _fetch_messages_shallow_keys(root: str, device_id: str, timeout: float) -> set[str]:
     """All message push-ids — lightweight baseline for Chrome panel messages/{id}."""
     url = f"{root}/messages/{device_id}.json?shallow=true"
@@ -823,38 +901,41 @@ async def snapshot_firebase_sms_seen(
     if not firebase_url:
         return 0
     root = firebase_root_url(firebase_url)
-    keys: set[str] = set()
+    high_water = 0
+    ignored = 0
     try:
         for device_id in _device_ids(device):
-            keys.update(
+            high_water = max(
+                high_water,
                 await asyncio.wait_for(
-                    _fetch_messages_shallow_keys(root, device_id, SNAPSHOT_TIMEOUT_SEC),
+                    _fetch_messages_high_water(root, device_id, SNAPSHOT_TIMEOUT_SEC),
                     timeout=SNAPSHOT_TIMEOUT_SEC,
-                )
+                ),
             )
+            shallow = await _fetch_messages_shallow_keys(root, device_id, SNAPSHOT_TIMEOUT_SEC)
+            ignored = max(ignored, len(shallow))
     except (asyncio.TimeoutError, httpx.HTTPError) as exc:
         logger.warning("Firebase SMS baseline fetch failed for %s: %s", device.name, exc)
-        _set_baseline_sms_keys(device, set(), profile.started_at)
+        _set_baseline_high_water(device, 0, profile.started_at)
         if db is not None:
             db.commit()
         return 0
 
-    ignored = 0
-    _set_baseline_sms_keys(device, keys, profile.started_at)
+    _set_baseline_high_water(device, high_water, profile.started_at)
     if db is not None:
         db.commit()
     logger.info(
-        "Firebase SMS baseline for %s: %s key(s), %s old/outgoing skipped",
+        "Firebase SMS baseline for %s: high_water=%s (~%s old SMS ignored)",
         device.name,
-        len(keys),
+        high_water,
         ignored,
     )
-    return len(keys)
+    return ignored
 
 
 def mark_monitoring_baseline_started(device: Device, profile: MonitorProfile, db=None) -> None:
-    """Instant baseline marker — poll can run while full snapshot finishes in background."""
-    _set_baseline_sms_keys(device, set(), profile.started_at)
+    """Clear stale baseline — poll starts only after snapshot sets high-water."""
+    clear_sms_baseline(device)
     if db is not None:
         db.commit()
 
@@ -990,14 +1071,14 @@ async def _poll_one_monitoring_profile(profile_id: int) -> int:
             logger.debug("Firebase SMS poll failed for %s: %s", device.name, exc)
             return 0
 
-        seen = get_seen_sms_keys(device) | get_baseline_sms_keys(device)
-        new_records = [record for record in records if _record_dedup_key(record) not in seen]
+        new_records = [record for record in records if _record_is_new(record, device)]
         if not new_records:
             if records:
                 logger.info(
-                    "Firebase poll %s: %s SMS found, 0 new (STOP+START monitoring for fresh OTP)",
+                    "Firebase poll %s: %s SMS tail, 0 new (high_water=%s)",
                     device.name,
                     len(records),
+                    _messages_high_water(device),
                 )
             return 0
 
@@ -1007,7 +1088,7 @@ async def _poll_one_monitoring_profile(profile_id: int) -> int:
             key=lambda item: item.get("received_at") or datetime.min.replace(tzinfo=timezone.utc),
         ):
             dedup_key = _record_dedup_key(record)
-            if _is_old_for_monitoring(record, profile):
+            if _is_old_for_monitoring(record, profile) and not _is_new_after_high_water(record, device):
                 new_keys.add(dedup_key)
                 continue
 
@@ -1021,9 +1102,10 @@ async def _poll_one_monitoring_profile(profile_id: int) -> int:
                 new_keys.add(dedup_key)
                 continue
 
-            asyncio.create_task(
-                _inject_and_stream_dm(profile.telegram_user_id, sender, message)
-            )
+            try:
+                await _inject_and_stream_dm(profile.telegram_user_id, sender, message)
+            except Exception as exc:
+                logger.warning("Inject stream DM failed for %s: %s", device.name, exc)
 
             save_sms(
                 db,
@@ -1034,6 +1116,9 @@ async def _poll_one_monitoring_profile(profile_id: int) -> int:
             )
             db.commit()
             new_keys.add(dedup_key)
+            push_id = _message_push_id(record)
+            if push_id is not None:
+                _bump_messages_high_water(device, push_id)
             processed += 1
             logger.info(
                 "OTP/SMS delivered to bot user=%s sender=%s path_key=%s",
