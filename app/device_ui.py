@@ -268,27 +268,64 @@ def _format_sim_number(number: str) -> str:
     return f"+{text}" if text.isdigit() else text
 
 
+def _sim_has_rich_label(sim: dict) -> bool:
+    carrier = (sim.get("carrier") or "").strip()
+    slot = sim.get("slot", 1)
+    if not _is_valid_sim_number(sim.get("number")):
+        return False
+    if not carrier or carrier in {f"SIM {slot}", "Unknown", "SIM 1", "SIM 2"}:
+        return False
+    return True
+
+
+def _sim_list_line(sim: dict, *, found_card: bool = False) -> str:
+    """Astik SIM row — found card uses +91, setdevice uses local digits or N/A."""
+    from app.services import display_phone
+
+    slot = sim.get("slot", 1)
+    carrier = (sim.get("carrier") or f"SIM {slot}").strip()
+    number = sim.get("number")
+    if not _is_valid_sim_number(number):
+        return f"SIM {slot}: Unknown (N/A)"
+    shown = _format_sim_number(number) if found_card else display_phone(number)
+    return f"SIM {slot}: {carrier} ({shown})"
+
+
+def _active_sim_line(sim: dict) -> str:
+    slot = sim.get("slot", 1)
+    index = sim.get("index", slot - 1)
+    carrier = (sim.get("carrier") or f"SIM {slot}").strip()
+    if _sim_has_rich_label(sim):
+        return f"📶 Active SIM: {carrier} (Index {index})"
+    return f"📶 Active SIM: SIM {slot} (Index {index})"
+
+
+def _from_number_line(sim: dict) -> str:
+    from app.services import display_phone
+
+    number = sim.get("number")
+    if _is_valid_sim_number(number):
+        return f"📞 FROM Number: {display_phone(number)}"
+    return "📞 FROM Number: N/A"
+
+
 def _sim_button_label(sim: dict, *, compact: bool = False) -> str:
+    from app.services import display_phone
+
     slot = sim.get("slot", 1)
     if compact:
         return f"📶 SIM {slot}"
     carrier = sim.get("carrier") or f"SIM {slot}"
-    number = _format_sim_number(sim.get("number") or "Unknown")
+    number = display_phone(sim.get("number")) if _is_valid_sim_number(sim.get("number")) else "N/A"
     label = f"📶 SIM {slot}: {carrier} ({number})"
     return label[:32] + "..." if len(label) > 35 else label
 
 
-def _sim_lines_block(device: Device, *, numbered: bool = False) -> str:
-    lines = []
-    for sim in get_display_sims(device):
-        slot = sim.get("slot", 1)
-        carrier = sim.get("carrier") or f"SIM {slot}"
-        number = sim.get("number") or "Unknown"
-        if numbered:
-            lines.append(f"SIM {slot}: {carrier} ({_format_sim_number(number)})")
-        else:
-            lines.append(f"📶 SIM {slot}: {carrier} ({number})")
-    return "\n".join(lines) if lines else "📶 SIM: Unknown"
+def _sim_lines_block(device: Device, *, found_card: bool = False) -> str:
+    sims = get_display_sims(device)
+    if not sims:
+        return "SIM 1: Unknown (N/A)"
+    return "\n".join(_sim_list_line(sim, found_card=found_card) for sim in sims)
 
 
 def format_device_found_card(
@@ -305,7 +342,7 @@ def format_device_found_card(
             "\n⚠️ Previous monitoring was AUTO-STOPPED.\n"
             "Use /startmonitor again when ready."
         )
-    sim_block = _sim_lines_block(device, numbered=True)
+    sim_block = _sim_lines_block(device, found_card=True)
     timing = f"\n⚡ Found in {found_ms}ms" if found_ms is not None else ""
     return (
         "✅ <b>SUCCESS</b>\n\n"
@@ -330,10 +367,10 @@ def format_device_set_card(
     *,
     status: str = "online",
 ) -> str:
-    """Astik /setdevice — Device Set card with SIM list."""
+    """Astik /setdevice — Device Set card with active SIM, FROM number, SIM list."""
     device_short = short_device_id(device.name)
     active = get_selected_sim(device, selected_sim)
-    active_slot = active.get("slot", 1)
+    sim_block = _sim_lines_block(device, found_card=False)
 
     return (
         "✅ <b>SUCCESS</b>\n\n"
@@ -341,14 +378,18 @@ def format_device_set_card(
         "Device Set!\n\n"
         f"📱 {device_short}\n"
         f"🔋 {get_battery(device)}\n"
-        f"📶 Active SIM: SIM {active_slot}\n\n"
+        f"{_active_sim_line(active)}\n"
+        f"{_from_number_line(active)}\n\n"
+        f"{sim_block}\n\n"
         "Select SIM Slot for sending SMS:"
         "</pre>"
     )
 
 
-def device_set_keyboard(device: Device, *, compact: bool = False) -> InlineKeyboardMarkup:
+def device_set_keyboard(device: Device, *, compact: bool | None = None) -> InlineKeyboardMarkup:
     sims = get_display_sims(device)
+    if compact is None:
+        compact = not any(_sim_has_rich_label(sim) for sim in sims)
     buttons = [
         InlineKeyboardButton(
             _sim_button_label(sim, compact=compact),

@@ -34,7 +34,6 @@ from app.device_ui import (
     format_key_generated_card,
     format_key_set_card,
     format_monitoring_card,
-    format_sim_selected_card,
     format_mynum_set_card,
     format_ping_card,
     format_premium_gate_card,
@@ -473,7 +472,7 @@ async def _sim_menu_after_stop(
     sim_index = (profile.selected_sim_index or 0) if profile else 0
     return (
         format_device_set_card(device, sim_index),
-        device_set_keyboard(device, compact=True),
+        device_set_keyboard(device),
     )
 
 
@@ -1424,9 +1423,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             db.commit()
             asyncio.create_task(sync_profile_for_user(user.id))
             await query.edit_message_text(
-                format_sim_selected_card(device, profile.selected_sim_index or 0),
+                format_device_set_card(device, profile.selected_sim_index or 0),
                 parse_mode="HTML",
-                reply_markup=sim_monitoring_keyboard(device),
+                reply_markup=device_set_keyboard(device),
             )
             return
 
