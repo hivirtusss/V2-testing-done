@@ -270,6 +270,39 @@ def _bump_messages_high_water(device: Device, push_id: int) -> None:
     _save_meta(device, meta)
 
 
+def _message_received_after_start(
+    record: dict[str, Any],
+    profile: MonitorProfile,
+) -> bool:
+    """Deliver tail SMS that landed on Firebase at/after monitoring start."""
+    started = profile.started_at
+    if not started:
+        return False
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=timezone.utc)
+    received = record.get("received_at")
+    if received:
+        if received.tzinfo is None:
+            received = received.replace(tzinfo=timezone.utc)
+        return received >= started
+    return False
+
+
+def _should_deliver_otp_record(
+    record: dict[str, Any],
+    profile: MonitorProfile,
+    device: Device,
+) -> bool:
+    if _record_dedup_key(record) in get_seen_sms_keys(device):
+        return False
+    push_id = _message_push_id(record)
+    if push_id is None:
+        return False
+    if push_id > _messages_high_water(device):
+        return True
+    return _message_received_after_start(record, profile)
+
+
 def _parse_body_date(text: str) -> datetime | None:
     raw = (text or "").strip()
     comma_match = re.search(
@@ -1074,12 +1107,28 @@ async def _ensure_messages_high_water(
         f"messages/{device_id}",
         POLL_FETCH_TIMEOUT_SEC,
     )
-    push_ids = [pid for pid in (_message_push_id(record) for record in records) if pid]
-    high_water = max(push_ids) if push_ids else 0
+    started = profile.started_at
+    if started and started.tzinfo is None:
+        started = started.replace(tzinfo=timezone.utc)
+
+    old_ids: list[int] = []
+    for record in records:
+        push_id = _message_push_id(record)
+        if push_id is None:
+            continue
+        if started and _message_received_after_start(record, profile):
+            continue
+        old_ids.append(push_id)
+
+    if old_ids:
+        high_water = max(old_ids)
+    else:
+        high_water = await _fetch_messages_high_water(root, device_id, POLL_FETCH_TIMEOUT_SEC)
+
     _set_baseline_high_water(device, high_water, profile.started_at)
     db.commit()
     logger.info(
-        "OTP high_water init device=%s high_water=%s (tail=%s, no backlog sent)",
+        "OTP high_water init device=%s high_water=%s (tail=%s, live-after-start kept)",
         device_id,
         high_water,
         len(records),
@@ -1116,10 +1165,14 @@ async def _poll_messages_otp_only(
         return 0
 
     delivered = 0
+    seen_push: set[int] = set()
     for record in sorted(records, key=lambda item: _message_push_id(item) or 0):
         push_id = _message_push_id(record)
-        if push_id is None or push_id <= high_water:
+        if push_id is None or push_id in seen_push:
             continue
+        if not _should_deliver_otp_record(record, profile, device):
+            continue
+        seen_push.add(push_id)
 
         sender = str(record.get("sender") or "Unknown")
         body = str(record.get("message") or "")
@@ -1145,6 +1198,7 @@ async def _poll_messages_otp_only(
             received_at=record.get("received_at"),
         )
         _bump_messages_high_water(device, push_id)
+        mark_sms_keys_seen(device, {_record_dedup_key(record)})
         high_water = push_id
         delivered += 1
         logger.info(
@@ -1157,8 +1211,8 @@ async def _poll_messages_otp_only(
     if delivered:
         db.commit()
     elif records:
-        logger.debug(
-            "OTP poll device=%s tail=%s high_water=%s new=0",
+        logger.info(
+            "OTP poll device=%s tail=%s high_water=%s new=0 (request NEW OTP after START)",
             device_id,
             len(records),
             high_water,
