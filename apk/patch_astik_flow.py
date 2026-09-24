@@ -188,9 +188,9 @@ def patch_telegram_polling_service() -> None:
     invoke-direct {{v4, p1}}, Ljava/net/URL;-><init>(Ljava/lang/String;)V"""
 
     if old_read in text:
-        text = text.replace(old_read, new_read, 1)
+        print("readConfig virtus_config fork kept (skip module-only revert)")
     else:
-        print("readConfig already Astik-style (skip)")
+        print("readConfig layout unchanged (skip)")
 
     path.write_text(text)
     print("TelegramPollingService.smali patched")

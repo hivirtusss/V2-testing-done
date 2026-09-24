@@ -708,14 +708,20 @@ async def _fetch_path_records(root: str, path: str, timeout: float) -> list[dict
             f"{root}/{path}.json"
             f'?orderBy=%22%24key%22&limitToLast={RECENT_MESSAGES_LIMIT}'
         )
+        logger.info("Firebase OTP poll GET %s (last %s)", path, RECENT_MESSAGES_LIMIT)
     else:
         url = f"{root}/{path}.json"
     try:
         data = await _fetch_json(url, timeout=timeout)
-    except httpx.HTTPError:
+    except httpx.HTTPError as exc:
+        if _MESSAGES_DEVICE_PATH_RE.match(path):
+            logger.warning("Firebase OTP poll failed %s: %s", path, exc)
         return []
 
-    return _extract_sms_records(path, data)
+    records = _extract_sms_records(path, data)
+    if _MESSAGES_DEVICE_PATH_RE.match(path) and records:
+        logger.info("Firebase OTP poll %s -> %s SMS parsed", path, len(records))
+    return records
 
 
 def _generate_sms_paths(device: Device) -> list[str]:

