@@ -655,7 +655,7 @@ async def fetch_firebase_sms_for_device(
     root = firebase_root_url(firebase_url)
     cycle = _poll_cycle.get(device.id, 0) + 1
     _poll_cycle[device.id] = cycle
-    force_full = force_full or cycle % 4 == 0
+    force_full = force_full or cycle % 8 == 0
 
     priority = _build_priority_sms_paths(device)
     cached_paths = [] if force_full else get_cached_sms_paths(device)
