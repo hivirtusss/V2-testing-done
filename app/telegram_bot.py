@@ -39,7 +39,6 @@ from app.device_ui import (
     format_premium_gate_card,
     format_inject_startup_card,
     format_send_queued,
-    format_sim_selected_card,
     format_status_card,
     format_stop_card,
     STARTUP_TEST_MESSAGE,
@@ -399,6 +398,7 @@ async def addchannel_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 def _is_inject_stream_message(text: str) -> bool:
     markers = (
         "INJECT FORWARDED!",
+        "TOKEN FORWARDED!",
         "STREAM SUCCESSFUL SEND",
         STARTUP_TEST_MESSAGE,
     )

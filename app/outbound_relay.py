@@ -37,6 +37,7 @@ async def _relay_fail_dm(telegram_user_id: int, reason: str) -> None:
 
 VIRTUS_SKIP_MARKERS = (
     "INJECT FORWARDED!",
+    "TOKEN FORWARDED!",
     "STREAM SUCCESSFUL SEND",
     "Monitoring Started!",
     "License Key Set!",

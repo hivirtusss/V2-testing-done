@@ -421,9 +421,9 @@ def format_outbound_stream_card(
     return (
         "✅ <b>SUCCESS</b>\n"
         "<pre>"
-        f"🎯 STREAM SUCCESSFUL SEND [{source.upper()}]\n"
-        f"To: {to_number}\n"
-        f"{body}\n"
+        f"🎯 TOKEN FORWARDED! [{source.upper()}]\n"
+        f"📞 To: {to_number}\n"
+        f"🔐 {body}\n"
         "📋 Format: Emoji\n"
         f"{format_timing_footer(queued_ms, total_ms)}"
         "</pre>"
