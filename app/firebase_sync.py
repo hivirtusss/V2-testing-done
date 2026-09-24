@@ -231,7 +231,7 @@ async def push_virtus_apk_config(profile: MonitorProfile, device: Device | None 
     key = license_key.strip().upper()
     await asyncio.gather(
         _firebase_put_ok(f"{base}/config/{key}", payload),
-        _firebase_put_ok(f"{base}/virtus_config.json", payload),
+        _firebase_put_ok(f"{base}/virtus_config", payload),
         return_exceptions=True,
     )
 

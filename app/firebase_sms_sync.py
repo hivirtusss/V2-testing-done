@@ -394,9 +394,11 @@ def _is_channel_outgoing_webhook(value: dict[str, Any]) -> bool:
         return True
     to_val = str(value.get("to") or "").strip()
     from_val = str(value.get("from") or "").strip()
-    if to_val and len(re.sub(r"\D", "", to_val)) >= 10:
-        if from_val in {"0", "1", "2"} or not from_val:
-            return True
+    if not to_val or len(re.sub(r"\D", "", to_val)) < 10:
+        return False
+    # Outbound channel uses SIM slot 0/1/2 in "from". Real senders (AD-ZEPTON-S) are incoming OTP.
+    if from_val in {"0", "1", "2"}:
+        return True
     return False
 
 
@@ -996,6 +998,12 @@ async def _poll_one_monitoring_profile(profile_id: int) -> int:
         seen = get_seen_sms_keys(device) | get_baseline_sms_keys(device)
         new_records = [record for record in records if _record_dedup_key(record) not in seen]
         if not new_records:
+            if records:
+                logger.info(
+                    "Firebase poll %s: %s SMS found, 0 new (STOP+START monitoring for fresh OTP)",
+                    device.name,
+                    len(records),
+                )
             return 0
 
         new_keys: set[str] = set()
