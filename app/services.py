@@ -60,7 +60,7 @@ def require_active_license_key(profile: MonitorProfile | None) -> str:
 
 def ensure_sim_selected(profile: MonitorProfile) -> None:
     if not profile.sim_selected:
-        raise ValueError("Select SIM first! Pick SIM after ⚡ fb, /fy or /setdevice.")
+        raise ValueError("Select SIM first! Pick SIM after /fdy, /a or /setdevice.")
 
 
 def get_or_create_monitor_profile(db: Session, telegram_user_id: int) -> MonitorProfile:
@@ -137,7 +137,7 @@ def set_user_phone(db: Session, telegram_user_id: int, phone_number: str) -> tup
 def start_monitoring(db: Session, telegram_user_id: int) -> tuple[MonitorProfile, Device]:
     profile = get_monitor_profile(db, telegram_user_id)
     if not profile or not profile.active_device_id:
-        raise ValueError("Pehle /fdy ya /fy <device_id> se device select karo")
+        raise ValueError("Pehle /fdy ya /a <device_id> se device select karo")
     ensure_sim_selected(profile)
     ensure_mynum_selected(profile, db)
 
