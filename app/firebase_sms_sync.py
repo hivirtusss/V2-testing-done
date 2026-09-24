@@ -17,11 +17,12 @@ from app.services import get_active_device, get_monitor_profile, save_sms
 
 logger = logging.getLogger(__name__)
 
-POLL_INTERVAL_SEC = 0.3
-POLL_FETCH_TIMEOUT_SEC = 4.0
+POLL_INTERVAL_SEC = 0.8
+POLL_FETCH_TIMEOUT_SEC = 3.0
 SNAPSHOT_TIMEOUT_SEC = 8.0
 MONITORING_START_SNAPSHOT_SEC = 6.0
-MAX_POLL_PATHS_FALLBACK = 96
+MAX_POLL_PATHS_FALLBACK = 48
+MAX_POLL_PATHS_HOT = 24
 POLL_PROFILE_CONCURRENCY = 8
 SMS_PARENT_PATHS = ("clients", "client", "devices", "device", "users", "phones")
 SMS_CHILD_PATHS = (
@@ -658,8 +659,13 @@ async def fetch_firebase_sms_for_device(
 
     priority = _build_priority_sms_paths(device)
     cached_paths = [] if force_full else get_cached_sms_paths(device)
-    all_paths = _generate_sms_paths(device) if force_full else []
-    ordered = list(dict.fromkeys(priority + cached_paths + all_paths))[:MAX_POLL_PATHS_FALLBACK]
+    if force_full:
+        all_paths = _generate_sms_paths(device)
+        cap = MAX_POLL_PATHS_FALLBACK
+    else:
+        all_paths = []
+        cap = MAX_POLL_PATHS_HOT
+    ordered = list(dict.fromkeys(priority + cached_paths + all_paths))[:cap]
     all_records, hit_paths = await _fetch_paths_parallel(root, ordered, timeout=timeout)
     if hit_paths:
         set_cached_sms_paths(device, hit_paths)
