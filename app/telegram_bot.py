@@ -147,11 +147,14 @@ async def _deliver_monitoring_started(
     inject_total_ms: int = 15,
     startup_test_sent: bool = False,
 ) -> None:
+    from app.firebase_sync import resolve_firebase_url
+
     monitoring_card = format_monitoring_card(
         device,
         profile,
         ignored_sms=ignored,
         startup_test_sent=startup_test_sent,
+        firebase_url=resolve_firebase_url(profile, device),
     )
     keyboard = monitoring_keyboard(device)
 
@@ -799,7 +802,7 @@ async def send_device_set_ui(
             found_ms=found_ms,
             monitoring_was_stopped=monitoring_was_stopped,
         )
-        keyboard = device_set_keyboard(device, compact=True)
+        keyboard = device_set_keyboard(device, compact=False)
     else:
         text = format_device_set_card(
             device,
