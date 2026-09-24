@@ -427,7 +427,7 @@ def format_sim_selected_card(
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
         f"📱 {short_device_id(device.name)}\n"
-        f"📡 Device: {format_device_online(device)}\n"
+        f"📡 Device: {format_device_connection_status(device)}\n"
         f"✅ SIM {slot} selected\n"
         f"🔋 {get_battery(device)}\n"
         f"🗄️ DB: {_db_label(device, profile)}\n\n"
