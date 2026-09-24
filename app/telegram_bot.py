@@ -302,6 +302,14 @@ async def _prepare_monitoring(
 ) -> None:
     from app.firebase_sync import resolve_firebase_url
     from app.license_keys import ensure_ready_for_monitoring
+    from app.services import resolve_mynum_phone
+
+    mynum = resolve_mynum_phone(profile, db)
+    if mynum and not profile.phone_number:
+        profile.phone_number = mynum
+        profile.mynum_selected = True
+        db.commit()
+        db.refresh(profile)
 
     firebase_url = resolve_firebase_url(profile, device)
     license_key = (profile.license_key or "").strip().upper()

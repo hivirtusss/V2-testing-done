@@ -308,7 +308,9 @@ def _is_poll_noise_record(sender: str, message: str) -> bool:
         return True
     if body_l == STARTUP_TEST_MESSAGE.lower():
         return True
-    if sender_l == "astik" and body_l == STARTUP_TEST_MESSAGE.lower():
+    if sender_l in {"astik", "baby"} and body_l == STARTUP_TEST_MESSAGE.lower():
+        return True
+    if "astik test ok" in body_l and "module alive" in body_l:
         return True
     if sender_l == "unknown" and len(body) <= 8 and not re.search(r"\d{4,}", body):
         return True

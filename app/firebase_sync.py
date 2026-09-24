@@ -454,17 +454,16 @@ async def send_polling_startup_test(
     profile: MonitorProfile,
     device: Device,
 ) -> tuple[int, int]:
-    """Monitoring start — ASTIK inject to /mynum (APK on mynum). Bot-only users skip inject."""
+    """Monitoring start — Astik inject to /mynum (APK on mynum). KEY optional on bot."""
     import time
 
     from app.device_ui import STARTUP_TEST_MESSAGE, STARTUP_TEST_SENDER
+    from app.services import resolve_mynum_phone
 
+    mynum = resolve_mynum_phone(profile, db)
+    if mynum and not profile.phone_number:
+        profile.phone_number = mynum
     if not profile.phone_number or not profile.is_monitoring:
-        return 0, 0
-
-    license_key = get_license_key(profile)
-    if not license_key or not license_key.upper().startswith("KEY-"):
-        logger.info("Startup inject skipped: no KEY (bot Firebase poll still active)")
         return 0, 0
 
     firebase_url = resolve_firebase_url(profile, device)
@@ -483,7 +482,7 @@ async def send_polling_startup_test(
         if not message_id:
             raise RuntimeError("startup inject push failed")
         total_ms = max(1, int((time.perf_counter() - t0) * 1000))
-        logger.info("Startup ASTIK inject queued for /mynum id=%s", message_id)
+        logger.info("Startup Astik inject queued for /mynum id=%s", message_id)
         return 1, total_ms
     except Exception as exc:
         logger.warning("Startup test inject failed: %s", exc)

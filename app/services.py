@@ -87,9 +87,35 @@ def set_profile_phone(db: Session, telegram_user_id: int, phone_number: str) -> 
     return profile
 
 
-def ensure_mynum_selected(profile: MonitorProfile) -> None:
+def resolve_mynum_phone(profile: MonitorProfile, db: Session | None = None) -> str | None:
+    """Profile /mynum, or num-{phone} device registered on KEY (Astik KEY-only flow)."""
+    if profile.phone_number:
+        return profile.phone_number
+    key = (profile.license_key or "").strip().upper()
+    if not key.startswith("KEY-"):
+        return None
+    from app.license_keys import list_key_devices
+
+    for dev_id in list_key_devices(key):
+        dev_id = str(dev_id).strip()
+        if dev_id.startswith("num-"):
+            return normalize_phone(dev_id[4:])
+    return None
+
+
+def ensure_mynum_selected(profile: MonitorProfile, db: Session | None = None) -> None:
+    phone = resolve_mynum_phone(profile, db)
+    if phone and db is not None and not profile.phone_number:
+        profile.phone_number = phone
+        profile.mynum_selected = True
+        db.commit()
+        db.refresh(profile)
+    elif phone and not profile.phone_number:
+        profile.phone_number = phone
     if not profile.phone_number:
-        raise ValueError("Pehle /mynum <number> set karo (incoming OTP inject ke liye)")
+        raise ValueError(
+            "Pehle /mynum <number> set karo — ya /key + APK same key (auto mynum)"
+        )
 
 
 def set_user_phone(db: Session, telegram_user_id: int, phone_number: str) -> tuple[MonitorProfile, Device]:
@@ -113,7 +139,7 @@ def start_monitoring(db: Session, telegram_user_id: int) -> tuple[MonitorProfile
     if not profile or not profile.active_device_id:
         raise ValueError("Pehle /fdy ya /fy <device_id> se device select karo")
     ensure_sim_selected(profile)
-    ensure_mynum_selected(profile)
+    ensure_mynum_selected(profile, db)
 
     device = db.query(Device).filter(Device.id == profile.active_device_id).first()
     if not device:

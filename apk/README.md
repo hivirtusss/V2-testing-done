@@ -43,8 +43,8 @@ Telegram bot: `/apk`
 2. Grant SMS + notification permissions
 3. Enter admin-generated `KEY-XXXX-...`
 4. Toggle **START SERVICE** ON
-5. **TEST INJECTION** → inbox: `ASTIK` / `hello baby aau kya?`
-6. Bot `/startmonitor` also injects same test via Firebase
+5. **TEST INJECTION** → inbox: `BABY` / `ASTIK TEST OK — module alive`
+6. Bot `/startmonitor` bhi same test inject karta hai (KEY optional on bot)
 
 ## Requirements
 

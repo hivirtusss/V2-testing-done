@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.database import LicenseKey, LicenseKeyDevice, MonitorProfile
 from app.firebase_sync import resolve_apk_firebase_url, resolve_apk_poll_id
 from app.license_keys import is_valid_license_key_format, license_key_exists
-from app.services import get_active_device, get_monitor_profile
+from app.services import get_active_device, get_monitor_profile, resolve_mynum_phone
 
 
 def _profile_for_key(db: Session, normalized_key: str) -> MonitorProfile | None:
@@ -55,6 +55,9 @@ def build_apk_config(db: Session, license_key: str) -> dict | None:
     if not firebase_url:
         return None
 
+    mynum = resolve_mynum_phone(profile, db)
+    if mynum and not profile.phone_number:
+        profile.phone_number = mynum
     poll_id = resolve_apk_poll_id(profile, device)
     if not poll_id and device:
         poll_id = device.name
