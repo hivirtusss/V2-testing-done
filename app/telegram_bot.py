@@ -458,7 +458,7 @@ async def _sim_menu_after_stop(
     if device.firebase_source_url:
         asyncio.create_task(_background_sync_device(device.id, user_id))
     return (
-        format_device_set_card(device, sim_index),
+        format_device_set_card(device, sim_index, profile),
         device_set_keyboard(device),
     )
 
@@ -779,6 +779,7 @@ async def send_device_set_ui(
         text = format_device_set_card(
             device,
             selected_sim=sim_index,
+            profile=profile,
             status=device_status(device),
         )
         keyboard = device_set_keyboard(device)

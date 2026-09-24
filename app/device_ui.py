@@ -361,10 +361,11 @@ def format_device_found_card(
 def format_device_set_card(
     device: Device,
     selected_sim: int = 0,
+    profile: MonitorProfile | None = None,
     *,
     status: str = "online",
 ) -> str:
-    """Astik /setdevice — Device Set card with active SIM, FROM number, SIM list."""
+    """Astik /setdevice — Device Set card with live status, DB, SIM list."""
     device_short = short_device_id(device.name)
     active = get_selected_sim(device, selected_sim)
     sim_block = _sim_lines_block(device, found_card=False)
@@ -375,6 +376,8 @@ def format_device_set_card(
         "Device Set!\n\n"
         f"📱 {device_short}\n"
         f"🔋 {get_battery(device)}\n"
+        f"{format_device_connection_status(device)}\n"
+        f"🗄️ DB: {_db_label(device, profile)}\n"
         f"{_active_sim_line(active)}\n"
         f"{_from_number_line(active)}\n\n"
         f"{sim_block}\n\n"
