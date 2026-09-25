@@ -553,12 +553,12 @@ def format_auto_stop_card(minutes: int = 15) -> str:
         "<pre>"
         f"Monitoring STOPPED! ({minutes} min auto-stop)\n"
         "⏸️ Inject + OTP poll + APK uptime band ho gaye.\n\n"
-        "Dobara start:\n"
-        "1. /startmonitor ya /resume\n"
-        "2. APK: START SERVICE ON + same KEY\n"
-        "3. /injecttest — phone pe SMS check\n\n"
-        "Timer badhana: /autostop 60 (minutes)\n"
-        "Band karna: /autostop 0 (manual stop tak chalega)"
+        "Dobara start (normal flow):\n"
+        "→ /startmonitor\n"
+        "(ya /resume — same kaam)\n\n"
+        "APK phone: START SERVICE ON + same KEY rakho.\n"
+        "Phir /injecttest se SMS check kar sakte ho.\n\n"
+        "Timer badhana: /autostop 60"
         "</pre>"
     )
 

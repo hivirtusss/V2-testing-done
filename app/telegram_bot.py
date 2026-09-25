@@ -331,6 +331,7 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
     if not await reply_if_unauthorized(update):
         return
 
+    cancel_auto_stop(user.id)
     status_msg = await update.message.reply_text(
         "⏳ <b>Monitoring start ho raha hai...</b>",
         parse_mode="HTML",
@@ -832,6 +833,7 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not await reply_if_unauthorized(update):
         return
 
+    cancel_auto_stop(user.id)
     db: Session = SessionLocal()
     inject_total_ms = 15
     ignored = 0
@@ -1533,6 +1535,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         if data.startswith("monitor:start:"):
             await query.answer("⏳ Monitoring start...")
             answered = True
+            cancel_auto_stop(user.id)
             try:
                 await query.edit_message_text(
                     "⏳ <b>Monitoring start ho raha hai...</b>",
