@@ -534,7 +534,7 @@ def format_mynum_set_card(phone: str) -> str:
     )
 
 
-def format_auto_stop_card(minutes: int = 15) -> str:
+def format_auto_stop_card(minutes: int = 60) -> str:
     return (
         "✅ <b>SUCCESS</b>\n"
         "<pre>"
@@ -559,7 +559,7 @@ def format_monitoring_card(
     sim_index = profile.selected_sim_index or 0
     active_sim = get_selected_sim(device, sim_index)
     sim_slot = active_sim.get("slot", 1)
-    auto_stop = profile.auto_stop_minutes or 15
+    auto_stop = profile.auto_stop_minutes or 60
     inject_key = get_inject_key(profile, device)
     test_msg = test_message or STARTUP_TEST_MESSAGE
     test_line = f"✅ Test inject OK: {test_msg}" if startup_test_sent else "⏳ Test inject queued..."
