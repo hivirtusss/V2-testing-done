@@ -34,6 +34,17 @@ if [ ! -f "$SIGNER" ]; then
     "https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar"
 fi
 
+KEYSTORE="$ROOT/virtus.keystore"
+if [ ! -f "$KEYSTORE" ]; then
+  echo "Creating virtus.keystore (first-time sign key)..."
+  keytool -genkeypair -v \
+    -keystore "$KEYSTORE" \
+    -alias virtus \
+    -keyalg RSA -keysize 2048 -validity 10000 \
+    -storepass virtus123 -keypass virtus123 \
+    -dname "CN=Virtus Module, OU=APK, O=Virtus, L=NA, ST=NA, C=IN"
+fi
+
 java -jar "$SIGNER" \
   --apks virtus-unsigned.apk \
   --ks virtus.keystore \
