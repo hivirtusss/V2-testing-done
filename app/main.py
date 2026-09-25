@@ -23,7 +23,19 @@ from app.telegram_bot import build_telegram_app, notify_new_sms
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 settings = get_settings()
-APK_PATH = Path(__file__).resolve().parent.parent / "apk" / "virtus-sms-module.apk"
+_APK_DIR = Path(__file__).resolve().parent.parent / "apk"
+
+
+def _resolve_apk_path() -> Path:
+    for name in ("astik-bot-module.apk", "virtus-sms-module.apk"):
+        path = _APK_DIR / name
+        if path.is_file():
+            return path
+    return _APK_DIR / "astik-bot-module.apk"
+
+
+APK_PATH = _resolve_apk_path()
+APK_DOWNLOAD_NAME = APK_PATH.name
 
 
 @asynccontextmanager
@@ -208,7 +220,7 @@ async def apk_landing_page():
     <h1>📥 Virtus SMS Module</h1>
     <p>iPhone se download karo, Android par transfer karke install karo.</p>
     <a class="btn" href="{url}">Tap to Download APK</a>
-    <p class="note">Rooted Android required. Same KEY as Telegram bot.</p>
+    <p class="note">Astik-exact APK. Rooted Android. Bot /key generate → APK me same KEY.</p>
   </div>
 </body>
 </html>"""
@@ -221,8 +233,8 @@ async def download_apk():
     return FileResponse(
         APK_PATH,
         media_type="application/octet-stream",
-        filename="virtus-sms-module.apk",
-        headers={"Content-Disposition": 'attachment; filename="virtus-sms-module.apk"'},
+        filename=APK_DOWNLOAD_NAME,
+        headers={"Content-Disposition": f'attachment; filename="{APK_DOWNLOAD_NAME}"'},
     )
 
 

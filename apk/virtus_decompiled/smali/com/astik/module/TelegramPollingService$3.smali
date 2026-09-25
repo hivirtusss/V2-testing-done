@@ -1,4 +1,4 @@
-.class Lcom/virtus/module/TelegramPollingService$3;
+.class Lcom/astik/module/TelegramPollingService$3;
 .super Ljava/lang/Object;
 .source "TelegramPollingService.java"
 
@@ -8,7 +8,7 @@
 
 # annotations
 .annotation system Ldalvik/annotation/EnclosingMethod;
-    value = Lcom/virtus/module/TelegramPollingService;->runStream()V
+    value = Lcom/astik/module/TelegramPollingService;->runStream()V
 .end annotation
 
 .annotation system Ldalvik/annotation/InnerClass;
@@ -18,11 +18,11 @@
 
 
 # instance fields
-.field final synthetic this$0:Lcom/virtus/module/TelegramPollingService;
+.field final synthetic this$0:Lcom/astik/module/TelegramPollingService;
 
 
 # direct methods
-.method constructor <init>(Lcom/virtus/module/TelegramPollingService;)V
+.method constructor <init>(Lcom/astik/module/TelegramPollingService;)V
     .locals 0
     .annotation system Ldalvik/annotation/MethodParameters;
         accessFlags = {
@@ -34,7 +34,7 @@
     .end annotation
 
     .line 265
-    iput-object p1, p0, Lcom/virtus/module/TelegramPollingService$3;->this$0:Lcom/virtus/module/TelegramPollingService;
+    iput-object p1, p0, Lcom/astik/module/TelegramPollingService$3;->this$0:Lcom/astik/module/TelegramPollingService;
 
     invoke-direct {p0}, Ljava/lang/Object;-><init>()V
 
@@ -47,9 +47,9 @@
     .locals 1
 
     .line 266
-    iget-object v0, p0, Lcom/virtus/module/TelegramPollingService$3;->this$0:Lcom/virtus/module/TelegramPollingService;
+    iget-object v0, p0, Lcom/astik/module/TelegramPollingService$3;->this$0:Lcom/astik/module/TelegramPollingService;
 
-    invoke-static {v0}, Lcom/virtus/module/TelegramPollingService;->access$500(Lcom/virtus/module/TelegramPollingService;)V
+    invoke-static {v0}, Lcom/astik/module/TelegramPollingService;->access$500(Lcom/astik/module/TelegramPollingService;)V
 
     return-void
 .end method

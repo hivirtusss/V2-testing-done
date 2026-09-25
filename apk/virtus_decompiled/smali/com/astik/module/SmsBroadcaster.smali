@@ -1,4 +1,4 @@
-.class public Lcom/virtus/module/SmsBroadcaster;
+.class public Lcom/astik/module/SmsBroadcaster;
 .super Ljava/lang/Object;
 .source "SmsBroadcaster.java"
 
@@ -192,7 +192,7 @@
     move-result-object v1
 
     .line 121
-    invoke-static {v1, v0}, Lcom/virtus/module/SmsBroadcaster;->buildArgs([Ljava/lang/Class;Landroid/content/Intent;)[Ljava/lang/Object;
+    invoke-static {v1, v0}, Lcom/astik/module/SmsBroadcaster;->buildArgs([Ljava/lang/Class;Landroid/content/Intent;)[Ljava/lang/Object;
 
     move-result-object v0
 
@@ -207,7 +207,7 @@
     invoke-virtual {v0, v2}, Ljava/io/PrintStream;->println(Ljava/lang/String;)V
 
     .line 125
-    invoke-static {v1, v8}, Lcom/virtus/module/SmsBroadcaster;->buildArgs([Ljava/lang/Class;Landroid/content/Intent;)[Ljava/lang/Object;
+    invoke-static {v1, v8}, Lcom/astik/module/SmsBroadcaster;->buildArgs([Ljava/lang/Class;Landroid/content/Intent;)[Ljava/lang/Object;
 
     move-result-object v0
 
@@ -529,7 +529,7 @@
 
     .line 278
     :cond_2
-    invoke-static {p0}, Lcom/virtus/module/SmsBroadcaster;->pack7Bit(Ljava/lang/String;)[B
+    invoke-static {p0}, Lcom/astik/module/SmsBroadcaster;->pack7Bit(Ljava/lang/String;)[B
 
     move-result-object v3
 
@@ -616,7 +616,7 @@
     move-result p0
 
     .line 292
-    invoke-static {p1}, Lcom/virtus/module/SmsBroadcaster;->isAscii(Ljava/lang/String;)Z
+    invoke-static {p1}, Lcom/astik/module/SmsBroadcaster;->isAscii(Ljava/lang/String;)Z
 
     move-result v8
 
@@ -711,7 +711,7 @@
 
     .line 302
     :cond_4
-    invoke-static {p1}, Lcom/virtus/module/SmsBroadcaster;->pack7Bit(Ljava/lang/String;)[B
+    invoke-static {p1}, Lcom/astik/module/SmsBroadcaster;->pack7Bit(Ljava/lang/String;)[B
 
     move-result-object p0
 
@@ -985,7 +985,7 @@
 
     .line 144
     :cond_3
-    invoke-static {p0, v2}, Lcom/virtus/module/SmsBroadcaster;->pack7Bit(Ljava/lang/String;I)[B
+    invoke-static {p0, v2}, Lcom/astik/module/SmsBroadcaster;->pack7Bit(Ljava/lang/String;I)[B
 
     move-result-object v3
 
@@ -1171,7 +1171,7 @@
     .line 171
     move-object v0, p1
 
-    invoke-static {p1, v2}, Lcom/virtus/module/SmsBroadcaster;->pack7Bit(Ljava/lang/String;I)[B
+    invoke-static {p1, v2}, Lcom/astik/module/SmsBroadcaster;->pack7Bit(Ljava/lang/String;I)[B
 
     move-result-object v2
 
@@ -1334,7 +1334,7 @@
 
     .line 197
     :cond_3
-    invoke-static {p0, v2}, Lcom/virtus/module/SmsBroadcaster;->pack7Bit(Ljava/lang/String;I)[B
+    invoke-static {p0, v2}, Lcom/astik/module/SmsBroadcaster;->pack7Bit(Ljava/lang/String;I)[B
 
     move-result-object v3
 
@@ -1573,7 +1573,7 @@
     .end annotation
 
     .line 59
-    invoke-static {p1}, Lcom/virtus/module/SmsBroadcaster;->isAscii(Ljava/lang/String;)Z
+    invoke-static {p1}, Lcom/astik/module/SmsBroadcaster;->isAscii(Ljava/lang/String;)Z
 
     move-result v0
 
@@ -1663,7 +1663,7 @@
     if-eqz v0, :cond_2
 
     .line 70
-    invoke-static {p0, v5, v3, v1, v4}, Lcom/virtus/module/SmsBroadcaster;->createPduConcat(Ljava/lang/String;Ljava/lang/String;BII)[B
+    invoke-static {p0, v5, v3, v1, v4}, Lcom/astik/module/SmsBroadcaster;->createPduConcat(Ljava/lang/String;Ljava/lang/String;BII)[B
 
     move-result-object v5
 
@@ -1671,7 +1671,7 @@
 
     .line 71
     :cond_2
-    invoke-static {p0, v5, v3, v1, v4}, Lcom/virtus/module/SmsBroadcaster;->createPduConcatUcs2(Ljava/lang/String;Ljava/lang/String;BII)[B
+    invoke-static {p0, v5, v3, v1, v4}, Lcom/astik/module/SmsBroadcaster;->createPduConcatUcs2(Ljava/lang/String;Ljava/lang/String;BII)[B
 
     move-result-object v5
 
@@ -1683,7 +1683,7 @@
 
     if-lez v6, :cond_3
 
-    invoke-static {v5}, Lcom/virtus/module/SmsBroadcaster;->broadcast([B)V
+    invoke-static {v5}, Lcom/astik/module/SmsBroadcaster;->broadcast([B)V
 
     .line 73
     :cond_3
@@ -1735,7 +1735,7 @@
 
     .line 78
     :cond_5
-    invoke-static {p0, p1}, Lcom/virtus/module/SmsBroadcaster;->createPdu(Ljava/lang/String;Ljava/lang/String;)[B
+    invoke-static {p0, p1}, Lcom/astik/module/SmsBroadcaster;->createPdu(Ljava/lang/String;Ljava/lang/String;)[B
 
     move-result-object p0
 
@@ -1759,7 +1759,7 @@
 
     .line 83
     :cond_7
-    invoke-static {p0}, Lcom/virtus/module/SmsBroadcaster;->broadcast([B)V
+    invoke-static {p0}, Lcom/astik/module/SmsBroadcaster;->broadcast([B)V
 
     .line 84
     sget-object p0, Ljava/lang/System;->out:Ljava/io/PrintStream;
@@ -1846,7 +1846,7 @@
     .line 24
     sget-object p0, Ljava/lang/System;->out:Ljava/io/PrintStream;
 
-    const-string v0, "VIRTUS_DAEMON_V2"
+    const-string v0, "ASTIK_DAEMON_V2"
 
     invoke-virtual {p0, v0}, Ljava/io/PrintStream;->println(Ljava/lang/String;)V
 
@@ -1914,7 +1914,7 @@
 
     .line 35
     :try_start_0
-    invoke-static {v3, v0}, Lcom/virtus/module/SmsBroadcaster;->fire(Ljava/lang/String;Ljava/lang/String;)V
+    invoke-static {v3, v0}, Lcom/astik/module/SmsBroadcaster;->fire(Ljava/lang/String;Ljava/lang/String;)V
 
     .line 36
     sget-object v0, Ljava/lang/System;->out:Ljava/io/PrintStream;
@@ -2004,7 +2004,7 @@
 
     aget-object p0, p0, v2
 
-    invoke-static {v0, p0}, Lcom/virtus/module/SmsBroadcaster;->fire(Ljava/lang/String;Ljava/lang/String;)V
+    invoke-static {v0, p0}, Lcom/astik/module/SmsBroadcaster;->fire(Ljava/lang/String;Ljava/lang/String;)V
 
     .line 53
     return-void
@@ -2016,7 +2016,7 @@
     .line 335
     const/4 v0, 0x0
 
-    invoke-static {p0, v0}, Lcom/virtus/module/SmsBroadcaster;->pack7Bit(Ljava/lang/String;I)[B
+    invoke-static {p0, v0}, Lcom/astik/module/SmsBroadcaster;->pack7Bit(Ljava/lang/String;I)[B
 
     move-result-object p0
 

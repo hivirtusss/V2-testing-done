@@ -1,4 +1,4 @@
-.class Lcom/virtus/module/MainActivity$3;
+.class Lcom/astik/module/MainActivity$3;
 .super Ljava/lang/Object;
 .source "MainActivity.java"
 
@@ -8,7 +8,7 @@
 
 # annotations
 .annotation system Ldalvik/annotation/EnclosingMethod;
-    value = Lcom/virtus/module/MainActivity;->onCreate(Landroid/os/Bundle;)V
+    value = Lcom/astik/module/MainActivity;->onCreate(Landroid/os/Bundle;)V
 .end annotation
 
 .annotation system Ldalvik/annotation/InnerClass;
@@ -18,11 +18,11 @@
 
 
 # instance fields
-.field final synthetic this$0:Lcom/virtus/module/MainActivity;
+.field final synthetic this$0:Lcom/astik/module/MainActivity;
 
 
 # direct methods
-.method constructor <init>(Lcom/virtus/module/MainActivity;)V
+.method constructor <init>(Lcom/astik/module/MainActivity;)V
     .locals 0
     .annotation system Ldalvik/annotation/MethodParameters;
         accessFlags = {
@@ -34,7 +34,7 @@
     .end annotation
 
     .line 176
-    iput-object p1, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
+    iput-object p1, p0, Lcom/astik/module/MainActivity$3;->this$0:Lcom/astik/module/MainActivity;
 
     invoke-direct {p0}, Ljava/lang/Object;-><init>()V
 
@@ -47,9 +47,9 @@
     .locals 3
 
     .line 179
-    iget-object p1, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
+    iget-object p1, p0, Lcom/astik/module/MainActivity$3;->this$0:Lcom/astik/module/MainActivity;
 
-    invoke-static {p1}, Lcom/virtus/module/MainActivity;->access$300(Lcom/virtus/module/MainActivity;)Z
+    invoke-static {p1}, Lcom/astik/module/MainActivity;->access$300(Lcom/astik/module/MainActivity;)Z
 
     move-result p1
 
@@ -59,9 +59,9 @@
 
     .line 180
     :cond_0
-    iget-object p1, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
+    iget-object p1, p0, Lcom/astik/module/MainActivity$3;->this$0:Lcom/astik/module/MainActivity;
 
-    invoke-static {p1}, Lcom/virtus/module/MainActivity;->access$400(Lcom/virtus/module/MainActivity;)Landroid/content/SharedPreferences;
+    invoke-static {p1}, Lcom/astik/module/MainActivity;->access$400(Lcom/astik/module/MainActivity;)Landroid/content/SharedPreferences;
 
     move-result-object p1
 
@@ -82,20 +82,20 @@
     if-eqz p2, :cond_1
 
     .line 182
-    iget-object p2, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
+    iget-object p2, p0, Lcom/astik/module/MainActivity$3;->this$0:Lcom/astik/module/MainActivity;
 
     new-instance v0, Landroid/content/Intent;
 
-    iget-object v1, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
+    iget-object v1, p0, Lcom/astik/module/MainActivity$3;->this$0:Lcom/astik/module/MainActivity;
 
-    const-class v2, Lcom/virtus/module/TelegramPollingService;
+    const-class v2, Lcom/astik/module/TelegramPollingService;
 
     invoke-direct {v0, v1, v2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
 
-    invoke-virtual {p2, v0}, Lcom/virtus/module/MainActivity;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
+    invoke-virtual {p2, v0}, Lcom/astik/module/MainActivity;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
 
     .line 183
-    iget-object p2, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
+    iget-object p2, p0, Lcom/astik/module/MainActivity$3;->this$0:Lcom/astik/module/MainActivity;
 
     const-string v0, "Service started \u2014 always alive"
 
@@ -109,20 +109,20 @@
 
     .line 185
     :cond_1
-    iget-object p2, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
+    iget-object p2, p0, Lcom/astik/module/MainActivity$3;->this$0:Lcom/astik/module/MainActivity;
 
     new-instance v0, Landroid/content/Intent;
 
-    iget-object v1, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
+    iget-object v1, p0, Lcom/astik/module/MainActivity$3;->this$0:Lcom/astik/module/MainActivity;
 
-    const-class v2, Lcom/virtus/module/TelegramPollingService;
+    const-class v2, Lcom/astik/module/TelegramPollingService;
 
     invoke-direct {v0, v1, v2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
 
-    invoke-virtual {p2, v0}, Lcom/virtus/module/MainActivity;->stopService(Landroid/content/Intent;)Z
+    invoke-virtual {p2, v0}, Lcom/astik/module/MainActivity;->stopService(Landroid/content/Intent;)Z
 
     .line 186
-    iget-object p2, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
+    iget-object p2, p0, Lcom/astik/module/MainActivity$3;->this$0:Lcom/astik/module/MainActivity;
 
     const-string v0, "Service stopped"
 
@@ -134,9 +134,9 @@
 
     .line 188
     :goto_0
-    iget-object p1, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
+    iget-object p1, p0, Lcom/astik/module/MainActivity$3;->this$0:Lcom/astik/module/MainActivity;
 
-    invoke-static {p1}, Lcom/virtus/module/MainActivity;->access$500(Lcom/virtus/module/MainActivity;)V
+    invoke-static {p1}, Lcom/astik/module/MainActivity;->access$500(Lcom/astik/module/MainActivity;)V
 
     return-void
 .end method

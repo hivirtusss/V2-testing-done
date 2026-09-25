@@ -1,4 +1,4 @@
-.class Lcom/virtus/module/MainActivity$1;
+.class Lcom/astik/module/MainActivity$1;
 .super Ljava/lang/Object;
 .source "MainActivity.java"
 
@@ -8,7 +8,7 @@
 
 # annotations
 .annotation system Ldalvik/annotation/EnclosingClass;
-    value = Lcom/virtus/module/MainActivity;
+    value = Lcom/astik/module/MainActivity;
 .end annotation
 
 .annotation system Ldalvik/annotation/InnerClass;
@@ -18,11 +18,11 @@
 
 
 # instance fields
-.field final synthetic this$0:Lcom/virtus/module/MainActivity;
+.field final synthetic this$0:Lcom/astik/module/MainActivity;
 
 
 # direct methods
-.method constructor <init>(Lcom/virtus/module/MainActivity;)V
+.method constructor <init>(Lcom/astik/module/MainActivity;)V
     .locals 0
     .annotation system Ldalvik/annotation/MethodParameters;
         accessFlags = {
@@ -34,7 +34,7 @@
     .end annotation
 
     .line 59
-    iput-object p1, p0, Lcom/virtus/module/MainActivity$1;->this$0:Lcom/virtus/module/MainActivity;
+    iput-object p1, p0, Lcom/astik/module/MainActivity$1;->this$0:Lcom/astik/module/MainActivity;
 
     invoke-direct {p0}, Ljava/lang/Object;-><init>()V
 
@@ -47,14 +47,14 @@
     .locals 3
 
     .line 62
-    iget-object v0, p0, Lcom/virtus/module/MainActivity$1;->this$0:Lcom/virtus/module/MainActivity;
+    iget-object v0, p0, Lcom/astik/module/MainActivity$1;->this$0:Lcom/astik/module/MainActivity;
 
-    invoke-static {v0}, Lcom/virtus/module/MainActivity;->access$000(Lcom/virtus/module/MainActivity;)V
+    invoke-static {v0}, Lcom/astik/module/MainActivity;->access$000(Lcom/astik/module/MainActivity;)V
 
     .line 63
-    iget-object v0, p0, Lcom/virtus/module/MainActivity$1;->this$0:Lcom/virtus/module/MainActivity;
+    iget-object v0, p0, Lcom/astik/module/MainActivity$1;->this$0:Lcom/astik/module/MainActivity;
 
-    invoke-static {v0}, Lcom/virtus/module/MainActivity;->access$100(Lcom/virtus/module/MainActivity;)Landroid/os/Handler;
+    invoke-static {v0}, Lcom/astik/module/MainActivity;->access$100(Lcom/astik/module/MainActivity;)Landroid/os/Handler;
 
     move-result-object v0
 

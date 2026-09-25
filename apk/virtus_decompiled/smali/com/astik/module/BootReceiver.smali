@@ -1,4 +1,4 @@
-.class public Lcom/virtus/module/BootReceiver;
+.class public Lcom/astik/module/BootReceiver;
 .super Landroid/content/BroadcastReceiver;
 .source "BootReceiver.java"
 
@@ -18,7 +18,7 @@
 .method public onReceive(Landroid/content/Context;Landroid/content/Intent;)V
     .locals 2
 
-    const-string p2, "virtus_module_prefs"
+    const-string p2, "astik_module_prefs"
 
     const/4 v0, 0x0
 
@@ -39,7 +39,7 @@
     .line 15
     new-instance p2, Landroid/content/Intent;
 
-    const-class v0, Lcom/virtus/module/TelegramPollingService;
+    const-class v0, Lcom/astik/module/TelegramPollingService;
 
     invoke-direct {p2, p1, v0}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
 
