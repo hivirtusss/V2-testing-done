@@ -264,19 +264,22 @@ async def mynum_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     phone = context.args[0]
     db: Session = SessionLocal()
+    poll_id: str | None = None
     try:
         profile = set_profile_phone(db, user.id, phone)
         device = get_active_device(db, user.id)
         if not device:
             raise ValueError("Pehle /fdy <device_id> se device select karo")
-        asyncio.create_task(sync_profile_for_user(user.id))
+        from app.firebase_sync import publish_mynum_inject_target
+
+        poll_id = await publish_mynum_inject_target(profile, device, telegram_user_id=user.id)
     except ValueError as exc:
         await update.message.reply_text(f"❌ {exc}")
         return
     finally:
         db.close()
 
-    text = format_mynum_set_card(profile.phone_number or phone)
+    text = format_mynum_set_card(profile.phone_number or phone, poll_id=poll_id)
     if profile.sim_selected:
         await update.message.reply_text(
             text,

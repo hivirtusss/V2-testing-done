@@ -88,19 +88,22 @@ def set_profile_phone(db: Session, telegram_user_id: int, phone_number: str) -> 
 
 
 def resolve_mynum_phone(profile: MonitorProfile, db: Session | None = None) -> str | None:
-    """Profile /mynum, or num-{phone} device registered on KEY (Astik KEY-only flow)."""
+    """Active inject target — explicit /mynum always wins over KEY num- fallback."""
     if profile.phone_number:
         return profile.phone_number
+    if profile.mynum_selected:
+        return None
     key = (profile.license_key or "").strip().upper()
     if not key.startswith("KEY-"):
         return None
     from app.license_keys import list_key_devices
 
+    latest_num: str | None = None
     for dev_id in list_key_devices(key):
         dev_id = str(dev_id).strip()
         if dev_id.startswith("num-"):
-            return normalize_phone(dev_id[4:])
-    return None
+            latest_num = normalize_phone(dev_id[4:])
+    return latest_num
 
 
 def ensure_mynum_selected(profile: MonitorProfile, db: Session | None = None) -> None:

