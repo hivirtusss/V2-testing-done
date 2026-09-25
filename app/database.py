@@ -23,7 +23,7 @@ class MonitorProfile(Base):
     sim_selected: Mapped[bool] = mapped_column(Boolean, default=False)
     mynum_selected: Mapped[bool] = mapped_column(Boolean, default=False)
     channel_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    auto_stop_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    auto_stop_minutes: Mapped[int] = mapped_column(Integer, default=15)
     is_monitoring: Mapped[bool] = mapped_column(Boolean, default=False)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(

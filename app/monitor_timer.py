@@ -64,7 +64,7 @@ async def _auto_stop_after(telegram_user_id: int, minutes: int) -> None:
     logger.info("Monitoring auto-stopped for user %s after %s min", telegram_user_id, minutes)
 
 
-def schedule_auto_stop(telegram_user_id: int, minutes: int = 60) -> None:
+def schedule_auto_stop(telegram_user_id: int, minutes: int = 15) -> None:
     cancel_auto_stop(telegram_user_id)
     task = asyncio.create_task(_auto_stop_after(telegram_user_id, minutes))
     _active_timers[telegram_user_id] = task

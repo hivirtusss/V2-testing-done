@@ -356,7 +356,7 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
         inject_total_ms=inject_total_ms or 15,
         startup_test_sent=startup_test_sent,
     )
-    schedule_auto_stop(user.id, profile.auto_stop_minutes or 60)
+    schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
 
 
 async def addchannel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -880,7 +880,7 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         inject_total_ms=inject_total_ms or 15,
         startup_test_sent=startup_test_sent,
     )
-    schedule_auto_stop(user.id, profile.auto_stop_minutes or 60)
+    schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
 
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1486,7 +1486,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 inject_total_ms=inject_total_ms or 15,
                 startup_test_sent=startup_test_sent,
             )
-            schedule_auto_stop(user.id, profile.auto_stop_minutes or 60)
+            schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
             return
 
         if data == "monitor:on":
