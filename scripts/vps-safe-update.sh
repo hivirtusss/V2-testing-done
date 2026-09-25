@@ -20,10 +20,11 @@ if [ -f "$ENV_FILE" ]; then
   set +a
 fi
 
-echo "==> git fetch + checkout"
+echo "==> git fetch + checkout (discard old VPS local edits)"
 git fetch origin "$BRANCH"
-git checkout "$BRANCH"
-git pull origin "$BRANCH"
+git checkout "$BRANCH" 2>/dev/null || git checkout -B "$BRANCH" "origin/$BRANCH"
+git reset --hard "origin/$BRANCH"
+git clean -fd apk/virtus_decompiled/ 2>/dev/null || true
 
 echo "==> lock working OTP poll (firebase_sms_sync.py)"
 git checkout "$OTP_STABLE" -- app/firebase_sms_sync.py
