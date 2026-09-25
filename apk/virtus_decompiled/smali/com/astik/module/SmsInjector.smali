@@ -1,12 +1,12 @@
-.class public Lcom/virtus/module/SmsInjector;
+.class public Lcom/astik/module/SmsInjector;
 .super Ljava/lang/Object;
 .source "SmsInjector.java"
 
 
 # static fields
-.field private static final DAEMON_VERSION:Ljava/lang/String; = "VIRTUS_DAEMON_V2"
+.field private static final DAEMON_VERSION:Ljava/lang/String; = "ASTIK_DAEMON_V2"
 
-.field private static final TAG:Ljava/lang/String; = "VirtusModule"
+.field private static final TAG:Ljava/lang/String; = "AstikModule"
 
 .field private static daemonIn:Ljava/io/OutputStream;
 
@@ -22,15 +22,15 @@
     .line 23
     const/4 v0, 0x0
 
-    sput-object v0, Lcom/virtus/module/SmsInjector;->daemonProc:Ljava/lang/Process;
+    sput-object v0, Lcom/astik/module/SmsInjector;->daemonProc:Ljava/lang/Process;
 
     .line 24
-    sput-object v0, Lcom/virtus/module/SmsInjector;->daemonIn:Ljava/io/OutputStream;
+    sput-object v0, Lcom/astik/module/SmsInjector;->daemonIn:Ljava/io/OutputStream;
 
     .line 25
     const-wide/16 v0, 0x0
 
-    sput-wide v0, Lcom/virtus/module/SmsInjector;->lastDaemonTry:J
+    sput-wide v0, Lcom/astik/module/SmsInjector;->lastDaemonTry:J
 
     return-void
 .end method
@@ -47,23 +47,23 @@
 .method private static declared-synchronized ensureDaemon(Landroid/content/Context;)Z
     .locals 9
 
-    const-class v0, Lcom/virtus/module/SmsInjector;
+    const-class v0, Lcom/astik/module/SmsInjector;
 
     monitor-enter v0
 
     .line 44
     :try_start_0
-    sget-object v1, Lcom/virtus/module/SmsInjector;->daemonProc:Ljava/lang/Process;
+    sget-object v1, Lcom/astik/module/SmsInjector;->daemonProc:Ljava/lang/Process;
 
     const/4 v2, 0x1
 
     if-eqz v1, :cond_0
 
-    sget-object v1, Lcom/virtus/module/SmsInjector;->daemonIn:Ljava/io/OutputStream;
+    sget-object v1, Lcom/astik/module/SmsInjector;->daemonIn:Ljava/io/OutputStream;
 
     if-eqz v1, :cond_0
 
-    sget-object v1, Lcom/virtus/module/SmsInjector;->daemonProc:Ljava/lang/Process;
+    sget-object v1, Lcom/astik/module/SmsInjector;->daemonProc:Ljava/lang/Process;
 
     invoke-virtual {v1}, Ljava/lang/Process;->isAlive()Z
 
@@ -86,7 +86,7 @@
     move-result-wide v3
 
     .line 49
-    sget-wide v5, Lcom/virtus/module/SmsInjector;->lastDaemonTry:J
+    sget-wide v5, Lcom/astik/module/SmsInjector;->lastDaemonTry:J
     :try_end_1
     .catchall {:try_start_1 .. :try_end_1} :catchall_0
 
@@ -107,7 +107,7 @@
     .line 50
     :cond_1
     :try_start_2
-    sput-wide v3, Lcom/virtus/module/SmsInjector;->lastDaemonTry:J
+    sput-wide v3, Lcom/astik/module/SmsInjector;->lastDaemonTry:J
     :try_end_2
     .catchall {:try_start_2 .. :try_end_2} :catchall_0
 
@@ -132,7 +132,7 @@
 
     move-result-object p0
 
-    const-string v1, " / com.virtus.module.SmsBroadcaster daemon"
+    const-string v1, " / com.astik.module.SmsBroadcaster daemon"
 
     invoke-virtual {p0, v1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
 
@@ -188,7 +188,7 @@
     .line 60
     if-eqz v1, :cond_3
 
-    const-string v3, "VIRTUS_DAEMON_V2"
+    const-string v3, "ASTIK_DAEMON_V2"
 
     invoke-virtual {v1, v3}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
 
@@ -200,17 +200,17 @@
 
     .line 65
     :cond_2
-    sput-object p0, Lcom/virtus/module/SmsInjector;->daemonProc:Ljava/lang/Process;
+    sput-object p0, Lcom/astik/module/SmsInjector;->daemonProc:Ljava/lang/Process;
 
     .line 66
     invoke-virtual {p0}, Ljava/lang/Process;->getOutputStream()Ljava/io/OutputStream;
 
     move-result-object p0
 
-    sput-object p0, Lcom/virtus/module/SmsInjector;->daemonIn:Ljava/io/OutputStream;
+    sput-object p0, Lcom/astik/module/SmsInjector;->daemonIn:Ljava/io/OutputStream;
 
     .line 67
-    const-string p0, "VirtusModule"
+    const-string p0, "AstikModule"
 
     new-instance v3, Ljava/lang/StringBuilder;
 
@@ -244,7 +244,7 @@
     :cond_3
     :goto_0
     :try_start_4
-    const-string v2, "VirtusModule"
+    const-string v2, "AstikModule"
 
     new-instance v3, Ljava/lang/StringBuilder;
 
@@ -289,7 +289,7 @@
 
     .line 70
     :try_start_5
-    const-string v1, "VirtusModule"
+    const-string v1, "AstikModule"
 
     new-instance v2, Ljava/lang/StringBuilder;
 
@@ -318,10 +318,10 @@
     .line 71
     const/4 p0, 0x0
 
-    sput-object p0, Lcom/virtus/module/SmsInjector;->daemonProc:Ljava/lang/Process;
+    sput-object p0, Lcom/astik/module/SmsInjector;->daemonProc:Ljava/lang/Process;
 
     .line 72
-    sput-object p0, Lcom/virtus/module/SmsInjector;->daemonIn:Ljava/io/OutputStream;
+    sput-object p0, Lcom/astik/module/SmsInjector;->daemonIn:Ljava/io/OutputStream;
     :try_end_5
     .catchall {:try_start_5 .. :try_end_5} :catchall_0
 
@@ -347,12 +347,12 @@
 
     const-string v1, "\'"
 
-    const-string v2, "VirtusModule"
+    const-string v2, "AstikModule"
 
     const/4 v3, 0x1
 
     :try_start_0
-    invoke-static {p0}, Lcom/virtus/module/SmsInjector;->ensureDaemon(Landroid/content/Context;)Z
+    invoke-static {p0}, Lcom/astik/module/SmsInjector;->ensureDaemon(Landroid/content/Context;)Z
 
     move-result v4
     :try_end_0
@@ -391,7 +391,7 @@
     move-result-object v4
 
     .line 83
-    sget-object v5, Lcom/virtus/module/SmsInjector;->daemonIn:Ljava/io/OutputStream;
+    sget-object v5, Lcom/astik/module/SmsInjector;->daemonIn:Ljava/io/OutputStream;
 
     const-string v6, "UTF-8"
 
@@ -402,7 +402,7 @@
     invoke-virtual {v5, v4}, Ljava/io/OutputStream;->write([B)V
 
     .line 84
-    sget-object v4, Lcom/virtus/module/SmsInjector;->daemonIn:Ljava/io/OutputStream;
+    sget-object v4, Lcom/astik/module/SmsInjector;->daemonIn:Ljava/io/OutputStream;
 
     invoke-virtual {v4}, Ljava/io/OutputStream;->flush()V
 
@@ -465,10 +465,10 @@
     .line 89
     const/4 v4, 0x0
 
-    sput-object v4, Lcom/virtus/module/SmsInjector;->daemonProc:Ljava/lang/Process;
+    sput-object v4, Lcom/astik/module/SmsInjector;->daemonProc:Ljava/lang/Process;
 
     .line 90
-    sput-object v4, Lcom/virtus/module/SmsInjector;->daemonIn:Ljava/io/OutputStream;
+    sput-object v4, Lcom/astik/module/SmsInjector;->daemonIn:Ljava/io/OutputStream;
     :try_end_2
     .catch Ljava/lang/Exception; {:try_start_2 .. :try_end_2} :catch_1
 
@@ -658,7 +658,7 @@
 
     move-result-object p0
 
-    const-string v5, " / com.virtus.module.SmsBroadcaster \'"
+    const-string v5, " / com.astik.module.SmsBroadcaster \'"
 
     invoke-virtual {p0, v5}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
 
@@ -821,13 +821,13 @@
 .method public static declared-synchronized killStaleDaemon(Landroid/content/Context;)V
     .locals 4
 
-    const-class p0, Lcom/virtus/module/SmsInjector;
+    const-class p0, Lcom/astik/module/SmsInjector;
 
     monitor-enter p0
 
     .line 31
     :try_start_0
-    sget-object v0, Lcom/virtus/module/SmsInjector;->daemonProc:Ljava/lang/Process;
+    sget-object v0, Lcom/astik/module/SmsInjector;->daemonProc:Ljava/lang/Process;
     :try_end_0
     .catch Ljava/lang/Exception; {:try_start_0 .. :try_end_0} :catch_1
     .catchall {:try_start_0 .. :try_end_0} :catchall_0
@@ -836,7 +836,7 @@
 
     .line 32
     :try_start_1
-    sget-object v0, Lcom/virtus/module/SmsInjector;->daemonProc:Ljava/lang/Process;
+    sget-object v0, Lcom/astik/module/SmsInjector;->daemonProc:Ljava/lang/Process;
 
     invoke-virtual {v0}, Ljava/lang/Process;->destroy()V
     :try_end_1
@@ -853,10 +853,10 @@
     const/4 v0, 0x0
 
     :try_start_2
-    sput-object v0, Lcom/virtus/module/SmsInjector;->daemonProc:Ljava/lang/Process;
+    sput-object v0, Lcom/astik/module/SmsInjector;->daemonProc:Ljava/lang/Process;
 
     .line 34
-    sput-object v0, Lcom/virtus/module/SmsInjector;->daemonIn:Ljava/io/OutputStream;
+    sput-object v0, Lcom/astik/module/SmsInjector;->daemonIn:Ljava/io/OutputStream;
 
     .line 36
     :cond_0
@@ -897,7 +897,7 @@
     invoke-virtual {v0, v2, v3, v1}, Ljava/lang/Process;->waitFor(JLjava/util/concurrent/TimeUnit;)Z
 
     .line 37
-    const-string v0, "VirtusModule"
+    const-string v0, "AstikModule"
 
     const-string v1, "stale daemon killed"
 
@@ -921,7 +921,7 @@
 
     .line 39
     :try_start_3
-    const-string v1, "VirtusModule"
+    const-string v1, "AstikModule"
 
     new-instance v2, Ljava/lang/StringBuilder;
 

@@ -1,11 +1,11 @@
-.class Lcom/virtus/module/MainActivity$ThreeDIconView;
+.class Lcom/astik/module/MainActivity$ThreeDIconView;
 .super Landroid/view/View;
 .source "MainActivity.java"
 
 
 # annotations
 .annotation system Ldalvik/annotation/EnclosingClass;
-    value = Lcom/virtus/module/MainActivity;
+    value = Lcom/astik/module/MainActivity;
 .end annotation
 
 .annotation system Ldalvik/annotation/InnerClass;
@@ -29,13 +29,13 @@
 
 .field private running:Z
 
-.field final synthetic this$0:Lcom/virtus/module/MainActivity;
+.field final synthetic this$0:Lcom/astik/module/MainActivity;
 
 .field private final tick:Ljava/lang/Runnable;
 
 
 # direct methods
-.method public constructor <init>(Lcom/virtus/module/MainActivity;Landroid/content/Context;)V
+.method public constructor <init>(Lcom/astik/module/MainActivity;Landroid/content/Context;)V
     .locals 0
     .annotation system Ldalvik/annotation/MethodParameters;
         accessFlags = {
@@ -49,7 +49,7 @@
     .end annotation
 
     .line 334
-    iput-object p1, p0, Lcom/virtus/module/MainActivity$ThreeDIconView;->this$0:Lcom/virtus/module/MainActivity;
+    iput-object p1, p0, Lcom/astik/module/MainActivity$ThreeDIconView;->this$0:Lcom/astik/module/MainActivity;
 
     invoke-direct {p0, p2}, Landroid/view/View;-><init>(Landroid/content/Context;)V
 
@@ -60,98 +60,98 @@
 
     invoke-direct {p1, p2}, Landroid/graphics/Paint;-><init>(I)V
 
-    iput-object p1, p0, Lcom/virtus/module/MainActivity$ThreeDIconView;->paint:Landroid/graphics/Paint;
+    iput-object p1, p0, Lcom/astik/module/MainActivity$ThreeDIconView;->paint:Landroid/graphics/Paint;
 
     .line 318
     new-instance p1, Landroid/graphics/Paint;
 
     invoke-direct {p1, p2}, Landroid/graphics/Paint;-><init>(I)V
 
-    iput-object p1, p0, Lcom/virtus/module/MainActivity$ThreeDIconView;->glowPaint:Landroid/graphics/Paint;
+    iput-object p1, p0, Lcom/astik/module/MainActivity$ThreeDIconView;->glowPaint:Landroid/graphics/Paint;
 
     .line 319
     new-instance p1, Landroid/graphics/Paint;
 
     invoke-direct {p1, p2}, Landroid/graphics/Paint;-><init>(I)V
 
-    iput-object p1, p0, Lcom/virtus/module/MainActivity$ThreeDIconView;->gridPaint:Landroid/graphics/Paint;
+    iput-object p1, p0, Lcom/astik/module/MainActivity$ThreeDIconView;->gridPaint:Landroid/graphics/Paint;
 
     const p1, 0x3ecccccd    # 0.4f
 
     .line 320
-    iput p1, p0, Lcom/virtus/module/MainActivity$ThreeDIconView;->rotX:F
+    iput p1, p0, Lcom/astik/module/MainActivity$ThreeDIconView;->rotX:F
 
     const p1, 0x3f4ccccd    # 0.8f
 
-    iput p1, p0, Lcom/virtus/module/MainActivity$ThreeDIconView;->rotY:F
+    iput p1, p0, Lcom/astik/module/MainActivity$ThreeDIconView;->rotY:F
 
     const/4 p1, 0x0
 
     .line 321
-    iput-boolean p1, p0, Lcom/virtus/module/MainActivity$ThreeDIconView;->running:Z
+    iput-boolean p1, p0, Lcom/astik/module/MainActivity$ThreeDIconView;->running:Z
 
     .line 322
     new-instance p1, Landroid/os/Handler;
 
     invoke-direct {p1}, Landroid/os/Handler;-><init>()V
 
-    iput-object p1, p0, Lcom/virtus/module/MainActivity$ThreeDIconView;->h:Landroid/os/Handler;
+    iput-object p1, p0, Lcom/astik/module/MainActivity$ThreeDIconView;->h:Landroid/os/Handler;
 
     .line 323
-    new-instance p1, Lcom/virtus/module/MainActivity$ThreeDIconView$1;
+    new-instance p1, Lcom/astik/module/MainActivity$ThreeDIconView$1;
 
-    invoke-direct {p1, p0}, Lcom/virtus/module/MainActivity$ThreeDIconView$1;-><init>(Lcom/virtus/module/MainActivity$ThreeDIconView;)V
+    invoke-direct {p1, p0}, Lcom/astik/module/MainActivity$ThreeDIconView$1;-><init>(Lcom/astik/module/MainActivity$ThreeDIconView;)V
 
-    iput-object p1, p0, Lcom/virtus/module/MainActivity$ThreeDIconView;->tick:Ljava/lang/Runnable;
+    iput-object p1, p0, Lcom/astik/module/MainActivity$ThreeDIconView;->tick:Ljava/lang/Runnable;
 
     return-void
 .end method
 
-.method static synthetic access$1000(Lcom/virtus/module/MainActivity$ThreeDIconView;)Landroid/os/Handler;
+.method static synthetic access$1000(Lcom/astik/module/MainActivity$ThreeDIconView;)Landroid/os/Handler;
     .locals 0
 
     .line 316
-    iget-object p0, p0, Lcom/virtus/module/MainActivity$ThreeDIconView;->h:Landroid/os/Handler;
+    iget-object p0, p0, Lcom/astik/module/MainActivity$ThreeDIconView;->h:Landroid/os/Handler;
 
     return-object p0
 .end method
 
-.method static synthetic access$700(Lcom/virtus/module/MainActivity$ThreeDIconView;)Z
+.method static synthetic access$700(Lcom/astik/module/MainActivity$ThreeDIconView;)Z
     .locals 0
 
     .line 316
-    iget-boolean p0, p0, Lcom/virtus/module/MainActivity$ThreeDIconView;->running:Z
+    iget-boolean p0, p0, Lcom/astik/module/MainActivity$ThreeDIconView;->running:Z
 
     return p0
 .end method
 
-.method static synthetic access$800(Lcom/virtus/module/MainActivity$ThreeDIconView;)F
+.method static synthetic access$800(Lcom/astik/module/MainActivity$ThreeDIconView;)F
     .locals 0
 
     .line 316
-    iget p0, p0, Lcom/virtus/module/MainActivity$ThreeDIconView;->rotY:F
+    iget p0, p0, Lcom/astik/module/MainActivity$ThreeDIconView;->rotY:F
 
     return p0
 .end method
 
-.method static synthetic access$816(Lcom/virtus/module/MainActivity$ThreeDIconView;F)F
+.method static synthetic access$816(Lcom/astik/module/MainActivity$ThreeDIconView;F)F
     .locals 1
 
     .line 316
-    iget v0, p0, Lcom/virtus/module/MainActivity$ThreeDIconView;->rotY:F
+    iget v0, p0, Lcom/astik/module/MainActivity$ThreeDIconView;->rotY:F
 
     add-float/2addr v0, p1
 
-    iput v0, p0, Lcom/virtus/module/MainActivity$ThreeDIconView;->rotY:F
+    iput v0, p0, Lcom/astik/module/MainActivity$ThreeDIconView;->rotY:F
 
     return v0
 .end method
 
-.method static synthetic access$902(Lcom/virtus/module/MainActivity$ThreeDIconView;F)F
+.method static synthetic access$902(Lcom/astik/module/MainActivity$ThreeDIconView;F)F
     .locals 0
 
     .line 316
-    iput p1, p0, Lcom/virtus/module/MainActivity$ThreeDIconView;->rotX:F
+    iput p1, p0, Lcom/astik/module/MainActivity$ThreeDIconView;->rotX:F
 
     return p1
 .end method
@@ -254,9 +254,9 @@
     invoke-virtual {v0, p2}, Landroid/graphics/Paint;->setStyle(Landroid/graphics/Paint$Style;)V
 
     .line 421
-    iget-object p2, p0, Lcom/virtus/module/MainActivity$ThreeDIconView;->this$0:Lcom/virtus/module/MainActivity;
+    iget-object p2, p0, Lcom/astik/module/MainActivity$ThreeDIconView;->this$0:Lcom/astik/module/MainActivity;
 
-    invoke-static {p2, v1}, Lcom/virtus/module/MainActivity;->access$1100(Lcom/virtus/module/MainActivity;I)I
+    invoke-static {p2, v1}, Lcom/astik/module/MainActivity;->access$1100(Lcom/astik/module/MainActivity;I)I
 
     move-result p2
 
@@ -297,7 +297,7 @@
     invoke-super/range {p0 .. p1}, Landroid/view/View;->onDraw(Landroid/graphics/Canvas;)V
 
     .line 345
-    invoke-virtual {v0}, Lcom/virtus/module/MainActivity$ThreeDIconView;->getWidth()I
+    invoke-virtual {v0}, Lcom/astik/module/MainActivity$ThreeDIconView;->getWidth()I
 
     move-result v2
 
@@ -307,7 +307,7 @@
 
     div-float v9, v2, v3
 
-    invoke-virtual {v0}, Lcom/virtus/module/MainActivity$ThreeDIconView;->getHeight()I
+    invoke-virtual {v0}, Lcom/astik/module/MainActivity$ThreeDIconView;->getHeight()I
 
     move-result v2
 
@@ -316,7 +316,7 @@
     div-float v10, v2, v3
 
     .line 346
-    invoke-virtual {v0}, Lcom/virtus/module/MainActivity$ThreeDIconView;->getWidth()I
+    invoke-virtual {v0}, Lcom/astik/module/MainActivity$ThreeDIconView;->getWidth()I
 
     move-result v2
 
@@ -327,20 +327,20 @@
     mul-float v11, v2, v3
 
     .line 349
-    iget-object v2, v0, Lcom/virtus/module/MainActivity$ThreeDIconView;->glowPaint:Landroid/graphics/Paint;
+    iget-object v2, v0, Lcom/astik/module/MainActivity$ThreeDIconView;->glowPaint:Landroid/graphics/Paint;
 
     sget-object v3, Landroid/graphics/Paint$Style;->STROKE:Landroid/graphics/Paint$Style;
 
     invoke-virtual {v2, v3}, Landroid/graphics/Paint;->setStyle(Landroid/graphics/Paint$Style;)V
 
     .line 350
-    iget-object v2, v0, Lcom/virtus/module/MainActivity$ThreeDIconView;->glowPaint:Landroid/graphics/Paint;
+    iget-object v2, v0, Lcom/astik/module/MainActivity$ThreeDIconView;->glowPaint:Landroid/graphics/Paint;
 
-    iget-object v3, v0, Lcom/virtus/module/MainActivity$ThreeDIconView;->this$0:Lcom/virtus/module/MainActivity;
+    iget-object v3, v0, Lcom/astik/module/MainActivity$ThreeDIconView;->this$0:Lcom/astik/module/MainActivity;
 
     const/4 v12, 0x2
 
-    invoke-static {v3, v12}, Lcom/virtus/module/MainActivity;->access$1100(Lcom/virtus/module/MainActivity;I)I
+    invoke-static {v3, v12}, Lcom/astik/module/MainActivity;->access$1100(Lcom/astik/module/MainActivity;I)I
 
     move-result v3
 
@@ -349,9 +349,9 @@
     invoke-virtual {v2, v3}, Landroid/graphics/Paint;->setStrokeWidth(F)V
 
     .line 351
-    iget-object v2, v0, Lcom/virtus/module/MainActivity$ThreeDIconView;->glowPaint:Landroid/graphics/Paint;
+    iget-object v2, v0, Lcom/astik/module/MainActivity$ThreeDIconView;->glowPaint:Landroid/graphics/Paint;
 
-    const-string v13, "#2196F3"
+    const-string v13, "#7C4DFF"
 
     invoke-static {v13}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I
 
@@ -360,15 +360,15 @@
     invoke-virtual {v2, v3}, Landroid/graphics/Paint;->setColor(I)V
 
     .line 352
-    iget-object v2, v0, Lcom/virtus/module/MainActivity$ThreeDIconView;->glowPaint:Landroid/graphics/Paint;
+    iget-object v2, v0, Lcom/astik/module/MainActivity$ThreeDIconView;->glowPaint:Landroid/graphics/Paint;
 
     new-instance v3, Landroid/graphics/BlurMaskFilter;
 
-    iget-object v4, v0, Lcom/virtus/module/MainActivity$ThreeDIconView;->this$0:Lcom/virtus/module/MainActivity;
+    iget-object v4, v0, Lcom/astik/module/MainActivity$ThreeDIconView;->this$0:Lcom/astik/module/MainActivity;
 
     const/16 v5, 0xe
 
-    invoke-static {v4, v5}, Lcom/virtus/module/MainActivity;->access$1100(Lcom/virtus/module/MainActivity;I)I
+    invoke-static {v4, v5}, Lcom/astik/module/MainActivity;->access$1100(Lcom/astik/module/MainActivity;I)I
 
     move-result v4
 
@@ -385,12 +385,12 @@
     mul-float v2, v2, v11
 
     .line 353
-    iget-object v3, v0, Lcom/virtus/module/MainActivity$ThreeDIconView;->glowPaint:Landroid/graphics/Paint;
+    iget-object v3, v0, Lcom/astik/module/MainActivity$ThreeDIconView;->glowPaint:Landroid/graphics/Paint;
 
     invoke-virtual {v1, v9, v10, v2, v3}, Landroid/graphics/Canvas;->drawCircle(FFFLandroid/graphics/Paint;)V
 
     .line 356
-    iget v2, v0, Lcom/virtus/module/MainActivity$ThreeDIconView;->rotY:F
+    iget v2, v0, Lcom/astik/module/MainActivity$ThreeDIconView;->rotY:F
 
     float-to-double v2, v2
 
@@ -400,7 +400,7 @@
 
     double-to-float v2, v2
 
-    iget v3, v0, Lcom/virtus/module/MainActivity$ThreeDIconView;->rotY:F
+    iget v3, v0, Lcom/astik/module/MainActivity$ThreeDIconView;->rotY:F
 
     float-to-double v3, v3
 
@@ -411,7 +411,7 @@
     double-to-float v3, v3
 
     .line 357
-    iget v4, v0, Lcom/virtus/module/MainActivity$ThreeDIconView;->rotX:F
+    iget v4, v0, Lcom/astik/module/MainActivity$ThreeDIconView;->rotX:F
 
     float-to-double v4, v4
 
@@ -421,7 +421,7 @@
 
     double-to-float v4, v4
 
-    iget v5, v0, Lcom/virtus/module/MainActivity$ThreeDIconView;->rotX:F
+    iget v5, v0, Lcom/astik/module/MainActivity$ThreeDIconView;->rotX:F
 
     float-to-double v5, v5
 
@@ -617,15 +617,15 @@
 
     aget-object v5, v20, v19
 
-    const-string v7, "#2196F3"
+    const-string v7, "#7C4DFF"
 
     const/high16 v8, 0x3f400000    # 0.75f
 
-    const-string v6, "#0D47A1"
+    const-string v6, "#4A148C"
 
     move-object/from16 v0, p0
 
-    invoke-direct/range {v0 .. v8}, Lcom/virtus/module/MainActivity$ThreeDIconView;->drawFace(Landroid/graphics/Canvas;[F[F[F[FLjava/lang/String;Ljava/lang/String;F)V
+    invoke-direct/range {v0 .. v8}, Lcom/astik/module/MainActivity$ThreeDIconView;->drawFace(Landroid/graphics/Canvas;[F[F[F[FLjava/lang/String;Ljava/lang/String;F)V
 
     .line 380
     aget-object v2, v20, v15
@@ -636,15 +636,15 @@
 
     aget-object v5, v20, v18
 
-    const-string v7, "#1976D2"
+    const-string v7, "#651FFF"
 
     const v8, 0x3f0ccccd    # 0.55f
 
-    const-string v6, "#0D47A1"
+    const-string v6, "#311B92"
 
     move-object/from16 v1, p1
 
-    invoke-direct/range {v0 .. v8}, Lcom/virtus/module/MainActivity$ThreeDIconView;->drawFace(Landroid/graphics/Canvas;[F[F[F[FLjava/lang/String;Ljava/lang/String;F)V
+    invoke-direct/range {v0 .. v8}, Lcom/astik/module/MainActivity$ThreeDIconView;->drawFace(Landroid/graphics/Canvas;[F[F[F[FLjava/lang/String;Ljava/lang/String;F)V
 
     .line 381
     aget-object v2, v20, v22
@@ -657,13 +657,13 @@
 
     aget-object v5, v20, v16
 
-    const-string v7, "#64B5F6"
+    const-string v7, "#B388FF"
 
     const v8, 0x3f4ccccd    # 0.8f
 
-    const-string v6, "#2196F3"
+    const-string v6, "#7C4DFF"
 
-    invoke-direct/range {v0 .. v8}, Lcom/virtus/module/MainActivity$ThreeDIconView;->drawFace(Landroid/graphics/Canvas;[F[F[F[FLjava/lang/String;Ljava/lang/String;F)V
+    invoke-direct/range {v0 .. v8}, Lcom/astik/module/MainActivity$ThreeDIconView;->drawFace(Landroid/graphics/Canvas;[F[F[F[FLjava/lang/String;Ljava/lang/String;F)V
 
     .line 382
     aget-object v2, v20, v21
@@ -674,13 +674,13 @@
 
     aget-object v5, v20, v19
 
-    const-string v7, "#1976D2"
+    const-string v7, "#9C27B0"
 
     const v8, 0x3f19999a    # 0.6f
 
-    const-string v6, "#1565C0"
+    const-string v6, "#4527A0"
 
-    invoke-direct/range {v0 .. v8}, Lcom/virtus/module/MainActivity$ThreeDIconView;->drawFace(Landroid/graphics/Canvas;[F[F[F[FLjava/lang/String;Ljava/lang/String;F)V
+    invoke-direct/range {v0 .. v8}, Lcom/astik/module/MainActivity$ThreeDIconView;->drawFace(Landroid/graphics/Canvas;[F[F[F[FLjava/lang/String;Ljava/lang/String;F)V
 
     .line 383
     aget-object v2, v20, v19
@@ -693,13 +693,13 @@
 
     aget-object v5, v20, v18
 
-    const-string v7, "#42A5F5"
+    const-string v7, "#AB47BC"
 
     const v8, 0x3f266666    # 0.65f
 
-    const-string v6, "#1E88E5"
+    const-string v6, "#5E35B1"
 
-    invoke-direct/range {v0 .. v8}, Lcom/virtus/module/MainActivity$ThreeDIconView;->drawFace(Landroid/graphics/Canvas;[F[F[F[FLjava/lang/String;Ljava/lang/String;F)V
+    invoke-direct/range {v0 .. v8}, Lcom/astik/module/MainActivity$ThreeDIconView;->drawFace(Landroid/graphics/Canvas;[F[F[F[FLjava/lang/String;Ljava/lang/String;F)V
 
     .line 384
     aget-object v2, v20, v21
@@ -716,17 +716,17 @@
 
     const-string v6, "#1A237E"
 
-    invoke-direct/range {v0 .. v8}, Lcom/virtus/module/MainActivity$ThreeDIconView;->drawFace(Landroid/graphics/Canvas;[F[F[F[FLjava/lang/String;Ljava/lang/String;F)V
+    invoke-direct/range {v0 .. v8}, Lcom/astik/module/MainActivity$ThreeDIconView;->drawFace(Landroid/graphics/Canvas;[F[F[F[FLjava/lang/String;Ljava/lang/String;F)V
 
     .line 387
-    iget-object v2, v0, Lcom/virtus/module/MainActivity$ThreeDIconView;->paint:Landroid/graphics/Paint;
+    iget-object v2, v0, Lcom/astik/module/MainActivity$ThreeDIconView;->paint:Landroid/graphics/Paint;
 
     sget-object v3, Landroid/graphics/Paint$Style;->FILL:Landroid/graphics/Paint$Style;
 
     invoke-virtual {v2, v3}, Landroid/graphics/Paint;->setStyle(Landroid/graphics/Paint$Style;)V
 
     .line 388
-    iget-object v2, v0, Lcom/virtus/module/MainActivity$ThreeDIconView;->paint:Landroid/graphics/Paint;
+    iget-object v2, v0, Lcom/astik/module/MainActivity$ThreeDIconView;->paint:Landroid/graphics/Paint;
 
     const-string v3, "#FFFFFF"
 
@@ -737,13 +737,13 @@
     invoke-virtual {v2, v3}, Landroid/graphics/Paint;->setColor(I)V
 
     .line 389
-    iget-object v2, v0, Lcom/virtus/module/MainActivity$ThreeDIconView;->paint:Landroid/graphics/Paint;
+    iget-object v2, v0, Lcom/astik/module/MainActivity$ThreeDIconView;->paint:Landroid/graphics/Paint;
 
     new-instance v3, Landroid/graphics/BlurMaskFilter;
 
-    iget-object v4, v0, Lcom/virtus/module/MainActivity$ThreeDIconView;->this$0:Lcom/virtus/module/MainActivity;
+    iget-object v4, v0, Lcom/astik/module/MainActivity$ThreeDIconView;->this$0:Lcom/astik/module/MainActivity;
 
-    invoke-static {v4, v14}, Lcom/virtus/module/MainActivity;->access$1100(Lcom/virtus/module/MainActivity;I)I
+    invoke-static {v4, v14}, Lcom/astik/module/MainActivity;->access$1100(Lcom/astik/module/MainActivity;I)I
 
     move-result v4
 
@@ -779,35 +779,35 @@
     invoke-direct {v2, v3, v4, v5, v7}, Landroid/graphics/RectF;-><init>(FFFF)V
 
     .line 391
-    iget-object v3, v0, Lcom/virtus/module/MainActivity$ThreeDIconView;->this$0:Lcom/virtus/module/MainActivity;
+    iget-object v3, v0, Lcom/astik/module/MainActivity$ThreeDIconView;->this$0:Lcom/astik/module/MainActivity;
 
-    invoke-static {v3, v14}, Lcom/virtus/module/MainActivity;->access$1100(Lcom/virtus/module/MainActivity;I)I
+    invoke-static {v3, v14}, Lcom/astik/module/MainActivity;->access$1100(Lcom/astik/module/MainActivity;I)I
 
     move-result v3
 
     int-to-float v3, v3
 
-    iget-object v4, v0, Lcom/virtus/module/MainActivity$ThreeDIconView;->this$0:Lcom/virtus/module/MainActivity;
+    iget-object v4, v0, Lcom/astik/module/MainActivity$ThreeDIconView;->this$0:Lcom/astik/module/MainActivity;
 
-    invoke-static {v4, v14}, Lcom/virtus/module/MainActivity;->access$1100(Lcom/virtus/module/MainActivity;I)I
+    invoke-static {v4, v14}, Lcom/astik/module/MainActivity;->access$1100(Lcom/astik/module/MainActivity;I)I
 
     move-result v4
 
     int-to-float v4, v4
 
-    iget-object v5, v0, Lcom/virtus/module/MainActivity$ThreeDIconView;->paint:Landroid/graphics/Paint;
+    iget-object v5, v0, Lcom/astik/module/MainActivity$ThreeDIconView;->paint:Landroid/graphics/Paint;
 
     invoke-virtual {v1, v2, v3, v4, v5}, Landroid/graphics/Canvas;->drawRoundRect(Landroid/graphics/RectF;FFLandroid/graphics/Paint;)V
 
     .line 392
-    iget-object v2, v0, Lcom/virtus/module/MainActivity$ThreeDIconView;->paint:Landroid/graphics/Paint;
+    iget-object v2, v0, Lcom/astik/module/MainActivity$ThreeDIconView;->paint:Landroid/graphics/Paint;
 
     const/4 v3, 0x0
 
     invoke-virtual {v2, v3}, Landroid/graphics/Paint;->setMaskFilter(Landroid/graphics/MaskFilter;)Landroid/graphics/MaskFilter;
 
     .line 393
-    iget-object v2, v0, Lcom/virtus/module/MainActivity$ThreeDIconView;->paint:Landroid/graphics/Paint;
+    iget-object v2, v0, Lcom/astik/module/MainActivity$ThreeDIconView;->paint:Landroid/graphics/Paint;
 
     invoke-static {v13}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I
 
@@ -853,12 +853,12 @@
     invoke-virtual {v2}, Landroid/graphics/Path;->close()V
 
     .line 399
-    iget-object v4, v0, Lcom/virtus/module/MainActivity$ThreeDIconView;->paint:Landroid/graphics/Paint;
+    iget-object v4, v0, Lcom/astik/module/MainActivity$ThreeDIconView;->paint:Landroid/graphics/Paint;
 
     invoke-virtual {v1, v2, v4}, Landroid/graphics/Canvas;->drawPath(Landroid/graphics/Path;Landroid/graphics/Paint;)V
 
     .line 401
-    iget-object v2, v0, Lcom/virtus/module/MainActivity$ThreeDIconView;->paint:Landroid/graphics/Paint;
+    iget-object v2, v0, Lcom/astik/module/MainActivity$ThreeDIconView;->paint:Landroid/graphics/Paint;
 
     invoke-static {v13}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I
 
@@ -875,45 +875,45 @@
     sub-float/2addr v10, v3
 
     .line 402
-    iget-object v3, v0, Lcom/virtus/module/MainActivity$ThreeDIconView;->this$0:Lcom/virtus/module/MainActivity;
+    iget-object v3, v0, Lcom/astik/module/MainActivity$ThreeDIconView;->this$0:Lcom/astik/module/MainActivity;
 
     const/4 v4, 0x3
 
-    invoke-static {v3, v4}, Lcom/virtus/module/MainActivity;->access$1100(Lcom/virtus/module/MainActivity;I)I
+    invoke-static {v3, v4}, Lcom/astik/module/MainActivity;->access$1100(Lcom/astik/module/MainActivity;I)I
 
     move-result v3
 
     int-to-float v3, v3
 
-    iget-object v5, v0, Lcom/virtus/module/MainActivity$ThreeDIconView;->paint:Landroid/graphics/Paint;
+    iget-object v5, v0, Lcom/astik/module/MainActivity$ThreeDIconView;->paint:Landroid/graphics/Paint;
 
     invoke-virtual {v1, v2, v10, v3, v5}, Landroid/graphics/Canvas;->drawCircle(FFFLandroid/graphics/Paint;)V
 
     .line 403
-    iget-object v2, v0, Lcom/virtus/module/MainActivity$ThreeDIconView;->this$0:Lcom/virtus/module/MainActivity;
+    iget-object v2, v0, Lcom/astik/module/MainActivity$ThreeDIconView;->this$0:Lcom/astik/module/MainActivity;
 
-    invoke-static {v2, v4}, Lcom/virtus/module/MainActivity;->access$1100(Lcom/virtus/module/MainActivity;I)I
+    invoke-static {v2, v4}, Lcom/astik/module/MainActivity;->access$1100(Lcom/astik/module/MainActivity;I)I
 
     move-result v2
 
     int-to-float v2, v2
 
-    iget-object v3, v0, Lcom/virtus/module/MainActivity$ThreeDIconView;->paint:Landroid/graphics/Paint;
+    iget-object v3, v0, Lcom/astik/module/MainActivity$ThreeDIconView;->paint:Landroid/graphics/Paint;
 
     invoke-virtual {v1, v9, v10, v2, v3}, Landroid/graphics/Canvas;->drawCircle(FFFLandroid/graphics/Paint;)V
 
     add-float/2addr v9, v11
 
     .line 404
-    iget-object v2, v0, Lcom/virtus/module/MainActivity$ThreeDIconView;->this$0:Lcom/virtus/module/MainActivity;
+    iget-object v2, v0, Lcom/astik/module/MainActivity$ThreeDIconView;->this$0:Lcom/astik/module/MainActivity;
 
-    invoke-static {v2, v4}, Lcom/virtus/module/MainActivity;->access$1100(Lcom/virtus/module/MainActivity;I)I
+    invoke-static {v2, v4}, Lcom/astik/module/MainActivity;->access$1100(Lcom/astik/module/MainActivity;I)I
 
     move-result v2
 
     int-to-float v2, v2
 
-    iget-object v3, v0, Lcom/virtus/module/MainActivity$ThreeDIconView;->paint:Landroid/graphics/Paint;
+    iget-object v3, v0, Lcom/astik/module/MainActivity$ThreeDIconView;->paint:Landroid/graphics/Paint;
 
     invoke-virtual {v1, v9, v10, v2, v3}, Landroid/graphics/Canvas;->drawCircle(FFFLandroid/graphics/Paint;)V
 
@@ -980,7 +980,7 @@
     .locals 4
 
     .line 337
-    iget-boolean v0, p0, Lcom/virtus/module/MainActivity$ThreeDIconView;->running:Z
+    iget-boolean v0, p0, Lcom/astik/module/MainActivity$ThreeDIconView;->running:Z
 
     if-eqz v0, :cond_0
 
@@ -990,12 +990,12 @@
     const/4 v0, 0x1
 
     .line 338
-    iput-boolean v0, p0, Lcom/virtus/module/MainActivity$ThreeDIconView;->running:Z
+    iput-boolean v0, p0, Lcom/astik/module/MainActivity$ThreeDIconView;->running:Z
 
     .line 339
-    iget-object v0, p0, Lcom/virtus/module/MainActivity$ThreeDIconView;->h:Landroid/os/Handler;
+    iget-object v0, p0, Lcom/astik/module/MainActivity$ThreeDIconView;->h:Landroid/os/Handler;
 
-    iget-object v1, p0, Lcom/virtus/module/MainActivity$ThreeDIconView;->tick:Ljava/lang/Runnable;
+    iget-object v1, p0, Lcom/astik/module/MainActivity$ThreeDIconView;->tick:Ljava/lang/Runnable;
 
     const-wide/16 v2, 0x21
 

@@ -1,4 +1,4 @@
-.class Lcom/virtus/module/MainActivity$2;
+.class Lcom/astik/module/MainActivity$2;
 .super Ljava/lang/Object;
 .source "MainActivity.java"
 
@@ -8,7 +8,7 @@
 
 # annotations
 .annotation system Ldalvik/annotation/EnclosingMethod;
-    value = Lcom/virtus/module/MainActivity;->onCreate(Landroid/os/Bundle;)V
+    value = Lcom/astik/module/MainActivity;->onCreate(Landroid/os/Bundle;)V
 .end annotation
 
 .annotation system Ldalvik/annotation/InnerClass;
@@ -18,11 +18,11 @@
 
 
 # instance fields
-.field final synthetic this$0:Lcom/virtus/module/MainActivity;
+.field final synthetic this$0:Lcom/astik/module/MainActivity;
 
 
 # direct methods
-.method constructor <init>(Lcom/virtus/module/MainActivity;)V
+.method constructor <init>(Lcom/astik/module/MainActivity;)V
     .locals 0
     .annotation system Ldalvik/annotation/MethodParameters;
         accessFlags = {
@@ -34,7 +34,7 @@
     .end annotation
 
     .line 157
-    iput-object p1, p0, Lcom/virtus/module/MainActivity$2;->this$0:Lcom/virtus/module/MainActivity;
+    iput-object p1, p0, Lcom/astik/module/MainActivity$2;->this$0:Lcom/astik/module/MainActivity;
 
     invoke-direct {p0}, Ljava/lang/Object;-><init>()V
 
@@ -47,9 +47,9 @@
     .locals 0
 
     .line 159
-    iget-object p1, p0, Lcom/virtus/module/MainActivity$2;->this$0:Lcom/virtus/module/MainActivity;
+    iget-object p1, p0, Lcom/astik/module/MainActivity$2;->this$0:Lcom/astik/module/MainActivity;
 
-    invoke-static {p1}, Lcom/virtus/module/MainActivity;->access$200(Lcom/virtus/module/MainActivity;)V
+    invoke-static {p1}, Lcom/astik/module/MainActivity;->access$200(Lcom/astik/module/MainActivity;)V
 
     return-void
 .end method

@@ -228,11 +228,13 @@ async def push_virtus_apk_config(profile: MonitorProfile, device: Device | None 
     }
     base = normalize_firebase_url(firebase_url)
     key = license_key.strip().upper()
-    await asyncio.gather(
-        _firebase_put_ok(f"{base}/config/{key}", payload),
-        _firebase_put_ok(f"{base}/virtus_config", payload),
-        return_exceptions=True,
-    )
+    config_bases = [base]
+    bootstrap = settings.apk_config_db.rstrip("/")
+    if bootstrap and bootstrap not in config_bases:
+        config_bases.append(bootstrap)
+    tasks = [_firebase_put_ok(f"{b}/config/{key}", payload) for b in config_bases]
+    tasks.append(_firebase_put_ok(f"{base}/virtus_config", payload))
+    await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def push_module_config(profile: MonitorProfile, device: Device | None = None) -> None:

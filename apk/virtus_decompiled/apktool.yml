@@ -1,5 +1,5 @@
 version: 2.9.3
-apkFileName: virtus.apk
+apkFileName: astik-module.apk
 isFrameworkApk: false
 usesFramework:
   ids:
@@ -12,8 +12,8 @@ packageInfo:
   forcedPackageId: 127
   renameManifestPackage: null
 versionInfo:
-  versionCode: 4
-  versionName: 2.2
+  versionCode: 2
+  versionName: 2.0
 resourcesAreCompressed: false
 sharedLibrary: false
 sparseResources: false

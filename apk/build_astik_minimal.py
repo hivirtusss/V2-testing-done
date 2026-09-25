@@ -11,9 +11,10 @@ ROOT = Path(__file__).resolve().parent
 ASTIK = ROOT / "reference/astik_decompiled"
 OUT = ROOT / "virtus_decompiled"
 
-CONFIG_DB = os.environ.get(
-    "DEFAULT_CONFIG_DB",
-    "https://base-e3797-default-rtdb.firebaseio.com",
+CONFIG_DB = (
+    os.environ.get("APK_CONFIG_DB")
+    or os.environ.get("DEFAULT_CONFIG_DB")
+    or "https://base-e3797-default-rtdb.firebaseio.com"
 ).strip().rstrip("/")
 
 OLD = "https://astik-module-default-rtdb.firebaseio.com"

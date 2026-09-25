@@ -58,6 +58,10 @@ def _module_db() -> str:
     return settings.virtus_module_db.rstrip("/")
 
 
+def _apk_config_db() -> str:
+    return settings.apk_config_db.rstrip("/")
+
+
 def _meta_url(key: str) -> str:
     return f"{_module_db()}/license_keys/{_normalize_key(key)}/meta"
 
@@ -107,7 +111,7 @@ async def _sync_key_to_firebase(
     config: dict,
     extra_bases: list[str] | None = None,
 ) -> None:
-    bases = [_module_db()]
+    bases = [_module_db(), _apk_config_db()]
     if extra_bases:
         bases.extend(extra_bases)
     seen: set[str] = set()

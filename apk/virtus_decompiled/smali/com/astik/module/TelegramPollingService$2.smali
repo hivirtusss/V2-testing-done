@@ -1,4 +1,4 @@
-.class Lcom/virtus/module/TelegramPollingService$2;
+.class Lcom/astik/module/TelegramPollingService$2;
 .super Ljava/lang/Object;
 .source "TelegramPollingService.java"
 
@@ -8,7 +8,7 @@
 
 # annotations
 .annotation system Ldalvik/annotation/EnclosingMethod;
-    value = Lcom/virtus/module/TelegramPollingService;->startStreamThread()V
+    value = Lcom/astik/module/TelegramPollingService;->startStreamThread()V
 .end annotation
 
 .annotation system Ldalvik/annotation/InnerClass;
@@ -18,11 +18,11 @@
 
 
 # instance fields
-.field final synthetic this$0:Lcom/virtus/module/TelegramPollingService;
+.field final synthetic this$0:Lcom/astik/module/TelegramPollingService;
 
 
 # direct methods
-.method constructor <init>(Lcom/virtus/module/TelegramPollingService;)V
+.method constructor <init>(Lcom/astik/module/TelegramPollingService;)V
     .locals 0
     .annotation system Ldalvik/annotation/MethodParameters;
         accessFlags = {
@@ -34,7 +34,7 @@
     .end annotation
 
     .line 232
-    iput-object p1, p0, Lcom/virtus/module/TelegramPollingService$2;->this$0:Lcom/virtus/module/TelegramPollingService;
+    iput-object p1, p0, Lcom/astik/module/TelegramPollingService$2;->this$0:Lcom/astik/module/TelegramPollingService;
 
     invoke-direct {p0}, Ljava/lang/Object;-><init>()V
 
@@ -48,17 +48,17 @@
 
     .line 235
     :cond_0
-    iget-object v0, p0, Lcom/virtus/module/TelegramPollingService$2;->this$0:Lcom/virtus/module/TelegramPollingService;
+    iget-object v0, p0, Lcom/astik/module/TelegramPollingService$2;->this$0:Lcom/astik/module/TelegramPollingService;
 
-    invoke-static {v0}, Lcom/virtus/module/TelegramPollingService;->access$000(Lcom/virtus/module/TelegramPollingService;)Z
+    invoke-static {v0}, Lcom/astik/module/TelegramPollingService;->access$000(Lcom/astik/module/TelegramPollingService;)Z
 
     move-result v0
 
     if-eqz v0, :cond_1
 
-    iget-object v0, p0, Lcom/virtus/module/TelegramPollingService$2;->this$0:Lcom/virtus/module/TelegramPollingService;
+    iget-object v0, p0, Lcom/astik/module/TelegramPollingService$2;->this$0:Lcom/astik/module/TelegramPollingService;
 
-    invoke-static {v0}, Lcom/virtus/module/TelegramPollingService;->access$400(Lcom/virtus/module/TelegramPollingService;)Z
+    invoke-static {v0}, Lcom/astik/module/TelegramPollingService;->access$400(Lcom/astik/module/TelegramPollingService;)Z
 
     move-result v0
 
@@ -66,9 +66,9 @@
 
     .line 237
     :try_start_0
-    iget-object v0, p0, Lcom/virtus/module/TelegramPollingService$2;->this$0:Lcom/virtus/module/TelegramPollingService;
+    iget-object v0, p0, Lcom/astik/module/TelegramPollingService$2;->this$0:Lcom/astik/module/TelegramPollingService;
 
-    invoke-static {v0}, Lcom/virtus/module/TelegramPollingService;->access$500(Lcom/virtus/module/TelegramPollingService;)V
+    invoke-static {v0}, Lcom/astik/module/TelegramPollingService;->access$500(Lcom/astik/module/TelegramPollingService;)V
     :try_end_0
     .catch Ljava/lang/Exception; {:try_start_0 .. :try_end_0} :catch_0
 
@@ -94,7 +94,7 @@
 
     move-result-object v0
 
-    const-string v1, "VirtusModule"
+    const-string v1, "AstikModule"
 
     invoke-static {v1, v0}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;)I
 
@@ -107,17 +107,17 @@
     if-ge v0, v1, :cond_0
 
     .line 242
-    iget-object v1, p0, Lcom/virtus/module/TelegramPollingService$2;->this$0:Lcom/virtus/module/TelegramPollingService;
+    iget-object v1, p0, Lcom/astik/module/TelegramPollingService$2;->this$0:Lcom/astik/module/TelegramPollingService;
 
-    invoke-static {v1}, Lcom/virtus/module/TelegramPollingService;->access$000(Lcom/virtus/module/TelegramPollingService;)Z
+    invoke-static {v1}, Lcom/astik/module/TelegramPollingService;->access$000(Lcom/astik/module/TelegramPollingService;)Z
 
     move-result v1
 
     if-eqz v1, :cond_0
 
-    iget-object v1, p0, Lcom/virtus/module/TelegramPollingService$2;->this$0:Lcom/virtus/module/TelegramPollingService;
+    iget-object v1, p0, Lcom/astik/module/TelegramPollingService$2;->this$0:Lcom/astik/module/TelegramPollingService;
 
-    invoke-static {v1}, Lcom/virtus/module/TelegramPollingService;->access$400(Lcom/virtus/module/TelegramPollingService;)Z
+    invoke-static {v1}, Lcom/astik/module/TelegramPollingService;->access$400(Lcom/astik/module/TelegramPollingService;)Z
 
     move-result v1
 
