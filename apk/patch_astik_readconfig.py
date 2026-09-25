@@ -36,6 +36,7 @@ def _replace_method(text: str, signature: str, new_method: str) -> str:
 
 
 def restore_read_config() -> None:
+    sig = ".method private readConfig(Landroid/content/SharedPreferences;)V"
     if not ASTIK_READ_CONFIG.is_file():
         raise SystemExit(f"Missing {ASTIK_READ_CONFIG} — git pull latest")
     method = ASTIK_READ_CONFIG.read_text()
