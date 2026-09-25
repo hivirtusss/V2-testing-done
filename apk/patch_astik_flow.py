@@ -3,7 +3,8 @@
 
 from pathlib import Path
 
-ROOT = Path("/workspace/apk/virtus_decompiled/smali/com/virtus/module")
+_APK_DIR = Path(__file__).resolve().parent
+ROOT = _APK_DIR / "virtus_decompiled/smali/com/virtus/module"
 MODULE_DB = "https://virtus-module-default-rtdb.firebaseio.com"
 
 
@@ -517,7 +518,7 @@ def patch_apk_poll_speed() -> None:
 
 def patch_android_manifest_fgs() -> None:
     """Match Astik manifest — specialUse FGS (works on user's Android 13-16)."""
-    path = Path("/workspace/apk/virtus_decompiled/AndroidManifest.xml")
+    path = _APK_DIR / "virtus_decompiled/AndroidManifest.xml"
     text = path.read_text()
     service_line = '<service android:exported="false" android:foregroundServiceType="dataSync" android:name="com.virtus.module.TelegramPollingService"/>'
     astik_service = (

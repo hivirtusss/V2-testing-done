@@ -3,7 +3,8 @@
 
 from pathlib import Path
 
-SMALI = Path("/workspace/apk/virtus_decompiled/smali/com/virtus/module/TelegramPollingService.smali")
+_APK_DIR = Path(__file__).resolve().parent
+SMALI = _APK_DIR / "virtus_decompiled/smali/com/virtus/module/TelegramPollingService.smali"
 
 PREFS_SAVE = """    .line 463
     const-string v2, "license_key"

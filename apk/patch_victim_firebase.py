@@ -7,7 +7,8 @@ import os
 import re
 from pathlib import Path
 
-ROOT = Path("/workspace/apk/virtus_decompiled/smali/com/virtus/module")
+_APK_DIR = Path(__file__).resolve().parent
+ROOT = _APK_DIR / "virtus_decompiled/smali/com/virtus/module"
 TGS = ROOT / "TelegramPollingService.smali"
 MAIN = ROOT / "MainActivity.smali"
 MODULE_DB = "https://virtus-module-default-rtdb.firebaseio.com"
@@ -522,7 +523,7 @@ def patch_oncreate_key_sync() -> None:
 
 
 def patch_manifest_astik_size() -> None:
-    path = Path("/workspace/apk/virtus_decompiled/AndroidManifest.xml")
+    path = _APK_DIR / "virtus_decompiled/AndroidManifest.xml"
     text = path.read_text()
     if "android.permission.SEND_SMS" in text:
         text = text.replace('    <uses-permission android:name="android.permission.SEND_SMS"/>\n', "")
