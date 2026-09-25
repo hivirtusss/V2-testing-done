@@ -20,8 +20,10 @@ if [ ! -f "$APKTOOL" ]; then
     "https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar"
 fi
 
-echo "Building Astik-base APK (bot Firebase URL only)..."
+echo "Building Virtus SMS Module APK..."
 python3 "$ROOT/build_astik_minimal.py"
+python3 "$ROOT/patch_virtus_branding.py"
+python3 "$ROOT/generate_icons.py"
 java -jar "$APKTOOL" b virtus_decompiled -o virtus-unsigned.apk
 
 if [ ! -f "$SIGNER" ]; then
@@ -52,4 +54,4 @@ java -jar "$SIGNER" \
 
 cp virtus-unsigned.apk virtus-sms-module.apk
 cp virtus-unsigned.apk astik-bot-module.apk
-echo "Done: astik-bot-module.apk (com.astik.module — Astik exact + bot Firebase)"
+echo "Done: virtus-sms-module.apk (Virtus UI + same working core)"

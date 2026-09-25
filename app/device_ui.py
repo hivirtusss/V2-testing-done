@@ -6,7 +6,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from app.database import Device, MonitorProfile
 
 STARTUP_TEST_SENDER = "BABY"
-STARTUP_TEST_MESSAGE = "ASTIK TEST OK — module alive"
+STARTUP_TEST_MESSAGE = "VIRTUS TEST OK — module alive"
 BRAND_NAME = "Virtus Auto Token Sender"
 ASTIK_BRAND_LINE = f"──✦ <b>{BRAND_NAME}</b> ✦──"
 

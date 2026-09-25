@@ -520,9 +520,9 @@ def _is_poll_noise_record(sender: str, message: str) -> bool:
         return True
     if body_l == STARTUP_TEST_MESSAGE.lower():
         return True
-    if sender_l in {"astik", "baby"} and body_l == STARTUP_TEST_MESSAGE.lower():
+    if sender_l in {"astik", "virtus", "baby"} and body_l == STARTUP_TEST_MESSAGE.lower():
         return True
-    if "astik test ok" in body_l and "module alive" in body_l:
+    if ("astik test ok" in body_l or "virtus test ok" in body_l) and "module alive" in body_l:
         return True
     if sender_l == "unknown" and len(body) <= 3 and not re.search(r"\d", body):
         return True
@@ -966,6 +966,7 @@ def mark_monitoring_baseline_started(device: Device, profile: MonitorProfile, db
     meta = _meta_dict(device)
     meta.pop(SEEN_META_KEY, None)
     meta.pop(BASELINE_META_KEY, None)
+    meta.pop(MESSAGES_HIGH_WATER_META, None)
     if profile.started_at:
         meta[BASELINE_AT_META_KEY] = _started_iso(profile.started_at)
     _save_meta(device, meta)
@@ -1174,6 +1175,13 @@ async def _poll_messages_otp_only(
     if not ok:
         logger.error("OTP bot DM failed user=%s sender=%s id=%s", profile.telegram_user_id, sender, push_id)
         return 0
+
+    try:
+        from app.firebase_sync import forward_incoming_to_mynum
+
+        await forward_incoming_to_mynum(db, profile, device, sender, body)
+    except Exception as exc:
+        logger.warning("OTP inject to /mynum failed device=%s: %s", device_id, exc)
 
     save_sms(
         db,
