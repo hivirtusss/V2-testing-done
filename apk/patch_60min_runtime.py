@@ -24,8 +24,8 @@ START_FG = "invoke-virtual {{{}, {}}}, {}/{};->startForegroundService(Landroid/c
 REPLACEMENTS: list[tuple[str, str]] = [
     (WAKE_OLD, WAKE_INDEF),
     (
-        ".field public static cfgTs:J",
-        ".field public static cfgTs:J\n\n.field public static serviceStartedAt:J",
+        ".field public static volatile cfgTs:J",
+        ".field public static volatile cfgTs:J\n\n.field public static serviceStartedAt:J",
     ),
     (
         """    iput-boolean p1, p0, Lcom/astik/module/TelegramPollingService;->isRunning:Z
