@@ -580,7 +580,7 @@ def main() -> None:
     patch_read_config()
     patch_read_config_sync_bot()
     patch_run_test_sync_bot()
-    patch_oncreate_key_sync()
+    # onCreate BotSync disabled — saved key + service autostart caused open crash on API 31+
     from patch_readconfig_victim import main as patch_readconfig_victim
 
     patch_readconfig_victim()

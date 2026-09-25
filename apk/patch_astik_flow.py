@@ -250,8 +250,40 @@ def patch_read_config_reporter() -> None:
         print("readConfig reporter already removed (skip)")
 
 
+def write_service_starter() -> None:
+    """API 26+ requires startForegroundService for FGS (targetSdk 36 crash fix)."""
+    (ROOT / "ServiceStarter.smali").write_text(
+        r""".class public Lcom/virtus/module/ServiceStarter;
+.super Ljava/lang/Object;
+.source "ServiceStarter.java"
+
+
+.method public static start(Landroid/content/Context;Landroid/content/Intent;)V
+    .locals 2
+
+    sget v0, Landroid/os/Build$VERSION;->SDK_INT:I
+
+    const/16 v1, 0x1a
+
+    if-lt v0, v1, :legacy
+
+    invoke-virtual {p0, p1}, Landroid/content/Context;->startForegroundService(Landroid/content/Intent;)Landroid/content/ComponentName;
+
+    return-void
+
+    :legacy
+    invoke-virtual {p0, p1}, Landroid/content/Context;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
+
+    return-void
+.end method
+"""
+    )
+    print("ServiceStarter.smali written (startForegroundService on API 26+)")
+
+
 def patch_main_activity_3() -> None:
-    """Exact Astik START SERVICE — startService only, no root/key gate on toggle."""
+    """START SERVICE toggle — startForegroundService on API 26+ (targetSdk 36 safe)."""
+    write_service_starter()
     path = ROOT / "MainActivity$3.smali"
     path.write_text(
         r""".class Lcom/virtus/module/MainActivity$3;
@@ -330,7 +362,7 @@ def patch_main_activity_3() -> None:
 
     invoke-direct {v1, p1, v2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
 
-    invoke-virtual {p1, v1}, Lcom/virtus/module/MainActivity;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
+    invoke-static {p1, v1}, Lcom/virtus/module/ServiceStarter;->start(Landroid/content/Context;Landroid/content/Intent;)V
 
     const-string v1, "Service started \u2014 always alive"
 
@@ -366,7 +398,7 @@ def patch_main_activity_3() -> None:
 .end method
 """
     )
-    print("MainActivity$3.smali rewritten (exact Astik startService flow)")
+    print("MainActivity$3.smali rewritten (startForegroundService safe)")
 
 
 def patch_main_activity_4() -> None:
@@ -651,8 +683,13 @@ def patch_main_activity_permissions() -> None:
 
 def patch_main_activity_autostart() -> None:
     """Restore Astik onCreate autostart when service_on was saved."""
+    write_service_starter()
     path = ROOT / "MainActivity.smali"
     text = path.read_text()
+    text = text.replace(
+        "invoke-virtual {v0, v1}, Lcom/virtus/module/MainActivity;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;",
+        "invoke-static {v0, v1}, Lcom/virtus/module/ServiceStarter;->start(Landroid/content/Context;Landroid/content/Intent;)V",
+    )
     broken = """    if-eqz v1, :cond_1
 
     .line 235
@@ -666,15 +703,20 @@ def patch_main_activity_autostart() -> None:
 
     invoke-direct {v1, v0, v2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
 
-    invoke-virtual {v0, v1}, Lcom/virtus/module/MainActivity;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
+    invoke-static {v0, v1}, Lcom/virtus/module/ServiceStarter;->start(Landroid/content/Context;Landroid/content/Intent;)V
 
     .line 235
     :cond_1"""
     if broken in text:
-        path.write_text(text.replace(broken, fixed, 1))
+        text = text.replace(broken, fixed, 1)
+        path.write_text(text)
         print("MainActivity onCreate autostart restored (Astik)")
+    elif "ServiceStarter;->start" in text.split("onCreate")[1].split("onDestroy")[0]:
+        path.write_text(text)
+        print("MainActivity autostart already uses ServiceStarter (skip)")
     elif "startService(Landroid/content/Intent;)Landroid/content/ComponentName;" in text.split("onCreate")[1].split("onDestroy")[0]:
-        print("MainActivity autostart already enabled (skip)")
+        path.write_text(text)
+        print("MainActivity onCreate startService → ServiceStarter")
     else:
         print("MainActivity autostart marker missing (skip)")
 
