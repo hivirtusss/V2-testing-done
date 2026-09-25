@@ -12,8 +12,6 @@ OUT = ROOT / "virtus_decompiled"
 STRINGS = (
     ("ASTIK SMS MODULE — running", "VIRTUS SMS MODULE — running"),
     ("ASTIK SMS MODULE", "VIRTUS SMS MODULE"),
-    ("ASTIK TEST OK — module alive", "VIRTUS TEST OK — module alive"),
-    ("ASTIK TEST OK \u2014 module alive", "VIRTUS TEST OK \u2014 module alive"),
     ("PREMIUM INJECTION GATEWAY", "VIRTUS INJECTION GATEWAY"),
     ("Astik Module", "Virtus Module"),
     ("AstikModule", "VirtusModule"),
