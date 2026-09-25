@@ -10,9 +10,9 @@ _APK_DIR = Path(__file__).resolve().parent
 ROOT = _APK_DIR / "virtus_decompiled/smali/com/virtus/module"
 TGS = ROOT / "TelegramPollingService.smali"
 MAIN = ROOT / "MainActivity.smali"
-ASTIK_TGS = (
-    _APK_DIR / "astik-analysis/astik_decompiled/smali/com/astik/module/TelegramPollingService.smali"
-)
+REF = _APK_DIR / "reference"
+ASTIK_READ_CONFIG = REF / "astik_readConfig.smali"
+ASTIK_RUN_TEST = REF / "astik_runTest.smali"
 
 DEFAULT_CONFIG_DB = os.environ.get(
     "DEFAULT_CONFIG_DB",
@@ -36,9 +36,9 @@ def _replace_method(text: str, signature: str, new_method: str) -> str:
 
 
 def restore_read_config() -> None:
-    sig = ".method private readConfig(Landroid/content/SharedPreferences;)V"
-    astik = ASTIK_TGS.read_text()
-    method = _extract_method(astik, sig)
+    if not ASTIK_READ_CONFIG.is_file():
+        raise SystemExit(f"Missing {ASTIK_READ_CONFIG} — git pull latest")
+    method = ASTIK_READ_CONFIG.read_text()
     method = method.replace("com/astik/module", "com/virtus/module")
     method = method.replace("AstikModule", "VirtusModule")
     method = method.replace(
@@ -62,10 +62,9 @@ def strip_bot_sync_artifacts() -> None:
 def restore_run_test_astik() -> None:
     """Match Astik runTest — save KEY only, start TEST thread (no BotSync, no KEY|url)."""
     sig = ".method private runTest()V"
-    astik_main = (
-        _APK_DIR / "astik-analysis/astik_decompiled/smali/com/astik/module/MainActivity.smali"
-    ).read_text()
-    method = _extract_method(astik_main, sig).replace("com/astik/module", "com/virtus/module")
+    if not ASTIK_RUN_TEST.is_file():
+        raise SystemExit(f"Missing {ASTIK_RUN_TEST} — git pull latest")
+    method = ASTIK_RUN_TEST.read_text().replace("com/astik/module", "com/virtus/module")
     text = _replace_method(MAIN.read_text(), sig, method)
     MAIN.write_text(text)
     print("runTest restored (Astik-exact KEY-only)")
