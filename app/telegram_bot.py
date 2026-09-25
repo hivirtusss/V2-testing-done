@@ -150,7 +150,7 @@ async def _deliver_monitoring_started(
         ignored_sms=ignored,
         startup_test_sent=startup_test_sent,
     )
-    keyboard = monitoring_keyboard(device)
+    keyboard = monitoring_keyboard(device, monitoring_active=True)
 
     if message_id is not None and reply_func:
         await reply_func(

