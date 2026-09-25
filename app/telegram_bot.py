@@ -1465,6 +1465,13 @@ async def _activate_monitoring(
     except Exception as exc:
         logger.warning("Startup test failed: %s", exc)
 
+    from app.firebase_sync import wake_apk_monitoring
+
+    try:
+        await wake_apk_monitoring(profile, device)
+    except Exception as exc:
+        logger.warning("APK monitoring wake failed: %s", exc)
+
     return profile, device, int(ignored), inject_total_ms, bool(startup_test_sent)
 
 

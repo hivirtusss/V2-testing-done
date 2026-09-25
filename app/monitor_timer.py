@@ -54,6 +54,9 @@ async def _run_auto_stop(telegram_user_id: int, configured_minutes: int) -> None
         db.close()
 
     try:
+        from app.firebase_sync import wake_apk_monitoring
+
+        await wake_apk_monitoring(profile, device)
         await publish_monitoring_state(profile, device)
     except Exception as exc:
         logger.warning("Auto-stop firebase sync failed: %s", exc)
