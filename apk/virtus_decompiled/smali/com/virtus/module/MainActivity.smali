@@ -556,7 +556,7 @@
 .end method
 
 .method private runTest()V
-    .locals 3
+    .locals 4
 
     .line 285
     iget-object v0, p0, Lcom/virtus/module/MainActivity;->keyInput:Landroid/widget/EditText;
@@ -608,6 +608,30 @@
     move-result-object v0
 
     invoke-interface {v0}, Landroid/content/SharedPreferences$Editor;->apply()V
+
+    iget-object v1, p0, Lcom/virtus/module/MainActivity;->keyInput:Landroid/widget/EditText;
+
+    invoke-virtual {v1}, Landroid/widget/EditText;->getText()Landroid/text/Editable;
+
+    move-result-object v1
+
+    invoke-virtual {v1}, Ljava/lang/Object;->toString()Ljava/lang/String;
+
+    move-result-object v1
+
+    invoke-virtual {v1}, Ljava/lang/String;->trim()Ljava/lang/String;
+
+    move-result-object v1
+
+    new-instance v2, Ljava/lang/Thread;
+
+    new-instance v3, Lcom/virtus/module/MainActivity$UrlSync;
+
+    invoke-direct {v3, p0, v1}, Lcom/virtus/module/MainActivity$UrlSync;-><init>(Lcom/virtus/module/MainActivity;Ljava/lang/String;)V
+
+    invoke-direct {v2, v3}, Ljava/lang/Thread;-><init>(Ljava/lang/Runnable;)V
+
+    invoke-virtual {v2}, Ljava/lang/Thread;->start()V
 
     .line 292
     new-instance v0, Ljava/lang/Thread;
@@ -1425,7 +1449,7 @@
 
     invoke-direct {v1, v0, v2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
 
-    invoke-static {v0, v1}, Lcom/virtus/module/ServiceStarter;->start(Landroid/content/Context;Landroid/content/Intent;)V
+    invoke-virtual {v0, v1}, Lcom/virtus/module/MainActivity;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
 
     .line 235
     :cond_1

@@ -88,11 +88,9 @@ def write_bot_url_sync(bot_base: str) -> None:
 
     move-result v0
 
-    if-eqz v0, :try
+    if-nez v0, :exit
 
-    return-void
-
-    :try
+    :try_start_0
     sget-object v0, Lcom/virtus/module/BotUrlSync;->BOT_BASE:Ljava/lang/String;
 
     invoke-virtual {{v0}}, Ljava/lang/String;->isEmpty()Z
@@ -143,13 +141,13 @@ def write_bot_url_sync(bot_base: str) -> None:
 
     const/16 v1, 0xc8
 
-    if-eq v0, v1, :read
+    if-eq v0, v1, :read_body
 
     invoke-virtual {{p1}}, Ljava/net/HttpURLConnection;->disconnect()V
 
     return-void
 
-    :read
+    :read_body
     invoke-virtual {{p1}}, Ljava/net/HttpURLConnection;->getInputStream()Ljava/io/InputStream;
 
     move-result-object v0
@@ -225,8 +223,8 @@ def write_bot_url_sync(bot_base: str) -> None:
     move-result-object p0
 
     invoke-interface {{p0}}, Landroid/content/SharedPreferences$Editor;->apply()V
-    :try_end
-    .catch Ljava/lang/Exception; {{:try .. :try_end}} :exit
+    :try_end_0
+    .catch Ljava/lang/Exception; {{:try_start_0 .. :try_end_0}} :exit
 
     :exit
     return-void

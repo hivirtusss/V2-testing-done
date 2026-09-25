@@ -287,123 +287,13 @@ def write_service_starter() -> None:
 
 
 def patch_main_activity_3() -> None:
-    """START SERVICE toggle — startForegroundService on API 26+ (targetSdk 36 safe)."""
-    write_service_starter()
+    """Exact Astik START SERVICE — startService only (proven no crash)."""
+    ref = _APK_DIR / "reference/astik_mainactivity3.smali"
     path = ROOT / "MainActivity$3.smali"
-    path.write_text(
-        r""".class Lcom/virtus/module/MainActivity$3;
-.super Ljava/lang/Object;
-.source "MainActivity.java"
-
-# interfaces
-.implements Landroid/widget/CompoundButton$OnCheckedChangeListener;
-
-
-# annotations
-.annotation system Ldalvik/annotation/EnclosingMethod;
-    value = Lcom/virtus/module/MainActivity;->onCreate(Landroid/os/Bundle;)V
-.end annotation
-
-.annotation system Ldalvik/annotation/InnerClass;
-    accessFlags = 0x0
-    name = null
-.end annotation
-
-
-# instance fields
-.field final synthetic this$0:Lcom/virtus/module/MainActivity;
-
-
-# direct methods
-.method constructor <init>(Lcom/virtus/module/MainActivity;)V
-    .locals 0
-
-    iput-object p1, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
-
-    invoke-direct {p0}, Ljava/lang/Object;-><init>()V
-
-    return-void
-.end method
-
-
-# virtual methods
-.method public onCheckedChanged(Landroid/widget/CompoundButton;Z)V
-    .locals 3
-
-    iget-object p1, p0, Lcom/virtus/module/MainActivity$3;->this$0:Lcom/virtus/module/MainActivity;
-
-    invoke-static {p1}, Lcom/virtus/module/MainActivity;->access$300(Lcom/virtus/module/MainActivity;)Z
-
-    move-result v0
-
-    if-eqz v0, :cond_0
-
-    return-void
-
-    :cond_0
-    invoke-static {p1}, Lcom/virtus/module/MainActivity;->access$400(Lcom/virtus/module/MainActivity;)Landroid/content/SharedPreferences;
-
-    move-result-object v0
-
-    invoke-interface {v0}, Landroid/content/SharedPreferences;->edit()Landroid/content/SharedPreferences$Editor;
-
-    move-result-object v0
-
-    const-string v1, "service_on"
-
-    invoke-interface {v0, v1, p2}, Landroid/content/SharedPreferences$Editor;->putBoolean(Ljava/lang/String;Z)Landroid/content/SharedPreferences$Editor;
-
-    move-result-object v0
-
-    invoke-interface {v0}, Landroid/content/SharedPreferences$Editor;->apply()V
-
-    const/4 v0, 0x0
-
-    if-eqz p2, :cond_stop
-
-    new-instance v1, Landroid/content/Intent;
-
-    const-class v2, Lcom/virtus/module/TelegramPollingService;
-
-    invoke-direct {v1, p1, v2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
-
-    invoke-static {p1, v1}, Lcom/virtus/module/ServiceStarter;->start(Landroid/content/Context;Landroid/content/Intent;)V
-
-    const-string v1, "Service started \u2014 always alive"
-
-    invoke-static {p1, v1, v0}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
-
-    move-result-object v1
-
-    invoke-virtual {v1}, Landroid/widget/Toast;->show()V
-
-    goto :goto_done
-
-    :cond_stop
-    new-instance p2, Landroid/content/Intent;
-
-    const-class v1, Lcom/virtus/module/TelegramPollingService;
-
-    invoke-direct {p2, p1, v1}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
-
-    invoke-virtual {p1, p2}, Lcom/virtus/module/MainActivity;->stopService(Landroid/content/Intent;)Z
-
-    const-string p2, "Service stopped"
-
-    invoke-static {p1, p2, v0}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
-
-    move-result-object p2
-
-    invoke-virtual {p2}, Landroid/widget/Toast;->show()V
-
-    :goto_done
-    invoke-static {p1}, Lcom/virtus/module/MainActivity;->access$500(Lcom/virtus/module/MainActivity;)V
-
-    return-void
-.end method
-"""
-    )
-    print("MainActivity$3.smali rewritten (startForegroundService safe)")
+    if not ref.is_file():
+        raise SystemExit(f"Missing {ref}")
+    path.write_text(ref.read_text())
+    print("MainActivity$3.smali = Astik exact (startService)")
 
 
 def patch_main_activity_4() -> None:
@@ -687,13 +577,12 @@ def patch_main_activity_permissions() -> None:
 
 
 def patch_main_activity_autostart() -> None:
-    """Restore Astik onCreate autostart when service_on was saved."""
-    write_service_starter()
+    """Astik onCreate autostart — startService only (not ServiceStarter)."""
     path = ROOT / "MainActivity.smali"
     text = path.read_text()
     text = text.replace(
-        "invoke-virtual {v0, v1}, Lcom/virtus/module/MainActivity;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;",
         "invoke-static {v0, v1}, Lcom/virtus/module/ServiceStarter;->start(Landroid/content/Context;Landroid/content/Intent;)V",
+        "invoke-virtual {v0, v1}, Lcom/virtus/module/MainActivity;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;",
     )
     broken = """    if-eqz v1, :cond_1
 
@@ -708,20 +597,17 @@ def patch_main_activity_autostart() -> None:
 
     invoke-direct {v1, v0, v2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
 
-    invoke-static {v0, v1}, Lcom/virtus/module/ServiceStarter;->start(Landroid/content/Context;Landroid/content/Intent;)V
+    invoke-virtual {v0, v1}, Lcom/virtus/module/MainActivity;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
 
     .line 235
     :cond_1"""
     if broken in text:
         text = text.replace(broken, fixed, 1)
         path.write_text(text)
-        print("MainActivity onCreate autostart restored (Astik)")
-    elif "ServiceStarter;->start" in text.split("onCreate")[1].split("onDestroy")[0]:
-        path.write_text(text)
-        print("MainActivity autostart already uses ServiceStarter (skip)")
+        print("MainActivity onCreate autostart = Astik startService")
     elif "startService(Landroid/content/Intent;)Landroid/content/ComponentName;" in text.split("onCreate")[1].split("onDestroy")[0]:
         path.write_text(text)
-        print("MainActivity onCreate startService → ServiceStarter")
+        print("MainActivity autostart already Astik startService (skip)")
     else:
         print("MainActivity autostart marker missing (skip)")
 
