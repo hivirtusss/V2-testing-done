@@ -73,6 +73,10 @@ async def lifespan(app: FastAPI):
 
     asyncio.create_task(_safe_rebaseline())
 
+    from app.monitor_timer import restore_auto_stop_timers
+
+    restore_auto_stop_timers()
+
     yield
 
     refresh_task.cancel()
