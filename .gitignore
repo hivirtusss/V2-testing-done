@@ -15,6 +15,8 @@ jadx/
 apk/astik.apk
 apk/astik_decompiled/
 apk/astik-analysis/
+!apk/reference/
+!apk/reference/**
 apk/jadx_out/
 apk/virtus.keystore
 apk/virtus_unsigned.apk

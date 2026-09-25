@@ -15,8 +15,8 @@ def get_firebase_workers() -> int:
 
 
 def get_poll_workers() -> int:
-    """Hot-path SMS poll workers — capped so Telegram bot stays responsive."""
-    return max(6, min(get_settings().firebase_workers, 24))
+    """Hot-path SMS poll workers — fast OTP without VPS freeze."""
+    return max(4, min(get_settings().firebase_workers, 32))
 
 
 def _httpx_limits() -> httpx.Limits:

