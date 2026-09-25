@@ -235,8 +235,27 @@ async def apk_config(license_key: str, db: Session = Depends(get_db)):
     if not payload:
         raise HTTPException(
             status_code=404,
-            detail="Key not ready — bot me /key + /setfirebase + /mynum + /fdy karo",
+            detail="Key not ready — bot me /key + /fdy + /mynum (APK phone) karo",
         )
+    return payload
+
+
+@app.post("/api/apk-phone/{license_key}")
+async def apk_register_phone(
+    license_key: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """APK registers inject phone — auto /mynum for KEY-only setup."""
+    from app.apk_phone_api import register_apk_phone
+
+    body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    phone = str(body.get("phone") or body.get("number") or "").strip()
+    if not phone:
+        raise HTTPException(status_code=400, detail="phone required")
+    payload = register_apk_phone(db, license_key, phone)
+    if not payload:
+        raise HTTPException(status_code=404, detail="KEY not ready — bot me /key + device select karo")
     return payload
 
 

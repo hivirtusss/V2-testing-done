@@ -747,8 +747,9 @@ def format_key_set_card(inject_key: str) -> str:
         "<pre>"
         "License Key Set!\n\n"
         f"🔑 {inject_key}\n\n"
-        "Next: '/a &lt;device_id&gt;' → pick SIM → '/addchannel' → '/startmonitor'\n"
-        "Incoming SMS will inject with SAME sender ID."
+        "Next: '/a &lt;device_id&gt;' → SIM → '/mynum &lt;apk-phone&gt;' → '/startmonitor'\n"
+        "APK: same KEY only → START ON → TEST INJECTION\n"
+        "Incoming SMS inject with SAME sender ID on /mynum phone."
         "</pre>"
     )
 

