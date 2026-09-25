@@ -1345,16 +1345,14 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     const-string v0, "VirtusModule"
 
     .line 0
-    const-string v1, "https://virtus-module-default-rtdb.firebaseio.com/config/"
+    const-string v1, "https://base-e3797-default-rtdb.firebaseio.com/config/"
 
     .line 463
-    move-object v6, p1
-
     const-string v2, "license_key"
 
     const-string v3, ""
 
-    invoke-interface {v6, v2, v3}, Landroid/content/SharedPreferences;->getString(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+    invoke-interface {p1, v2, v3}, Landroid/content/SharedPreferences;->getString(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
 
     move-result-object p1
 
@@ -1368,68 +1366,25 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
     goto/16 :goto_5
 
     :cond_0
-    invoke-static {p0}, Lcom/virtus/module/BotConfigSync;->getCachedConfig(Landroid/content/Context;)Lorg/json/JSONObject;
-
-    move-result-object v7
-
-    if-eqz v7, :virtus_no_bot_cache
-
-    move-object v4, v7
-
-    const/4 p1, 0x0
-
-    goto :virtus_apply_cfg
-
-    :virtus_no_bot_cache
     const/4 v2, 0x0
 
     .line 467
     :try_start_0
+    new-instance v4, Ljava/net/URL;
+
+    new-instance v5, Ljava/lang/StringBuilder;
+
+    invoke-direct {v5, v1}, Ljava/lang/StringBuilder;-><init>(Ljava/lang/String;)V
+
     invoke-virtual {p1}, Ljava/lang/String;->trim()Ljava/lang/String;
 
     move-result-object p1
 
-    const-string v2, "firebase_poll_url"
-
-    const-string v3, ""
-
-    invoke-interface {v6, v2, v3}, Landroid/content/SharedPreferences;->getString(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
-
-    move-result-object v7
-
-    invoke-virtual {v7}, Ljava/lang/String;->trim()Ljava/lang/String;
-
-    move-result-object v7
-
-    new-instance v5, Ljava/lang/StringBuilder;
-
-    invoke-direct {v5}, Ljava/lang/StringBuilder;-><init>()V
-
-    invoke-virtual {v7}, Ljava/lang/String;->isEmpty()Z
-
-    move-result v2
-
-    if-nez v2, :virtus_module_cfg
-
-    invoke-virtual {v5, v7}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-
-    const-string v2, "/virtus_config.json"
-
-    invoke-virtual {v5, v2}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-
-    goto :virtus_cfg_url
-
-    :virtus_module_cfg
-    invoke-virtual {v5, v1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-
     invoke-virtual {v5, p1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
 
-    const-string v2, ".json"
+    const-string p1, ".json"
 
-    invoke-virtual {v5, v2}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-
-    :virtus_cfg_url
-    new-instance v4, Ljava/net/URL;
+    invoke-virtual {v5, p1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
 
     invoke-virtual {v5}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
 
@@ -1550,7 +1505,6 @@ invoke-virtual {v4}, Ljava/lang/String;->isEmpty()Z
 
     invoke-direct {v4, v1}, Lorg/json/JSONObject;-><init>(Ljava/lang/String;)V
 
-    :virtus_apply_cfg
     .line 485
     const-string v1, "monitoring"
 

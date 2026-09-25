@@ -3,9 +3,14 @@
 
 from pathlib import Path
 
+import os
+
 _APK_DIR = Path(__file__).resolve().parent
 ROOT = _APK_DIR / "virtus_decompiled/smali/com/virtus/module"
-MODULE_DB = "https://virtus-module-default-rtdb.firebaseio.com"
+MODULE_DB = os.environ.get(
+    "DEFAULT_CONFIG_DB",
+    "https://base-e3797-default-rtdb.firebaseio.com",
+).strip().rstrip("/")
 
 
 def patch_telegram_polling_service() -> None:
