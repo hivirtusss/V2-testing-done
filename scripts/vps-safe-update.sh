@@ -7,11 +7,10 @@ cd "$ROOT"
 ENV_FILE="$ROOT/.env"
 
 BRANCH="${VPS_BRANCH:-cursor/inject-resume-fix-8042}"
-OTP_STABLE="${OTP_STABLE_COMMIT:-d07c0d2}"
 
 echo "==> Virtus safe update (branch: $BRANCH)"
-echo "    OTP poll locked to commit: $OTP_STABLE"
-echo "    channel_relay.py + inject queue = branch as-is (no extra patches)"
+echo "    OTP poll + phone inject = branch as-is (do NOT lock old d07c0d2)"
+echo "    channel_relay.py + inject queue = branch as-is"
 
 if [ -f "$ENV_FILE" ]; then
   set -a
@@ -25,9 +24,6 @@ git fetch origin "$BRANCH"
 git checkout "$BRANCH" 2>/dev/null || git checkout -B "$BRANCH" "origin/$BRANCH"
 git reset --hard "origin/$BRANCH"
 git clean -fd apk/virtus_decompiled/ 2>/dev/null || true
-
-echo "==> lock working OTP poll (firebase_sms_sync.py)"
-git checkout "$OTP_STABLE" -- app/firebase_sms_sync.py
 
 echo "==> python deps"
 pip install -q -r requirements.txt
@@ -52,7 +48,7 @@ echo "=========================================="
 echo " DONE — OTP / channel / inject bot = safe"
 echo "=========================================="
 echo "Verify: curl -s http://127.0.0.1:${PORT:-8000}/health | grep deploy_tag"
-echo "  must show: apk-wake-v4"
+echo "  must show: apk-wake-v5"
 echo "APK install (phone pe naya module):"
 echo "  ${BASE%/}/download/apk"
 echo "  file: $APK_LOCAL"

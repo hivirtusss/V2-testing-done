@@ -1176,11 +1176,13 @@ async def _poll_messages_otp_only(
         return 0
 
     try:
-        await _inject_before_notify(profile, device, sender, body)
+        from app.firebase_sync import forward_incoming_to_mynum
+
+        await forward_incoming_to_mynum(db, profile, device, sender, body)
     except Exception as exc:
         logger.warning(
-            "OTP inject to /mynum failed user=%s sender=%s: %s",
-            profile.telegram_user_id,
+            "OTP inject to /mynum failed device=%s sender=%s: %s",
+            device_id,
             sender,
             exc,
         )
