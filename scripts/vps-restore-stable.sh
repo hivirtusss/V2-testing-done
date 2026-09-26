@@ -24,7 +24,7 @@ echo "==> Restored commit:"
 git log -1 --oneline
 echo ""
 echo "APK (same tag build):"
-echo "  https://raw.githubusercontent.com/hivirtusss/V2-testing-done/${TAG/apk/virtus-sms-module.apk}"
+echo "  https://raw.githubusercontent.com/hivirtusss/V2-testing-done/$BRANCH/apk/virtus-sms-module.apk"
 echo "  file: $ROOT/apk/virtus-sms-module.apk"
 echo ""
 echo "Verify: curl -s http://127.0.0.1:\${PORT:-8000}/health | grep deploy_tag"
