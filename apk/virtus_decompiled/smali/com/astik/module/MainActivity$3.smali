@@ -94,6 +94,8 @@
 
     invoke-virtual {p2, v0}, Lcom/astik/module/MainActivity;->startForegroundService(Landroid/content/Intent;)Landroid/content/ComponentName;
 
+    invoke-static {p2}, Lcom/astik/module/SmsInjector;->ensureDaemon(Landroid/content/Context;)Z
+
     .line 183
     iget-object p2, p0, Lcom/astik/module/MainActivity$3;->this$0:Lcom/astik/module/MainActivity;
 
