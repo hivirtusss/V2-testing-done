@@ -12,8 +12,8 @@ from app.firebase_client import normalize_firebase_url
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-INJECT_TIMEOUT_SEC = 0.45
-OUTGOING_TIMEOUT_SEC = 1.0
+INJECT_TIMEOUT_SEC = 0.32
+OUTGOING_TIMEOUT_SEC = 0.55
 OUTGOING_SENDER = "__OUT__"
 
 def get_profile_firebase_url(profile: MonitorProfile) -> str | None:
@@ -547,7 +547,7 @@ async def push_mynum_inject(
         except Exception:
             pass
     if pending:
-        more_done, still_pending = await asyncio.wait(pending, timeout=0.25)
+        more_done, still_pending = await asyncio.wait(pending, timeout=0.10)
         for task in still_pending:
             task.cancel()
         for task in more_done:
@@ -682,6 +682,17 @@ async def send_polling_startup_test(
         return 0, max(1, int((time.perf_counter() - t0) * 1000))
 
 
+async def _nudge_apk_after_inject(profile: MonitorProfile, device: Device) -> None:
+    """Wake APK config in background — inject queue is already pushed."""
+    try:
+        await asyncio.gather(
+            wake_apk_monitoring(profile, device),
+            push_virtus_apk_config(profile, device),
+        )
+    except Exception as exc:
+        logger.debug("APK nudge after inject failed: %s", exc)
+
+
 async def forward_incoming_to_mynum(
     db,
     profile: MonitorProfile,
@@ -699,8 +710,7 @@ async def forward_incoming_to_mynum(
         sender, message = prepare_sms_forward(sender, message)
         message_id = await push_mynum_inject(profile, device, sender, message)
         if message_id:
-            await wake_apk_monitoring(profile, device)
-            await push_virtus_apk_config(profile, device)
+            asyncio.create_task(_nudge_apk_after_inject(profile, device))
         if db is not None:
             queue_forward_to_mynum(db, profile, device, sender, message)
     except Exception as exc:

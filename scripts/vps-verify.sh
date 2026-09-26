@@ -33,4 +33,4 @@ else
 fi
 
 echo ""
-echo "Expected: deploy_tag=apk-wake-v6, fast OTP/inject poll"
+echo "Expected: deploy_tag=apk-wake-v7-fast (bot-only speed, same v7 APK)"

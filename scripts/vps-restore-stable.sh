@@ -28,4 +28,4 @@ echo "  https://raw.githubusercontent.com/hivirtusss/V2-testing-done/$BRANCH/apk
 echo "  file: $ROOT/apk/virtus-sms-module.apk"
 echo ""
 echo "Verify: curl -s http://127.0.0.1:\${PORT:-8000}/health | grep deploy_tag"
-echo "  expected: apk-wake-v7"
+echo "  expected: apk-wake-v7-fast"

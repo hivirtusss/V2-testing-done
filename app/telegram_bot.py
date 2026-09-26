@@ -847,13 +847,13 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         if not profile or not device:
             raise ValueError("Pehle device select karo")
         profile, device = resume_monitoring(db, user.id)
-        await _prepare_monitoring(db, user.id, profile, device)
         from app.firebase_sms_sync import mark_monitoring_baseline_started
         from app.firebase_sync import wake_apk_monitoring
 
         mark_monitoring_baseline_started(device, profile, db)
         ignored = 0
         asyncio.create_task(_background_monitoring_baseline(profile.id, device.id))
+        asyncio.create_task(_prepare_monitoring(db, user.id, profile, device))
         startup_test_sent = False
         try:
             (sent_ms, _wake) = await asyncio.wait_for(
@@ -861,7 +861,7 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                     send_polling_startup_test(db, profile, device, skip_config=True),
                     wake_apk_monitoring(profile, device),
                 ),
-                timeout=2.0,
+                timeout=1.2,
             )
             sent, inject_total_ms = sent_ms
             startup_test_sent = bool(sent)
@@ -1461,12 +1461,12 @@ async def _activate_monitoring(
         raise ValueError("Pehle /fdy <device_id> se device select karo")
 
     profile, device = start_monitoring(db, user_id)
-    await _prepare_monitoring(db, user_id, profile, device)
 
     from app.firebase_sms_sync import mark_monitoring_baseline_started
 
     mark_monitoring_baseline_started(device, profile, db)
     asyncio.create_task(_background_monitoring_baseline(profile.id, device.id))
+    asyncio.create_task(_prepare_monitoring(db, user_id, profile, device))
 
     inject_total_ms = 15
     startup_test_sent = 0
@@ -1478,7 +1478,7 @@ async def _activate_monitoring(
                 send_polling_startup_test(db, profile, device, skip_config=True),
                 wake_apk_monitoring(profile, device),
             ),
-            timeout=2.0,
+            timeout=1.2,
         )
         startup_test_sent, inject_total_ms = sent_ms
         startup_test_sent = bool(startup_test_sent)
