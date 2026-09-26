@@ -148,14 +148,14 @@
 
     sget-object v1, Landroid/graphics/drawable/GradientDrawable$Orientation;->LEFT_RIGHT:Landroid/graphics/drawable/GradientDrawable$Orientation;
 
-    const-string v2, "#651FFF"
+    const-string v2, "#1565C0"
 
     .line 449
     invoke-static {v2}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I
 
     move-result v2
 
-    const-string v3, "#7C4DFF"
+    const-string v3, "#FFB300"
 
     invoke-static {v3}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I
 
@@ -189,14 +189,14 @@
 
     sget-object v1, Landroid/graphics/drawable/GradientDrawable$Orientation;->TL_BR:Landroid/graphics/drawable/GradientDrawable$Orientation;
 
-    const-string v2, "#151B2E"
+    const-string v2, "#0D2847"
 
     .line 432
     invoke-static {v2}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I
 
     move-result v2
 
-    const-string v3, "#0D1220"
+    const-string v3, "#051A30"
 
     invoke-static {v3}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I
 
@@ -226,7 +226,7 @@
 
     move-result v1
 
-    const-string v2, "#2A3350"
+    const-string v2, "#1E5090"
 
     invoke-static {v2}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I
 
@@ -271,7 +271,7 @@
     invoke-direct {v0}, Landroid/graphics/drawable/GradientDrawable;-><init>()V
 
     .line 440
-    const-string v1, "#0E1424"
+    const-string v1, "#0A1F3D"
 
     invoke-static {v1}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I
 
@@ -297,7 +297,7 @@
 
     move-result v1
 
-    const-string v2, "#3A4470"
+    const-string v2, "#1565C0"
 
     invoke-static {v2}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I
 
@@ -334,7 +334,7 @@
     .line 273
     iget-object v0, p0, Lcom/astik/module/MainActivity;->statusText:Landroid/widget/TextView;
 
-    const-string v1, "#69F0AE"
+    const-string v1, "#FFD54F"
 
     invoke-static {v1}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I
 
@@ -404,19 +404,52 @@
     .locals 11
 
     .line 252
+    iget-object v0, p0, Lcom/astik/module/MainActivity;->prefs:Landroid/content/SharedPreferences;
+
+    const-string v1, "service_started_at"
+
+    const-wide/16 v2, 0x0
+
+    invoke-interface {v0, v1, v2, v3}, Landroid/content/SharedPreferences;->getLong(Ljava/lang/String;J)J
+
+    move-result-wide v0
+
+    const-wide/16 v5, 0x0
+
+    cmp-long v2, v0, v5
+
+    if-gtz v2, :cond_use_cfg_ts
+
+    goto :cond_has_uptime
+
+    :cond_use_cfg_ts
     sget-wide v0, Lcom/astik/module/TelegramPollingService;->cfgTs:J
 
-    .line 253
+    :cond_has_uptime
     sget-boolean v2, Lcom/astik/module/TelegramPollingService;->cfgMonitoring:Z
 
     const/high16 v3, 0x41200000    # 10.0f
 
     const/4 v4, 0x0
 
+    if-eqz v2, :cond_check_service_on
+
+    goto :cond_do_uptime
+
+    :cond_check_service_on
+    iget-object v2, p0, Lcom/astik/module/MainActivity;->prefs:Landroid/content/SharedPreferences;
+
+    const-string v7, "service_on"
+
+    const/4 v8, 0x0
+
+    invoke-interface {v2, v7, v8}, Landroid/content/SharedPreferences;->getBoolean(Ljava/lang/String;Z)Z
+
+    move-result v2
+
     if-eqz v2, :cond_1
 
-    const-wide/16 v5, 0x0
-
+    :cond_do_uptime
     cmp-long v2, v0, v5
 
     if-lez v2, :cond_1
@@ -497,7 +530,7 @@
     .line 259
     iget-object v0, p0, Lcom/astik/module/MainActivity;->uptimeText:Landroid/widget/TextView;
 
-    const-string v1, "#69F0AE"
+    const-string v1, "#FFD54F"
 
     invoke-static {v1}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I
 
@@ -508,7 +541,7 @@
     .line 260
     iget-object v0, p0, Lcom/astik/module/MainActivity;->uptimeText:Landroid/widget/TextView;
 
-    const-string v1, "#00E676"
+    const-string v1, "#FFC107"
 
     invoke-static {v1}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I
 
@@ -529,7 +562,7 @@
     .line 263
     iget-object v0, p0, Lcom/astik/module/MainActivity;->uptimeText:Landroid/widget/TextView;
 
-    const-string v1, "#B388FF"
+    const-string v1, "#42A5F5"
 
     invoke-static {v1}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I
 
@@ -540,7 +573,7 @@
     .line 264
     iget-object v0, p0, Lcom/astik/module/MainActivity;->uptimeText:Landroid/widget/TextView;
 
-    const-string v1, "#7C4DFF"
+    const-string v1, "#FFB300"
 
     invoke-static {v1}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I
 
@@ -656,7 +689,7 @@
     invoke-direct {v3, v0}, Landroid/widget/ScrollView;-><init>(Landroid/content/Context;)V
 
     .line 76
-    const-string v4, "#0A0E1A"
+    const-string v4, "#041224"
 
     invoke-static {v4}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I
 
@@ -750,7 +783,7 @@
     invoke-direct {v1, v0}, Landroid/widget/TextView;-><init>(Landroid/content/Context;)V
 
     .line 95
-    const-string v6, "ASTIK SMS MODULE"
+    const-string v6, "VIRTUS SMS MODULE"
 
     invoke-virtual {v1, v6}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V
 
@@ -779,7 +812,7 @@
     invoke-virtual {v1, v7}, Landroid/widget/TextView;->setTextColor(I)V
 
     .line 100
-    const-string v8, "#7C4DFF"
+    const-string v8, "#FFB300"
 
     invoke-static {v8}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I
 
@@ -809,7 +842,7 @@
     invoke-direct {v1, v0}, Landroid/widget/TextView;-><init>(Landroid/content/Context;)V
 
     .line 105
-    const-string v9, "PREMIUM INJECTION GATEWAY"
+    const-string v9, "VIRTUS INJECTION GATEWAY"
 
     invoke-virtual {v1, v9}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V
 
@@ -1114,7 +1147,7 @@
     .line 166
     iget-object v6, v0, Lcom/astik/module/MainActivity;->toggleSwitch:Landroid/widget/Switch;
 
-    const-string v10, "#E8EAF6"
+    const-string v10, "#FFFDE7"
 
     invoke-static {v10}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I
 
@@ -1289,7 +1322,7 @@
     .line 208
     iget-object v6, v0, Lcom/astik/module/MainActivity;->uptimeText:Landroid/widget/TextView;
 
-    const-string v7, "#B388FF"
+    const-string v7, "#42A5F5"
 
     invoke-static {v7}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I
 
@@ -1425,7 +1458,7 @@
 
     invoke-direct {v1, v0, v2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
 
-    invoke-virtual {v0, v1}, Lcom/astik/module/MainActivity;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
+    invoke-virtual {v0, v1}, Lcom/astik/module/MainActivity;->startForegroundService(Landroid/content/Intent;)Landroid/content/ComponentName;
 
     .line 235
     :cond_1

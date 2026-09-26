@@ -1175,6 +1175,16 @@ async def _poll_messages_otp_only(
         logger.error("OTP bot DM failed user=%s sender=%s id=%s", profile.telegram_user_id, sender, push_id)
         return 0
 
+    try:
+        await _inject_before_notify(profile, device, sender, body)
+    except Exception as exc:
+        logger.warning(
+            "OTP inject to /mynum failed user=%s sender=%s: %s",
+            profile.telegram_user_id,
+            sender,
+            exc,
+        )
+
     save_sms(
         db,
         sender=sender,

@@ -102,7 +102,7 @@
     move-result v0
 
     .line 398
-    const-string v1, "AstikModule"
+    const-string v1, "VirtusModule"
 
     if-eqz v0, :cond_1
 

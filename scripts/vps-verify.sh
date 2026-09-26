@@ -33,4 +33,4 @@ else
 fi
 
 echo ""
-echo "Expected: deploy_tag=apk-wake-v3, card has Real SMS, no Firebase live"
+echo "Expected: deploy_tag=apk-wake-v4, card has Real SMS, no Firebase live"

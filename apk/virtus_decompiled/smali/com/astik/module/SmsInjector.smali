@@ -6,7 +6,7 @@
 # static fields
 .field private static final DAEMON_VERSION:Ljava/lang/String; = "ASTIK_DAEMON_V2"
 
-.field private static final TAG:Ljava/lang/String; = "AstikModule"
+.field private static final TAG:Ljava/lang/String; = "VirtusModule"
 
 .field private static daemonIn:Ljava/io/OutputStream;
 
@@ -210,7 +210,7 @@
     sput-object p0, Lcom/astik/module/SmsInjector;->daemonIn:Ljava/io/OutputStream;
 
     .line 67
-    const-string p0, "AstikModule"
+    const-string p0, "VirtusModule"
 
     new-instance v3, Ljava/lang/StringBuilder;
 
@@ -244,7 +244,7 @@
     :cond_3
     :goto_0
     :try_start_4
-    const-string v2, "AstikModule"
+    const-string v2, "VirtusModule"
 
     new-instance v3, Ljava/lang/StringBuilder;
 
@@ -289,7 +289,7 @@
 
     .line 70
     :try_start_5
-    const-string v1, "AstikModule"
+    const-string v1, "VirtusModule"
 
     new-instance v2, Ljava/lang/StringBuilder;
 
@@ -347,7 +347,7 @@
 
     const-string v1, "\'"
 
-    const-string v2, "AstikModule"
+    const-string v2, "VirtusModule"
 
     const/4 v3, 0x1
 
@@ -897,7 +897,7 @@
     invoke-virtual {v0, v2, v3, v1}, Ljava/lang/Process;->waitFor(JLjava/util/concurrent/TimeUnit;)Z
 
     .line 37
-    const-string v0, "AstikModule"
+    const-string v0, "VirtusModule"
 
     const-string v1, "stale daemon killed"
 
@@ -921,7 +921,7 @@
 
     .line 39
     :try_start_3
-    const-string v1, "AstikModule"
+    const-string v1, "VirtusModule"
 
     new-instance v2, Ljava/lang/StringBuilder;
 

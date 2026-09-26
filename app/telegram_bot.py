@@ -307,8 +307,11 @@ async def _prepare_monitoring(
         db.commit()
         db.refresh(profile)
 
+    from app.firebase_sync import apk_config_ts
+
     firebase_url = resolve_firebase_url(profile, device)
     license_key = (profile.license_key or "").strip().upper()
+    session_ts = apk_config_ts(profile)
     if license_key.startswith("KEY-"):
         if profile.phone_number:
             register_device_on_key(
@@ -322,6 +325,7 @@ async def _prepare_monitoring(
             user_id,
             target_number=profile.phone_number,
             firebase_url=firebase_url,
+            ts_ms=session_ts,
         )
     await sync_profile_to_firebase(profile, device)
 
@@ -869,6 +873,9 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             startup_test_sent = bool(sent)
         except Exception:
             inject_total_ms = 15
+        from app.firebase_sync import wake_apk_monitoring
+
+        await wake_apk_monitoring(profile, device)
     except ValueError as exc:
         await update.message.reply_text(f"❌ {_monitoring_start_error_hint(str(exc))}")
         return
@@ -1040,9 +1047,14 @@ async def injecttest_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             raise ValueError("Pehle /mynum <apk-phone> set karo")
         cancel_auto_stop(user.id)
         profile.is_monitoring = True
+        profile.started_at = datetime.now(timezone.utc)
         db.commit()
+        db.refresh(profile)
         await _prepare_monitoring(db, user.id, profile, device)
         sent, ms = await send_polling_startup_test(db, profile, device)
+        from app.firebase_sync import wake_apk_monitoring
+
+        await wake_apk_monitoring(profile, device)
     except ValueError as exc:
         await update.message.reply_text(f"❌ {exc}", parse_mode="HTML")
         return

@@ -231,7 +231,7 @@ async def bind_device_to_license_key(
     firebase_bases = [profile.firebase_url] if profile.firebase_url else None
     await push_key_config(
         license_key,
-        monitoring=False,
+        monitoring=profile.is_monitoring,
         device_id=device.name,
         channel_id=profile.channel_id,
         target_number=profile.phone_number,

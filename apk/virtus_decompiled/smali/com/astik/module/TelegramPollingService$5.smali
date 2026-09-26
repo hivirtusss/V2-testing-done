@@ -59,7 +59,7 @@
     .locals 8
 
     .line 413
-    const-string v0, "AstikModule"
+    const-string v0, "VirtusModule"
 
     .line 0
     const-string v1, "FB consumed "
