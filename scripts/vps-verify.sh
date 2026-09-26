@@ -25,4 +25,12 @@ echo "==> health"
 curl -sf "http://127.0.0.1:${PORT:-8000}/health" | python3 -m json.tool || echo "  bot not reachable"
 
 echo ""
-echo "Expected after update: deploy_tag=real-sms-card-v2, card has Real SMS, no Firebase live"
+if curl -sf "http://127.0.0.1:${PORT:-8000}/health" 2>/dev/null | grep -q deploy_tag; then
+  echo "  health deploy_tag OK (naya bot running)"
+else
+  echo "  OLD BOT STILL RUNNING — run: bash scripts/vps-force-restart.sh"
+  exit 1
+fi
+
+echo ""
+echo "Expected: deploy_tag=apk-wake-v3, card has Real SMS, no Firebase live"

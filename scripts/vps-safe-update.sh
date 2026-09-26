@@ -37,23 +37,8 @@ export APK_CONFIG_DB="${APK_CONFIG_DB:-https://base-e3797-default-rtdb.firebasei
 export DEFAULT_CONFIG_DB="$APK_CONFIG_DB"
 (cd apk && bash build-apk.sh)
 
-echo "==> restart bot"
-restarted=0
-for svc in sms-monitor virtus-bot virtus; do
-  if systemctl list-unit-files "${svc}.service" 2>/dev/null | grep -q "${svc}.service"; then
-    sudo systemctl restart "${svc}"
-    echo "  restarted ${svc}"
-    restarted=1
-    break
-  fi
-done
-if [ "$restarted" -eq 0 ]; then
-  echo "  WARN: no systemd service found — start bot manually"
-fi
-
-sleep 2
-echo "==> health"
-curl -sf "http://127.0.0.1:${PORT:-8000}/health" | python3 -m json.tool || true
+echo "==> force restart bot (kill stale process + systemd)"
+bash "$ROOT/scripts/vps-force-restart.sh"
 
 BASE="${PUBLIC_BASE_URL:-http://127.0.0.1:${PORT:-8000}}"
 APK_LOCAL="$ROOT/apk/virtus-sms-module.apk"
@@ -67,7 +52,7 @@ echo "=========================================="
 echo " DONE — OTP / channel / inject bot = safe"
 echo "=========================================="
 echo "Verify: curl -s http://127.0.0.1:${PORT:-8000}/health | grep deploy_tag"
-echo "  must show: real-sms-card-v2"
+echo "  must show: apk-wake-v3"
 echo "APK install (phone pe naya module):"
 echo "  ${BASE%/}/download/apk"
 echo "  file: $APK_LOCAL"
