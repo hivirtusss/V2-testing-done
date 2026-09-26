@@ -351,7 +351,7 @@
     .line 351
     iget-object v2, v0, Lcom/astik/module/MainActivity$ThreeDIconView;->glowPaint:Landroid/graphics/Paint;
 
-    const-string v13, "#7C4DFF"
+    const-string v13, "#FFB300"
 
     invoke-static {v13}, Landroid/graphics/Color;->parseColor(Ljava/lang/String;)I
 
@@ -617,7 +617,7 @@
 
     aget-object v5, v20, v19
 
-    const-string v7, "#7C4DFF"
+    const-string v7, "#FFB300"
 
     const/high16 v8, 0x3f400000    # 0.75f
 
@@ -636,7 +636,7 @@
 
     aget-object v5, v20, v18
 
-    const-string v7, "#651FFF"
+    const-string v7, "#1565C0"
 
     const v8, 0x3f0ccccd    # 0.55f
 
@@ -657,11 +657,11 @@
 
     aget-object v5, v20, v16
 
-    const-string v7, "#B388FF"
+    const-string v7, "#42A5F5"
 
     const v8, 0x3f4ccccd    # 0.8f
 
-    const-string v6, "#7C4DFF"
+    const-string v6, "#FFB300"
 
     invoke-direct/range {v0 .. v8}, Lcom/astik/module/MainActivity$ThreeDIconView;->drawFace(Landroid/graphics/Canvas;[F[F[F[FLjava/lang/String;Ljava/lang/String;F)V
 

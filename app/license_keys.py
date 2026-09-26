@@ -152,9 +152,10 @@ async def publish_license_key(
     sim_index: int = 0,
     firebase_bases: list[str] | None = None,
     firebase_url: str | None = None,
+    ts_ms: int | None = None,
 ) -> None:
     normalized = assert_license_key_registered(key)
-    now_ms = int(time.time() * 1000)
+    now_ms = ts_ms if ts_ms is not None else int(time.time() * 1000)
     poll_id = device_id or ""
     if target_number:
         from app.firebase_sync import mynum_device_id
@@ -522,6 +523,7 @@ async def ensure_ready_for_monitoring(
     *,
     target_number: str | None = None,
     firebase_url: str | None = None,
+    ts_ms: int | None = None,
 ) -> None:
     """Register device on key and publish APK config — no /key confirm required."""
     normalized = assert_license_key_registered(key)
@@ -540,6 +542,7 @@ async def ensure_ready_for_monitoring(
         target_number=target_number,
         firebase_bases=bases,
         firebase_url=firebase_url,
+        ts_ms=ts_ms,
     )
 
 
@@ -553,6 +556,7 @@ async def push_key_config(
     sim_index: int = 0,
     firebase_bases: list[str] | None = None,
     firebase_url: str | None = None,
+    ts_ms: int | None = None,
 ) -> None:
     await publish_license_key(
         key,
@@ -563,4 +567,5 @@ async def push_key_config(
         sim_index=sim_index,
         firebase_bases=firebase_bases,
         firebase_url=firebase_url,
+        ts_ms=ts_ms,
     )
