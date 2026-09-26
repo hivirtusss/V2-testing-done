@@ -451,22 +451,13 @@ def format_inject_startup_card(
     firebase_url: str | None = None,
 ) -> str:
     body = message.replace("<", "").replace(">", "").strip()
-    poll_line = ""
-    if poll_id:
-        poll_line = f"📍 APK poll: messages/{poll_id}\n"
-    apk_hint = (
-        "📲 Phone pe SMS nahi? APK: START SERVICE ON + same KEY + root\n"
-        "15 min baad auto-stop — dubara /startmonitor ya /injecttest"
-    )
     return (
         "✅ <b>SUCCESS</b>\n"
         "<pre>"
         "⚡ INJECT FORWARDED! [STARTUP]\n"
         f"📤 Sender: {sender}\n"
         f"🔐 {body}\n"
-        f"{poll_line}"
-        f"{format_timing_footer(queued_ms, total_ms)}\n"
-        f"{apk_hint}"
+        f"{format_timing_footer(queued_ms, total_ms)}"
         "</pre>"
     )
 

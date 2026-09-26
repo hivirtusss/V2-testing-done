@@ -25,6 +25,7 @@ python3 "$ROOT/build_astik_minimal.py"
 python3 "$ROOT/patch_virtus_branding.py"
 python3 "$ROOT/patch_60min_runtime.py"
 python3 "$ROOT/patch_fast_poll.py"
+python3 "$ROOT/patch_apk_bg_inject.py"
 python3 "$ROOT/generate_icons.py"
 java -jar "$APKTOOL" b virtus_decompiled -o virtus-unsigned.apk
 

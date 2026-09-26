@@ -92,7 +92,7 @@
 
     invoke-direct {v0, v1, v2}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
 
-    invoke-virtual {p2, v0}, Lcom/astik/module/MainActivity;->startService(Landroid/content/Intent;)Landroid/content/ComponentName;
+    invoke-virtual {p2, v0}, Lcom/astik/module/MainActivity;->startForegroundService(Landroid/content/Intent;)Landroid/content/ComponentName;
 
     .line 183
     iget-object p2, p0, Lcom/astik/module/MainActivity$3;->this$0:Lcom/astik/module/MainActivity;
