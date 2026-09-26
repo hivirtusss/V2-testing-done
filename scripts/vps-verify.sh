@@ -33,4 +33,4 @@ else
 fi
 
 echo ""
-echo "Expected: deploy_tag=apk-wake-v5, card has Real SMS, OTP inject enabled"
+echo "Expected: deploy_tag=apk-wake-v6, fast OTP/inject poll"

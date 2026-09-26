@@ -64,7 +64,7 @@
 
     if-eqz v0, :cond_0
 
-    const-wide/16 v0, 0xfa
+    const-wide/16 v0, 0x64
 
     .line 452
     :try_start_0

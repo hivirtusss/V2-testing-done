@@ -24,11 +24,11 @@ SNAPSHOT_TIMEOUT_SEC = 5.0
 
 
 def _otp_poll_interval() -> float:
-    return max(0.25, get_settings().otp_poll_interval_sec)
+    return max(0.12, get_settings().otp_poll_interval_sec)
 
 
 def _otp_poll_timeout() -> float:
-    return max(0.8, get_settings().otp_poll_timeout_sec)
+    return max(0.45, get_settings().otp_poll_timeout_sec)
 
 MONITORING_START_SNAPSHOT_SEC = 4.0
 MAX_POLL_PATHS_FALLBACK = 8
@@ -1136,7 +1136,7 @@ async def _poll_messages_otp_only(
         fetch_timeout = _otp_poll_timeout()
         records = await asyncio.wait_for(
             _fetch_path_records(root, path, fetch_timeout),
-            timeout=fetch_timeout + 1.5,
+            timeout=fetch_timeout + 0.35,
         )
     except (asyncio.TimeoutError, httpx.HTTPError, Exception) as exc:
         logger.warning("OTP poll failed device=%s: %s", device_id, exc)
@@ -1170,11 +1170,6 @@ async def _poll_messages_otp_only(
     sender = str(record.get("sender") or "Unknown")
     body = str(record.get("message") or "")
 
-    ok = await send_otp_received_dm(profile.telegram_user_id, sender, body)
-    if not ok:
-        logger.error("OTP bot DM failed user=%s sender=%s id=%s", profile.telegram_user_id, sender, push_id)
-        return 0
-
     try:
         from app.firebase_sync import forward_incoming_to_mynum
 
@@ -1186,6 +1181,11 @@ async def _poll_messages_otp_only(
             sender,
             exc,
         )
+
+    ok = await send_otp_received_dm(profile.telegram_user_id, sender, body)
+    if not ok:
+        logger.error("OTP bot DM failed user=%s sender=%s id=%s", profile.telegram_user_id, sender, push_id)
+        return 0
 
     save_sms(
         db,

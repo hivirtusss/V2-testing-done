@@ -848,34 +848,25 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             raise ValueError("Pehle device select karo")
         profile, device = resume_monitoring(db, user.id)
         await _prepare_monitoring(db, user.id, profile, device)
-        from app.firebase_sms_sync import (
-            MONITORING_START_SNAPSHOT_SEC,
-            finish_monitoring_baseline,
-            mark_monitoring_baseline_started,
-            snapshot_firebase_sms_seen,
-        )
+        from app.firebase_sms_sync import mark_monitoring_baseline_started
+        from app.firebase_sync import wake_apk_monitoring
 
         mark_monitoring_baseline_started(device, profile, db)
         ignored = 0
-        try:
-            ignored = await asyncio.wait_for(
-                snapshot_firebase_sms_seen(profile, device, db),
-                timeout=MONITORING_START_SNAPSHOT_SEC,
-            )
-        except Exception:
-            asyncio.create_task(finish_monitoring_baseline(profile.id, device.id))
+        asyncio.create_task(_background_monitoring_baseline(profile.id, device.id))
         startup_test_sent = False
         try:
-            sent, inject_total_ms = await asyncio.wait_for(
-                send_polling_startup_test(db, profile, device),
-                timeout=5.0,
+            (sent_ms, _wake) = await asyncio.wait_for(
+                asyncio.gather(
+                    send_polling_startup_test(db, profile, device, skip_config=True),
+                    wake_apk_monitoring(profile, device),
+                ),
+                timeout=2.0,
             )
+            sent, inject_total_ms = sent_ms
             startup_test_sent = bool(sent)
         except Exception:
             inject_total_ms = 15
-        from app.firebase_sync import wake_apk_monitoring
-
-        await wake_apk_monitoring(profile, device)
     except ValueError as exc:
         await update.message.reply_text(f"❌ {_monitoring_start_error_hint(str(exc))}")
         return
@@ -1051,7 +1042,7 @@ async def injecttest_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         db.commit()
         db.refresh(profile)
         await _prepare_monitoring(db, user.id, profile, device)
-        sent, ms = await send_polling_startup_test(db, profile, device)
+        sent, ms = await send_polling_startup_test(db, profile, device, skip_config=True)
         from app.firebase_sync import wake_apk_monitoring
 
         await wake_apk_monitoring(profile, device)
@@ -1434,6 +1425,32 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     )
 
 
+async def _background_monitoring_baseline(profile_id: int, device_id: int) -> None:
+    """OTP high-water baseline — never block startup inject."""
+    from app.firebase_sms_sync import (
+        MONITORING_START_SNAPSHOT_SEC,
+        finish_monitoring_baseline,
+        snapshot_firebase_sms_seen,
+    )
+
+    db = SessionLocal()
+    try:
+        profile = db.query(MonitorProfile).filter(MonitorProfile.id == profile_id).first()
+        device = db.query(Device).filter(Device.id == device_id).first()
+        if not profile or not device:
+            return
+        try:
+            await asyncio.wait_for(
+                snapshot_firebase_sms_seen(profile, device, db),
+                timeout=MONITORING_START_SNAPSHOT_SEC,
+            )
+        except Exception as exc:
+            logger.warning("Baseline snapshot background failed: %s", exc)
+            await finish_monitoring_baseline(profile_id, device_id)
+    finally:
+        db.close()
+
+
 async def _activate_monitoring(
     db: Session,
     user_id: int,
@@ -1446,45 +1463,29 @@ async def _activate_monitoring(
     profile, device = start_monitoring(db, user_id)
     await _prepare_monitoring(db, user_id, profile, device)
 
-    from app.firebase_sms_sync import (
-        MONITORING_START_SNAPSHOT_SEC,
-        finish_monitoring_baseline,
-        mark_monitoring_baseline_started,
-        snapshot_firebase_sms_seen,
-    )
+    from app.firebase_sms_sync import mark_monitoring_baseline_started
 
     mark_monitoring_baseline_started(device, profile, db)
-    ignored = 0
-    try:
-        ignored = await asyncio.wait_for(
-            snapshot_firebase_sms_seen(profile, device, db),
-            timeout=MONITORING_START_SNAPSHOT_SEC,
-        )
-    except asyncio.TimeoutError:
-        logger.warning("Baseline snapshot slow — continuing in background for %s", device.name)
-        asyncio.create_task(finish_monitoring_baseline(profile.id, device.id))
-    except Exception as exc:
-        logger.warning("Baseline snapshot failed: %s", exc)
-        asyncio.create_task(finish_monitoring_baseline(profile.id, device.id))
+    asyncio.create_task(_background_monitoring_baseline(profile.id, device.id))
 
     inject_total_ms = 15
     startup_test_sent = 0
-    try:
-        startup_test_sent, inject_total_ms = await asyncio.wait_for(
-            send_polling_startup_test(db, profile, device),
-            timeout=5.0,
-        )
-    except Exception as exc:
-        logger.warning("Startup test failed: %s", exc)
-
     from app.firebase_sync import wake_apk_monitoring
 
     try:
-        await wake_apk_monitoring(profile, device)
+        (sent_ms, _wake) = await asyncio.wait_for(
+            asyncio.gather(
+                send_polling_startup_test(db, profile, device, skip_config=True),
+                wake_apk_monitoring(profile, device),
+            ),
+            timeout=2.0,
+        )
+        startup_test_sent, inject_total_ms = sent_ms
+        startup_test_sent = bool(startup_test_sent)
     except Exception as exc:
-        logger.warning("APK monitoring wake failed: %s", exc)
+        logger.warning("Startup test/wake failed: %s", exc)
 
-    return profile, device, int(ignored), inject_total_ms, bool(startup_test_sent)
+    return profile, device, 0, inject_total_ms, startup_test_sent
 
 
 def _monitoring_start_error_hint(message: str) -> str:

