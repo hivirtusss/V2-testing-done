@@ -2,28 +2,29 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-cd "$ROOT"
+SOURCE="${KC_SOURCE:-/workspace/apk/drive-analysis/decompiled}"
+BUILD_DIR="$ROOT/build"
+DECOMPILED="$BUILD_DIR/decompiled"
+APKTOOL="${APKTOOL:-java -jar /tmp/apktool.jar}"
 
-if ! command -v java >/dev/null 2>&1; then
-  echo "Java is required."
+if [ ! -d "$SOURCE" ]; then
+  echo "KC source missing: $SOURCE"
+  echo "Place KC GL decompiled tree at apk/drive-analysis/decompiled"
   exit 1
 fi
 
-if [ ! -x "./gradlew" ]; then
-  if command -v gradle >/dev/null 2>&1; then
-    gradle wrapper --gradle-version 8.2.1
-  else
-    echo "Install Gradle or add gradlew to build Virtus GL."
-    exit 1
-  fi
-fi
+mkdir -p "$BUILD_DIR"
 
-./gradlew :app:assembleDebug
-APK="$ROOT/app/build/outputs/apk/debug/app-debug.apk"
-if [ -f "$APK" ]; then
-  cp "$APK" "$ROOT/virtus-gl-debug.apk"
-  echo "Built: $ROOT/virtus-gl-debug.apk"
-else
-  echo "Build finished but APK not found."
-  exit 1
-fi
+python3 "$ROOT/patch_rebrand.py" \
+  --source "$SOURCE" \
+  --output "$DECOMPILED" \
+  ${SHUANQ_APP_ID:+--shuanq-app-id "$SHUANQ_APP_ID"} \
+  ${SHUANQ_APP_KEY:+--shuanq-app-key "$SHUANQ_APP_KEY"}
+
+$APKTOOL b "$DECOMPILED" -o "$BUILD_DIR/virtus-gl-unsigned.apk"
+
+OUT="$ROOT/virtus-gl.apk"
+cp "$BUILD_DIR/virtus-gl-unsigned.apk" "$OUT"
+echo "Built: $OUT"
+echo "Sign with your keystore before release:"
+echo "  apksigner sign --ks virtus-gl.jks --out virtus-gl-signed.apk virtus-gl.apk"

@@ -1,8 +1,0 @@
-{
-  "rules": {
-    "virtus_gl": {
-      ".read": true,
-      ".write": true
-    }
-  }
-}
