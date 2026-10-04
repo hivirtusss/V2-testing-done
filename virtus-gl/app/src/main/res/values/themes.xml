@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.VirtusGL" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/virtus_primary</item>
+        <item name="colorPrimaryVariant">@color/virtus_primary</item>
+        <item name="colorAccent">@color/virtus_accent</item>
+        <item name="android:statusBarColor">@color/virtus_primary</item>
+        <item name="android:windowBackground">@color/virtus_bg</item>
+    </style>
+</resources>

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Virtus GL</string>
+    <string name="select_version">Select your plan</string>
+    <string name="click_to_start">Choose Lite, Standard, or Professional</string>
+    <string name="tier_lite">Lite</string>
+    <string name="tier_standard">Standard</string>
+    <string name="tier_pro">Professional</string>
+    <string name="selected_tier">Selected: %1$s</string>
+    <string name="go_login">Continue to Login</string>
+    <string name="app_version_label">Virtus GL v%1$s</string>
+    <string name="step_root">Checking root access</string>
+    <string name="step_overlay">Granting overlay permission</string>
+    <string name="step_assets">Preparing local assets</string>
+    <string name="root_required_title">Root required</string>
+    <string name="root_required_message">Virtus GL requires root access like KC GL.</string>
+    <string name="user_accounts">User account</string>
+    <string name="password">Password</string>
+    <string name="enroll">Register</string>
+    <string name="activation">Activation</string>
+    <string name="activation_renewal">Activation / Renewal</string>
+    <string name="your_key">Your key</string>
+    <string name="server_line">Switch servers</string>
+    <string name="login">LOGIN</string>
+    <string name="account_password_empty">Account/password cannot be empty</string>
+    <string name="enrollment_success">Registration successful! Recharge key before login.</string>
+    <string name="recharge_empty">Recharge fields cannot be empty</string>
+    <string name="recharge_success">Recharge successful! You can login now.</string>
+    <string name="server_switch_ok">Server switched</string>
+    <string name="server_switch_fail">Server switch failed</string>
+    <string name="membership_expired">Membership expired or not activated</string>
+    <string name="start_stub_message">Start module hook goes here (wire your native core)</string>
+    <string name="stop_stub_message">Stop requested</string>
+    <string name="unbind_title">Unbind device</string>
+    <string name="unbind_message">Unbind allowed once every 24h and removes 2 hours from subscription.</string>
+    <string name="unbind_success">Device unbound. Login again.</string>
+    <string name="profile_fetch_failed">Could not refresh profile</string>
+    <string name="dashboard_title">Virtus GL Dashboard</string>
+    <string name="account_label">Account: %1$s</string>
+    <string name="tier_label">Plan: %1$s</string>
+    <string name="device_label">Device: %1$s</string>
+    <string name="vip_status">VIP status</string>
+    <string name="start">Start</string>
+    <string name="stop">Stop</string>
+    <string name="unbind">Unbind device</string>
+    <string name="logout">Logout</string>
+    <string name="ok">OK</string>
+    <string name="cancel">Cancel</string>
+
+    <string-array name="server_lines">
+        <item>Global (default)</item>
+        <item>Asia</item>
+        <item>Europe</item>
+    </string-array>
+</resources>
