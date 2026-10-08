@@ -56,7 +56,6 @@ def format_astik_result_file(
 
     body_lines: list[str] = []
     out_index = 0
-    pin_mode = params.pin_filter
 
     for (_firebase_url, _device_id), msgs in device_groups:
         msgs_sorted = sorted(
