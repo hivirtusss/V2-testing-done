@@ -13,11 +13,25 @@ chmod +x start_aadhaar_bot.sh stop_aadhaar_bot.sh
 ./start_aadhaar_bot.sh
 ```
 
-Mock mode (default): OTP1 `541679`, OTP2 `670299`.
+**Access:** Sirf owner `/approve` ke baad. **1 successful Aadhaar = 1 credit** (`/addcredits`). Owner = **Unlimited**.
+
+**Live verify:** Pehle `POST /v1/lookup/verify` — galat name/number par OTP **nahi** bhejta.
+
+Mock (bina `AADHAAR_BACKEND_URL`): sirf demo pair `9520728207` + `SHADAB`. Baaki reject.
+
+Demo OTP: `541679` / `670299`.
 
 ## Backend API
 
 All POST, JSON, optional `Authorization: Bearer <AADHAAR_BACKEND_KEY>`.
+
+### `POST /v1/lookup/verify` (required — Umang / uidai.gov.in bridge)
+
+Same body as start. Must return `ok: false` if no Aadhaar on that mobile+name.
+
+```json
+{ "ok": true, "message": "Record found", "session_id": "optional" }
+```
 
 ### `POST /v1/lookup/start`
 

@@ -1,4 +1,8 @@
 .env
+.env.aadhaar
+.aadhaar-bot.pid
+aadhaar_bot.log
+aadhaar_bot.db
 .sms-monitor.pid
 sms-monitor.log
 __pycache__/

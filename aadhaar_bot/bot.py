@@ -16,7 +16,18 @@ from telegram.ext import (
 )
 
 from aadhaar_bot.config import get_settings
+from aadhaar_bot.database import db_session, init_db
 from aadhaar_bot.name_utils import prepare_holder_name
+from aadhaar_bot.services import (
+    add_credits,
+    approve_user,
+    can_use_bot,
+    consume_credit,
+    get_or_create_user,
+    is_owner,
+    plan_line,
+    revoke_user,
+)
 from aadhaar_bot.uidai_client import UidaiBackend
 
 MOBILE_RE = re.compile(r"^\d{10}$")
@@ -103,17 +114,141 @@ def _cancel_footer() -> str:
     return "\n\n⭐ Cancel Anytime :- /cancel"
 
 
-async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+def _telegram_user(update: Update):
+    return update.effective_user
+
+
+async def _access_denied(update: Update, row) -> None:
+    owners = _owners()
     msg = update.effective_message
     if not msg:
         return
+    if not row.approved and not is_owner(row.telegram_id, owners):
+        await msg.reply_text(
+            "🔒 **Access denied**\n\nSirf owner approve ke baad bot use ho sakta hai.\n"
+            "Owner ko apna Telegram ID bhejo.",
+            parse_mode="Markdown",
+        )
+        return
+    await msg.reply_text(
+        f"🔒 **Credits khatam** ({row.credits} bache).\n\nOwner se `/addcredits` karwao.",
+        parse_mode="Markdown",
+    )
+
+
+async def _require_access(update: Update) -> bool:
+    user = _telegram_user(update)
+    if not user:
+        return False
+    db = db_session()
+    try:
+        row = get_or_create_user(db, user.id, user.username)
+        if can_use_bot(row, _owners()):
+            return True
+        await _access_denied(update, row)
+        return False
+    finally:
+        db.close()
+
+
+async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    msg = update.effective_message
+    user = _telegram_user(update)
+    if not msg or not user:
+        return
     _reset_flow(context)
-    plan = "Your active plan: **16 days 22 hours** ✅"
+    db = db_session()
+    try:
+        row = get_or_create_user(db, user.id, user.username)
+        plan = plan_line(row, _owners())
+    finally:
+        db.close()
     await msg.reply_text(
         _welcome_text(plan),
         parse_mode="Markdown",
         reply_markup=_welcome_keyboard(),
     )
+
+
+async def cmd_credits(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    msg = update.effective_message
+    user = _telegram_user(update)
+    if not msg or not user:
+        return
+    db = db_session()
+    try:
+        row = get_or_create_user(db, user.id, user.username)
+        await msg.reply_text(plan_line(row, _owners()), parse_mode="Markdown")
+    finally:
+        db.close()
+
+
+async def cmd_approve(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = _telegram_user(update)
+    msg = update.effective_message
+    if not user or not msg:
+        return
+    if not is_owner(user.id, _owners()):
+        await msg.reply_text("❌ Owner only.")
+        return
+    if not context.args or not context.args[0].isdigit():
+        await msg.reply_text("Usage: /approve <telegram_id> [credits]")
+        return
+    tid = int(context.args[0])
+    bonus = int(context.args[1]) if len(context.args) > 1 and context.args[1].isdigit() else 0
+    db = db_session()
+    try:
+        row = approve_user(db, tid, credits=bonus)
+        await msg.reply_text(
+            f"✅ Approved `{tid}` — credits: **{row.credits}**",
+            parse_mode="Markdown",
+        )
+    finally:
+        db.close()
+
+
+async def cmd_addcredits(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = _telegram_user(update)
+    msg = update.effective_message
+    if not user or not msg:
+        return
+    if not is_owner(user.id, _owners()):
+        await msg.reply_text("❌ Owner only.")
+        return
+    if len(context.args) < 2 or not context.args[0].isdigit() or not context.args[1].isdigit():
+        await msg.reply_text("Usage: /addcredits <telegram_id> <amount>")
+        return
+    tid = int(context.args[0])
+    amount = int(context.args[1])
+    db = db_session()
+    try:
+        row = add_credits(db, tid, amount)
+        await msg.reply_text(
+            f"✅ `{tid}` ab credits: **{row.credits}** (1 Aadhaar = 1 credit)",
+            parse_mode="Markdown",
+        )
+    finally:
+        db.close()
+
+
+async def cmd_revoke(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = _telegram_user(update)
+    msg = update.effective_message
+    if not user or not msg:
+        return
+    if not is_owner(user.id, _owners()):
+        await msg.reply_text("❌ Owner only.")
+        return
+    if not context.args or not context.args[0].isdigit():
+        await msg.reply_text("Usage: /revoke <telegram_id>")
+        return
+    tid = int(context.args[0])
+    db = db_session()
+    try:
+        revoke_user(db, tid)
+        await msg.reply_text(f"🚫 Revoked `{tid}`", parse_mode="Markdown")
+    finally:
+        db.close()
 
 
 async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -153,8 +288,17 @@ async def on_back_home(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
     await q.answer()
     _reset_flow(context)
+    user = _telegram_user(update)
+    plan = "Your plan: **Unlimited** ✅"
+    if user:
+        db = db_session()
+        try:
+            row = get_or_create_user(db, user.id, user.username)
+            plan = plan_line(row, _owners())
+        finally:
+            db.close()
     await q.edit_message_text(
-        _welcome_text("Your active plan: **16 days 22 hours** ✅"),
+        _welcome_text(plan),
         parse_mode="Markdown",
         reply_markup=_welcome_keyboard(),
     )
@@ -165,6 +309,8 @@ async def on_get_aadhaar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not q:
         return
     await q.answer()
+    if not await _require_access(update):
+        return
     _reset_flow(context)
     _set_step(context, Step.MOBILE)
     await q.edit_message_text(
@@ -217,6 +363,8 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     step = _step(context)
 
     if step == Step.MOBILE:
+        if not await _require_access(update):
+            return
         if not MOBILE_RE.match(text):
             await msg.reply_text("❌ Sahi 10 digit mobile number bhejo.")
             return
@@ -242,6 +390,8 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     if step == Step.NAME:
+        if not await _require_access(update):
+            return
         if len(text) < 2:
             await msg.reply_text("❌ Name kam se kam 2 characters hona chahiye.")
             return
@@ -254,18 +404,30 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         context.user_data["aadhaar_started_at"] = time.time()
         wait = await msg.reply_text(
             "📌 **STEP 3/4 — Find Record**\n\n"
-            f"⌛ UIDAI par is name se dhundh rahe hain: **{name_display}**\n"
+            f"⌛ Umang/UIDAI live check: **{name_display}** + `{mobile}`\n"
             "Please wait...",
             parse_mode="Markdown",
         )
         backend = _backend(context)
         try:
+            verified = await backend.verify_record(
+                mobile,
+                gender,
+                name_display,
+                name_query,
+                manual_name=manual_name,
+            )
+            if not verified.ok:
+                await wait.edit_text(verified.message, parse_mode="Markdown")
+                _reset_flow(context)
+                return
             res = await backend.start_lookup(
                 mobile,
                 gender,
                 name_display,
                 name_query,
                 manual_name=manual_name,
+                preverified_session=verified.session_id,
             )
         except Exception as e:
             await wait.edit_text(f"❌ Backend error: {e}")
@@ -332,6 +494,16 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not res.ok:
             await wait.edit_text(f"❌ {res.message}")
             return
+        tg_user = _telegram_user(update)
+        db = db_session()
+        try:
+            if tg_user:
+                row = get_or_create_user(db, tg_user.id, tg_user.username)
+                if not consume_credit(db, row, _owners()):
+                    await wait.edit_text("❌ Credits khatam — owner se add karwao.")
+                    return
+        finally:
+            db.close()
         elapsed = int(time.time() - started)
         context.user_data["aadhaar_last_result"] = {
             "aadhaar_masked": res.aadhaar_masked,
@@ -414,8 +586,13 @@ def build_app() -> Application:
         .pool_timeout(30.0)
         .build()
     )
+    init_db()
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("cancel", cmd_cancel))
+    app.add_handler(CommandHandler("credits", cmd_credits))
+    app.add_handler(CommandHandler("approve", cmd_approve))
+    app.add_handler(CommandHandler("addcredits", cmd_addcredits))
+    app.add_handler(CommandHandler("revoke", cmd_revoke))
     app.add_handler(CallbackQueryHandler(on_back_home, pattern=r"^aadhaar:back_home$"))
     app.add_handler(CallbackQueryHandler(on_get_aadhaar, pattern=f"^{CB_GET}$"))
     app.add_handler(CallbackQueryHandler(on_get_aadhaar, pattern=f"^{CB_ANOTHER}$"))

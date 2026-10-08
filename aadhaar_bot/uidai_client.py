@@ -8,6 +8,10 @@ import httpx
 
 from aadhaar_bot.config import get_settings
 
+# Demo pair only when no live backend (mock strict mode)
+_MOCK_DEMO_MOBILE = "9520728207"
+_MOCK_DEMO_NAME = "SHADAB"
+
 
 @dataclass
 class LookupResult:
@@ -24,17 +28,94 @@ class LookupResult:
 
 
 class UidaiBackend:
-    """Talks to YOUR UIDAI bridge (captcha auto + no DOB) — not uidai.gov.in directly."""
+    """UIDAI / Umang bridge on your server (captcha auto, no DOB)."""
 
     def __init__(self) -> None:
         self.settings = get_settings()
         self._mock_sessions: dict[str, dict] = {}
+
+    def _live(self) -> bool:
+        return bool((self.settings.aadhaar_backend_url or "").strip())
 
     def _headers(self) -> dict[str, str]:
         h = {"Content-Type": "application/json"}
         if self.settings.aadhaar_backend_key:
             h["Authorization"] = f"Bearer {self.settings.aadhaar_backend_key}"
         return h
+
+    def _payload_base(
+        self,
+        mobile: str,
+        gender: str,
+        name_display: str,
+        name_query: str,
+        *,
+        manual_name: bool,
+    ) -> dict[str, Any]:
+        return {
+            "mobile": mobile,
+            "gender": gender,
+            "holder_name": name_display,
+            "name": name_query,
+            "fetch_by_name": True,
+            "manual_name": manual_name,
+            "skip_dob": True,
+            "source": "umang_or_uidai",
+        }
+
+    def _mock_record_exists(self, mobile: str, name_query: str) -> bool:
+        return mobile == _MOCK_DEMO_MOBILE and name_query == _MOCK_DEMO_NAME
+
+    async def verify_record(
+        self,
+        mobile: str,
+        gender: str,
+        name_display: str,
+        name_query: str,
+        *,
+        manual_name: bool,
+    ) -> LookupResult:
+        """Live UIDAI/Umang check — no OTP until record exists."""
+        payload = self._payload_base(mobile, gender, name_display, name_query, manual_name=manual_name)
+
+        if self._live():
+            url = self.settings.aadhaar_backend_url.rstrip("/") + "/v1/lookup/verify"
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                r = await client.post(url, json=payload, headers=self._headers())
+                r.raise_for_status()
+                data = r.json()
+            if not data.get("ok", False):
+                return LookupResult(
+                    ok=False,
+                    message=str(
+                        data.get("message", "Is mobile par is naam se Aadhaar record nahi mila.")
+                    ),
+                    raw=data,
+                )
+            return LookupResult(
+                ok=True,
+                message=str(data.get("message", "Record found")),
+                session_id=str(data.get("session_id", "")),
+                phone=mobile,
+                raw=data,
+            )
+
+        if self.settings.aadhaar_mock_mode:
+            if self._mock_record_exists(mobile, name_query):
+                return LookupResult(ok=True, message="Record found (demo)", phone=mobile)
+            return LookupResult(
+                ok=False,
+                message=(
+                    "❌ Is mobile par is naam se **koi Aadhaar nahi mila**.\n\n"
+                    "Live UIDAI ke liye `.env.aadhaar` me `AADHAAR_BACKEND_URL` set karo "
+                    "(Umang/Aadhaar bridge)."
+                ),
+            )
+
+        return LookupResult(
+            ok=False,
+            message="UIDAI bridge configure nahi — owner se `AADHAAR_BACKEND_URL` set karwao.",
+        )
 
     async def start_lookup(
         self,
@@ -44,8 +125,33 @@ class UidaiBackend:
         name_query: str,
         *,
         manual_name: bool,
+        preverified_session: str = "",
     ) -> LookupResult:
-        if self.settings.aadhaar_mock_mode or not self.settings.aadhaar_backend_url:
+        payload = self._payload_base(mobile, gender, name_display, name_query, manual_name=manual_name)
+        if preverified_session:
+            payload["session_id"] = preverified_session
+
+        if self._live():
+            url = self.settings.aadhaar_backend_url.rstrip("/") + "/v1/lookup/start"
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                r = await client.post(url, json=payload, headers=self._headers())
+                r.raise_for_status()
+                data = r.json()
+            if not data.get("ok", False):
+                return LookupResult(
+                    ok=False,
+                    message=str(data.get("message", "OTP bhejne me fail")),
+                    raw=data,
+                )
+            return LookupResult(
+                ok=True,
+                message=str(data.get("message", "OTP 1 sent")),
+                session_id=str(data.get("session_id", preverified_session)),
+                phone=mobile,
+                raw=data,
+            )
+
+        if self.settings.aadhaar_mock_mode and self._mock_record_exists(mobile, name_query):
             sid = secrets.token_hex(8)
             self._mock_sessions[sid] = {
                 "mobile": mobile,
@@ -58,93 +164,74 @@ class UidaiBackend:
             }
             return LookupResult(
                 ok=True,
-                message="OTP 1 sent (mock)",
+                message="OTP 1 sent (demo)",
                 session_id=sid,
                 phone=mobile,
             )
-        url = self.settings.aadhaar_backend_url.rstrip("/") + "/v1/lookup/start"
-        payload = {
-            "mobile": mobile,
-            "gender": gender,
-            "holder_name": name_display,
-            "name": name_query,
-            "fetch_by_name": True,
-            "manual_name": manual_name,
-            "skip_dob": True,
-        }
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            r = await client.post(url, json=payload, headers=self._headers())
-            r.raise_for_status()
-            data = r.json()
-        return LookupResult(
-            ok=bool(data.get("ok", True)),
-            message=str(data.get("message", "OTP 1 sent")),
-            session_id=str(data.get("session_id", "")),
-            phone=mobile,
-            raw=data,
-        )
+
+        return LookupResult(ok=False, message="Record verify fail — OTP nahi bheja.")
 
     async def submit_otp1(self, session_id: str, otp: str) -> LookupResult:
-        if self.settings.aadhaar_mock_mode or not self.settings.aadhaar_backend_url:
-            s = self._mock_sessions.get(session_id)
-            if not s or otp.strip() != s["otp1"]:
-                return LookupResult(ok=False, message="Galat OTP 1")
-            return LookupResult(ok=True, message="OTP 2 sent (mock)", session_id=session_id, phone=s["mobile"])
-
-        url = self.settings.aadhaar_backend_url.rstrip("/") + "/v1/lookup/otp1"
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            r = await client.post(
-                url, json={"session_id": session_id, "otp": otp}, headers=self._headers()
+        if self._live():
+            url = self.settings.aadhaar_backend_url.rstrip("/") + "/v1/lookup/otp1"
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                r = await client.post(
+                    url, json={"session_id": session_id, "otp": otp}, headers=self._headers()
+                )
+                r.raise_for_status()
+                data = r.json()
+            return LookupResult(
+                ok=bool(data.get("ok", False)),
+                message=str(data.get("message", "OTP 2 sent")),
+                session_id=session_id,
+                raw=data,
             )
-            r.raise_for_status()
-            data = r.json()
-        return LookupResult(
-            ok=bool(data.get("ok", True)),
-            message=str(data.get("message", "OTP 2 sent")),
-            session_id=session_id,
-            raw=data,
-        )
+
+        s = self._mock_sessions.get(session_id)
+        if not s or otp.strip() != s["otp1"]:
+            return LookupResult(ok=False, message="Galat OTP 1")
+        return LookupResult(ok=True, message="OTP 2 sent (demo)", session_id=session_id, phone=s["mobile"])
 
     async def submit_otp2(self, session_id: str, otp: str) -> LookupResult:
-        if self.settings.aadhaar_mock_mode or not self.settings.aadhaar_backend_url:
-            s = self._mock_sessions.get(session_id)
-            if not s or otp.strip() != s["otp2"]:
-                return LookupResult(ok=False, message="Galat OTP 2")
-            name = s["name"]
+        if self._live():
+            url = self.settings.aadhaar_backend_url.rstrip("/") + "/v1/lookup/otp2"
+            async with httpx.AsyncClient(timeout=180.0) as client:
+                r = await client.post(
+                    url, json={"session_id": session_id, "otp": otp}, headers=self._headers()
+                )
+                r.raise_for_status()
+                data = r.json()
+            pdf_b = None
+            if data.get("pdf_base64"):
+                import base64
+
+                pdf_b = base64.b64decode(data["pdf_base64"])
             return LookupResult(
-                ok=True,
-                message="Extraction complete (mock)",
+                ok=bool(data.get("ok", False)),
+                message=str(data.get("message", "Done")),
                 session_id=session_id,
-                aadhaar_masked="9815 7689 9641",
-                name=name,
-                numeric_id="0231191050808620260509095954",
-                pdf_password_hint=name[:4].upper() + "2003",
-                phone=s["mobile"],
-                pdf_bytes=b"%PDF-1.4 mock aadhaar export\n",
-                raw={"mock": True},
+                aadhaar_masked=str(data.get("aadhaar_masked", "")),
+                name=str(data.get("name", "")),
+                numeric_id=str(data.get("numeric_id", "")),
+                pdf_password_hint=str(data.get("pdf_password", "")),
+                phone=str(data.get("phone", "")),
+                pdf_bytes=pdf_b,
+                raw=data,
             )
 
-        url = self.settings.aadhaar_backend_url.rstrip("/") + "/v1/lookup/otp2"
-        async with httpx.AsyncClient(timeout=180.0) as client:
-            r = await client.post(
-                url, json={"session_id": session_id, "otp": otp}, headers=self._headers()
-            )
-            r.raise_for_status()
-            data = r.json()
-        pdf_b = None
-        if data.get("pdf_base64"):
-            import base64
-
-            pdf_b = base64.b64decode(data["pdf_base64"])
+        s = self._mock_sessions.get(session_id)
+        if not s or otp.strip() != s["otp2"]:
+            return LookupResult(ok=False, message="Galat OTP 2")
+        name = s["name"]
         return LookupResult(
-            ok=bool(data.get("ok", True)),
-            message=str(data.get("message", "Done")),
+            ok=True,
+            message="Extraction complete (demo)",
             session_id=session_id,
-            aadhaar_masked=str(data.get("aadhaar_masked", "")),
-            name=str(data.get("name", "")),
-            numeric_id=str(data.get("numeric_id", "")),
-            pdf_password_hint=str(data.get("pdf_password", "")),
-            phone=str(data.get("phone", "")),
-            pdf_bytes=pdf_b,
-            raw=data,
+            aadhaar_masked="9815 7689 9641",
+            name=name,
+            numeric_id="0231191050808620260509095954",
+            pdf_password_hint=(s.get("name_query") or name)[:4].upper() + "2003",
+            phone=s["mobile"],
+            pdf_bytes=b"%PDF-1.4 mock aadhaar export\n",
+            raw={"mock": True},
         )

@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     aadhaar_backend_url: str = ""
     aadhaar_backend_key: str = ""
     aadhaar_mock_mode: bool = True
+    aadhaar_db_url: str = "sqlite:///./aadhaar_bot.db"
     aadhaar_notify_chat_id: str = ""
 
     @property
