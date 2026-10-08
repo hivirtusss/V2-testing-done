@@ -173,6 +173,8 @@ def _cache_query_for_search(db: Session, firebase_db_ids: list[int], *, keywords
                 CachedSms.body.ilike("%axis%"),
             )
         )
+        for junk in ("%bit.ly%", "%cutt.ly%", "%dear staffn%", "%cibil a/c%", "%uscsnp%"):
+            query = query.filter(~CachedSms.body.ilike(junk))
     return query
 
 

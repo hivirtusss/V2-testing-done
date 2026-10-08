@@ -27,6 +27,28 @@ BANK_TXN_HINT = re.compile(
     r"\b(?:credited|debited|credit|debit|avl|available|a/c|ac\s*bal|balance)\b",
     re.I,
 )
+SPAM_URL = re.compile(r"\b(?:bit\.ly|tinyurl|cutt\.ly|t\.me/|gg\.ly|rb\.gy|shorturl)\b", re.I)
+SPAM_PHRASE = re.compile(
+    r"(?:dear staffn|staffn bank|cibil a/c|bank detail rcvd|st\.?\s*columbus|uscsnp|"
+    r"gaming wallet|juegos|click to view|click now|loan approved|personal loan offer|"
+    r"win+\s*rs|lottery|free recharge)",
+    re.I,
+)
+REAL_BANK_TXN = re.compile(
+    r"\b(?:credited|debited|deposited|withdrawn|received|sent|transfer|txn|transaction|upi|neft|imps|rtgs)\b",
+    re.I,
+)
+REAL_BANK_BAL = re.compile(
+    r"(?:avl\.?\s*(?:bal|balance)|available\s*(?:bal|balance)|a/c\s*(?:bal|balance)|ac\s*bal|"
+    r"bal(?:ance)?\s*[:.]?\s*(?:rs|inr|₹))",
+    re.I,
+)
+MONEY_AMOUNT = re.compile(r"(?:rs\.?|inr|₹)\s*[\d,]+(?:\.\d{1,2})?", re.I)
+KNOWN_BANK_SENDER = re.compile(
+    r"(?:^|[\[-])(?:[A-Z]{2,}-)?(?:SBI|HDFC|ICICI|AXIS|KOTAK|PNB|BOB|CANARA|YES|IDFC|UBIN|"
+    r"BARB|CNRB|INDB|FDRL|UCBA|BKID|CBIN|IOBA|UTIB|PUNB|AIRP|JIOP)",
+    re.I,
+)
 
 TS_FIELDS = (
     "timestamp",
@@ -75,10 +97,40 @@ def message_has_pin(text: str) -> bool:
     return bool(PIN_PATTERN.search(text))
 
 
+def is_spam_sms(text: str, sender: str = "") -> bool:
+    blob = f"{sender} {text}"
+    if SPAM_URL.search(blob):
+        return True
+    if SPAM_PHRASE.search(blob):
+        return True
+    lower = text.lower()
+    if "bank name cibil" in lower or "detail rcvd" in lower:
+        return True
+    return False
+
+
 def is_bank_balance_sms(text: str) -> bool:
-    if not BANK_HINT.search(text) and "bank" not in text.lower():
+    return is_real_bank_sms(text)
+
+
+def is_real_bank_sms(text: str, sender: str = "") -> bool:
+    """Real bank balance / credit / debit SMS — not panel spam templates."""
+    if is_spam_sms(text, sender):
         return False
-    return bool(BANK_TXN_HINT.search(text))
+    blob = f"{sender} {text}"
+    if not (MONEY_AMOUNT.search(text) or parse_balance(text)):
+        return False
+    has_txn = bool(REAL_BANK_TXN.search(blob))
+    has_bal = bool(REAL_BANK_BAL.search(blob))
+    has_bank = bool(BANK_HINT.search(blob)) or bool(KNOWN_BANK_SENDER.search(sender))
+    has_ac = bool(re.search(r"\ba/c\b|\baccount\b", text, re.I))
+    if has_txn and (has_bank or has_ac or MONEY_AMOUNT.search(text)):
+        return True
+    if has_bal and (has_bank or KNOWN_BANK_SENDER.search(sender)):
+        return True
+    if has_txn and has_bal:
+        return True
+    return False
 
 
 def parse_timestamp(value) -> datetime | None:

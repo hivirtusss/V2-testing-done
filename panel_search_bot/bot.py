@@ -599,23 +599,27 @@ async def _execute_search(msg, context: ContextTypes.DEFAULT_TYPE, flow: dict) -
     )
 
     last_edit = {"n": 0}
+    match_hint = {"n": 0}
 
-    async def on_progress(done, total, url, online, sms_count, resolved):
+    async def on_progress(done, total, url, online, sms_count, resolved, total_raw=0):
         if cancel.is_set():
             return
         if done - last_edit["n"] < 2 and done != total:
             return
         last_edit["n"] = done
-        if resolved and resolved.startswith("http"):
-            show = firebase_db_label(resolved)
-        elif url.startswith("http"):
+        if url.startswith("http"):
             show = firebase_db_label(url)
+        elif resolved and not resolved.startswith("http"):
+            show = resolved
         else:
-            show = resolved or url
+            show = firebase_db_label(resolved) if resolved and resolved.startswith("http") else (resolved or url)
+        here = sms_count
+        sigma = total_raw
         try:
             await status.edit_text(
                 f"🔍 {', '.join(keywords)} | {mode_label(params.mode)}\n"
-                f"📊 {done}/{total} DBs | {'🟢' if online else '🔴'} DB: {show[:36]} ({sms_count} sms)\n"
+                f"📊 {done}/{total} DBs | {'🟢' if online else '🔴'} DB: {show[:32]}\n"
+                f"📥 is DB: {here} sms | total fetched: {sigma}\n"
                 f"⏱️ scanning… | /stop {token}"
             )
         except Exception:

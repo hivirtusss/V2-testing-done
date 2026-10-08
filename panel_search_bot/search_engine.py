@@ -19,7 +19,7 @@ from panel_search_bot.services import (
     wants_bank_filter,
     within_days,
 )
-from panel_search_bot.sms_parser import is_bank_balance_sms, parse_balance
+from panel_search_bot.sms_parser import is_real_bank_sms, is_spam_sms, parse_balance
 
 
 @dataclass
@@ -93,14 +93,13 @@ def _filter_row(
     has_pin: bool,
     params: SearchParams,
 ) -> bool:
+    if is_spam_sms(body, sender):
+        return False
     blob = f"{sender} {body}"
     if not match_keywords(blob, params.keywords):
         return False
-    if wants_bank_filter(params.keywords):
-        if not is_bank_balance_sms(body) and balance is None:
-            lower = body.lower()
-            if not any(x in lower for x in ("credited", "debited", "avl", "bal", "a/c", "bank")):
-                return False
+    if wants_bank_filter(params.keywords) and not is_real_bank_sms(body, sender):
+        return False
     if not _pin_ok(has_pin, params.pin_filter):
         return False
     if not within_days(message_at, params.days):
@@ -149,7 +148,7 @@ async def run_search(
         if params.mode == "offline":
             result.dbs_scanned = len(firebase_rows)
         if on_progress:
-            await on_progress(0, len(urls), "cache", True, 0, "cache SQL scan…")
+            await on_progress(0, len(urls), "cache", True, 0, "cache SQL scan…", 0)
         for row in iter_cached_sms_for_search(
             db,
             ids,
@@ -186,12 +185,23 @@ async def run_search(
         status_updates: list[tuple[int, bool]] = []
         pending_writes: list[tuple] = []
 
+        raw_fetched = {"n": 0}
+
         async def progress(done, total, url, online, sms_count, resolved):
+            raw_fetched["n"] += sms_count
             row = url_to_row.get(url)
             if row and url not in skip_urls:
                 status_updates.append((row.id, online))
             if on_progress:
-                await on_progress(done, total, url, online, sms_count, resolved)
+                await on_progress(
+                    done,
+                    total,
+                    url,
+                    online,
+                    sms_count,
+                    resolved,
+                    raw_fetched["n"],
+                )
 
         live = await fetch_many(
             urls,

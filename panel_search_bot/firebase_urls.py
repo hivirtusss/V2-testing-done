@@ -81,9 +81,12 @@ def _project_id_from_host(host: str) -> str | None:
         return host.replace(".firebaseio.com", "").split(".")[0]
     if ".firebasedatabase.app" in host:
         part = host.split(".firebasedatabase.app")[0]
+        for segment in part.split("."):
+            if segment.endswith("-default-rtdb"):
+                return segment[: -len("-default-rtdb")]
         if part.endswith("-default-rtdb"):
-            return part[: -len("-default-rtdb")].split(".")[-1]
-        return part.split(".")[-1]
+            return part[: -len("-default-rtdb")]
+        return part.split(".")[0]
     return None
 
 

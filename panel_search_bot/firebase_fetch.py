@@ -7,7 +7,12 @@ import httpx
 
 from panel_search_bot.config import get_settings
 from panel_search_bot.firebase_urls import device_id_from_raw_path, firebase_url_variants
-from panel_search_bot.sms_parser import extract_message_fields, message_has_pin, parse_balance
+from panel_search_bot.sms_parser import (
+    extract_message_fields,
+    is_spam_sms,
+    message_has_pin,
+    parse_balance,
+)
 
 # Most panels store SMS under these — try first and stop early when data is found.
 SMS_SUBPATHS_PRIORITY = (
@@ -54,7 +59,7 @@ def _walk_sms(
     if isinstance(node, dict):
         if MESSAGE_KEYS.intersection(node.keys()):
             sender, body, ts = extract_message_fields(node)
-            if body and len(body.strip()) >= 4:
+            if body and len(body.strip()) >= 4 and not is_spam_sms(body, sender):
                 out.append(
                     {
                         "sender": sender,
