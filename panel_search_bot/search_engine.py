@@ -18,7 +18,7 @@ from panel_search_bot.services import (
     wants_bank_filter,
     within_days,
 )
-from panel_search_bot.sms_parser import is_bank_balance_sms
+from panel_search_bot.sms_parser import is_bank_balance_sms, parse_balance
 
 
 @dataclass
@@ -102,7 +102,8 @@ def _filter_row(
         return False
     if not within_days(message_at, params.days):
         return False
-    if not _balance_in_range(balance, params.balance_sort):
+    effective_balance = balance if balance is not None else parse_balance(body)
+    if not _balance_in_range(effective_balance, params.balance_sort):
         return False
     return True
 
@@ -180,7 +181,7 @@ async def run_search(
                         )
                     )
 
-    if params.mode in ("offline", "both"):
+    if params.mode in ("offline", "both", "online"):
         ids = [row.id for row in firebase_rows]
         cached: list[CachedSms] = load_cached_sms(db, ids)
         if params.mode == "offline":
@@ -201,17 +202,15 @@ async def run_search(
                     )
                 )
 
-    # Dedupe live+cache in both mode
-    if params.mode == "both":
-        seen: set[tuple] = set()
-        unique: list[SearchMatch] = []
-        for m in matches:
-            key = (m.firebase_url, m.body[:200], m.message_at)
-            if key in seen:
-                continue
-            seen.add(key)
-            unique.append(m)
-        matches = unique
+    seen: set[tuple] = set()
+    unique: list[SearchMatch] = []
+    for m in matches:
+        key = (m.firebase_url, m.body[:200], m.message_at)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(m)
+    matches = unique
 
     result.matches = _sort_matches(matches, params.balance_sort)
     result.elapsed_sec = time.time() - started

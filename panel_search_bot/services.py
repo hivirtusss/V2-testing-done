@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from panel_search_bot.config import get_settings
 from panel_search_bot.firebase_urls import extract_firebase_urls, normalize_firebase_url
+from panel_search_bot.sms_parser import BANK_HINT, is_bank_balance_sms
 from panel_search_bot.models import BotUser, CachedSms, FirebaseDb
 
 
@@ -153,6 +154,10 @@ def match_keywords(text: str, keywords: list[str]) -> bool:
             continue
         if cleaned.startswith("\\"):
             cleaned = cleaned[1:]
+        if cleaned in ("bank", "banks"):
+            if is_bank_balance_sms(text) or BANK_HINT.search(text) or "bank" in lower:
+                continue
+            return False
         if "/" in cleaned:
             parts = [p.strip() for p in cleaned.split("/") if p.strip()]
             if not any(p in lower for p in parts):
@@ -171,7 +176,8 @@ def wants_bank_filter(keywords: list[str]) -> bool:
 def within_days(message_at: datetime | None, days: int | None) -> bool:
     if days is None:
         return True
+    # Most panel SMS have no timestamp field — don't drop them on date filter.
     if message_at is None:
-        return False
+        return True
     cutoff = datetime.utcnow() - timedelta(days=days)
     return message_at >= cutoff
