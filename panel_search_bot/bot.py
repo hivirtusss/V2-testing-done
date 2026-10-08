@@ -31,7 +31,16 @@ from panel_search_bot.services import (
     is_allowed,
     list_search_urls,
 )
-from panel_search_bot.ui import days_label, mode_label, pin_label, search_footer, search_summary, sort_label
+from panel_search_bot.ui import (
+    confirm_panel_text,
+    days_label,
+    mode_label,
+    pin_label,
+    search_footer,
+    search_start_line,
+    search_summary,
+    sort_label,
+)
 
 MODE_RE = re.compile(r"^(online|offline|both)$", re.I)
 
@@ -245,17 +254,14 @@ async def cmd_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         return
     keywords, mode = _parse_quick_search(context.args or [])
     if keywords and mode:
-        await _execute_search(
-            msg,
-            context,
-            {
-                "keywords": keywords,
-                "mode": mode,
-                "balance_sort": "high",
-                "days": None,
-                "pin_filter": "both",
-            },
-        )
+        context.user_data["search_flow"] = {
+            "keywords": keywords,
+            "mode": mode,
+            "balance_sort": "high",
+            "days": None,
+            "pin_filter": "both",
+        }
+        await _show_confirm(msg, context.user_data["search_flow"])
         return
     if keywords:
         context.user_data["search_flow"] = {
@@ -266,7 +272,7 @@ async def cmd_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             "pin_filter": "both",
             "step": "mode",
         }
-        await _ask_mode(msg, keywords)
+        await _show_confirm(msg, context.user_data["search_flow"])
         return
     context.user_data["search_flow"] = {"step": "keywords"}
     await msg.reply_text(
@@ -277,16 +283,23 @@ async def cmd_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     )
 
 
-def _mode_keyboard() -> InlineKeyboardMarkup:
+def _confirm_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
+            [InlineKeyboardButton("✅ YES — Search Start!", callback_data="srch:confirm:yes")],
             [
-                InlineKeyboardButton("🟢 Online → Start", callback_data="srch:mode:online"),
-                InlineKeyboardButton("🔄 Both → Start", callback_data="srch:mode:both"),
+                InlineKeyboardButton("🟢 Online", callback_data="srch:mode:online"),
+                InlineKeyboardButton("🔄 Both", callback_data="srch:mode:both"),
+                InlineKeyboardButton("⚫ Offline", callback_data="srch:mode:offline"),
             ],
             [
-                InlineKeyboardButton("⚫ Offline cache", callback_data="srch:mode:offline"),
-                InlineKeyboardButton("⚙ Custom filters", callback_data="srch:step:custom"),
+                InlineKeyboardButton("💰 High→Low", callback_data="srch:sort:high"),
+                InlineKeyboardButton("💰 Low→High", callback_data="srch:sort:low"),
+            ],
+            [
+                InlineKeyboardButton("PIN Both", callback_data="srch:pin:both"),
+                InlineKeyboardButton("∞ All Time", callback_data="srch:days:all"),
+                InlineKeyboardButton("⚙ More", callback_data="srch:step:custom"),
             ],
         ]
     )
@@ -320,7 +333,10 @@ def _custom_keyboard(flow: dict) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(mark("NoPIN", "without" if pin == "without" else ""), callback_data="srch:pin:without"),
                 InlineKeyboardButton(mark("Both", "both" if pin == "both" else ""), callback_data="srch:pin:both"),
             ],
-            [InlineKeyboardButton(f"▶ Run ({day_label})", callback_data="srch:run:go")],
+            [
+                InlineKeyboardButton(f"▶ Run ({day_label})", callback_data="srch:run:go"),
+                InlineKeyboardButton("« Back", callback_data="srch:step:back"),
+            ],
         ]
     )
 
@@ -334,13 +350,12 @@ def _custom_panel_text(flow: dict) -> str:
     )
 
 
-async def _ask_mode(msg, keywords: list[str]) -> None:
-    await msg.reply_text(
-        f"📌 Keywords: {', '.join(keywords)}\n"
-        "🟢 Online / 🔄 Both = ek tap pe search start (High + All + PIN Both).\n"
-        "⚙ Custom = ek hi screen mein baaki options.",
-        reply_markup=_mode_keyboard(),
-    )
+async def _show_confirm(msg, flow: dict) -> None:
+    await msg.reply_text(confirm_panel_text(flow), reply_markup=_confirm_keyboard())
+
+
+async def _edit_confirm(query, flow: dict) -> None:
+    await query.edit_message_text(confirm_panel_text(flow), reply_markup=_confirm_keyboard())
 
 
 async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -358,24 +373,40 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     flow.setdefault("pin_filter", "both")
     _, kind, value = query.data.split(":", 2)
 
-    if kind == "mode":
-        flow["mode"] = value
-        await query.edit_message_text(f"⚡ Starting… {', '.join(flow.get('keywords') or [])} | {mode_label(value)}")
+    if kind == "confirm" and value == "yes":
+        await query.edit_message_text("⚡ Search start ho rahi hai…")
         await _execute_search(query.message, context, flow)
+    elif kind == "mode":
+        flow["mode"] = value
+        await _edit_confirm(query, flow)
     elif kind == "step" and value == "custom":
+        flow["step"] = "custom"
         flow.setdefault("mode", "online")
         await query.edit_message_text(_custom_panel_text(flow), reply_markup=_custom_keyboard(flow))
+    elif kind == "step" and value == "back":
+        flow.pop("step", None)
+        await _edit_confirm(query, flow)
     elif kind == "sort":
         flow["balance_sort"] = value
-        await query.edit_message_text(_custom_panel_text(flow), reply_markup=_custom_keyboard(flow))
+        if flow.get("step") == "custom":
+            await query.edit_message_text(_custom_panel_text(flow), reply_markup=_custom_keyboard(flow))
+        else:
+            await _edit_confirm(query, flow)
     elif kind == "days":
         flow["days"] = None if value == "all" else int(value)
-        await query.edit_message_text(_custom_panel_text(flow), reply_markup=_custom_keyboard(flow))
+        if flow.get("step") == "custom":
+            await query.edit_message_text(_custom_panel_text(flow), reply_markup=_custom_keyboard(flow))
+        else:
+            await _edit_confirm(query, flow)
     elif kind == "pin":
         flow["pin_filter"] = value
-        await query.edit_message_text(_custom_panel_text(flow), reply_markup=_custom_keyboard(flow))
+        if flow.get("step") == "custom":
+            await query.edit_message_text(_custom_panel_text(flow), reply_markup=_custom_keyboard(flow))
+        else:
+            await _edit_confirm(query, flow)
     elif kind == "run":
-        await query.edit_message_text("⚡ Starting search…")
+        flow.pop("step", None)
+        await query.edit_message_text("⚡ Search start ho rahi hai…")
         await _execute_search(query.message, context, flow)
 
 
@@ -410,11 +441,14 @@ async def _execute_search(msg, context: ContextTypes.DEFAULT_TYPE, flow: dict) -
     cancel = asyncio.Event()
     context.application.bot_data.setdefault("active_searches", {})[token] = cancel
 
+    pool_line = f"📦 YOUR {personal_count} DBs"
+    if leak_count:
+        pool_line += f" + {leak_count} leak pool = {len(rows)} total"
+
     status = await msg.reply_text(
-        f"🔍 {', '.join(keywords)} | {mode_label(params.mode)} | {sort_label(params.balance_sort)} | "
-        f"{days_label(params.days)}\n"
-        f"📊 0/{len(rows)} DBs | leak={leak_count} personal={personal_count}\n"
-        f"⏱️ 0s | /stop {token}"
+        f"{search_start_line(params)}\n{pool_line}\n"
+        f"📊 0/{len(rows)} DBs scanning…\n"
+        f"⏱️ /stop {token}"
     )
 
     last_edit = {"n": 0}
@@ -448,7 +482,10 @@ async def _execute_search(msg, context: ContextTypes.DEFAULT_TYPE, flow: dict) -
 
     content = format_result_file(result.matches, params)
     size_kb = max(1, len(content.encode("utf-8")) // 1024)
-    filename = f"sms_{'_'.join(k.replace('/', '')[:12] for k in keywords[:3])}_{int(result.elapsed_sec)}.txt"
+    import time
+
+    slug = "_".join(k.replace("/", "").replace(" ", "")[:16] for k in keywords[:3])
+    filename = f"sms_{slug}_{int(time.time())}.txt"
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".txt", delete=False) as tmp:
         tmp.write(content)
         tmp_path = tmp.name
@@ -524,7 +561,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "pin_filter": "both",
             "step": "mode",
         }
-        await _ask_mode(msg, keywords)
+        await _show_confirm(msg, context.user_data["search_flow"])
         return
 
     if text.startswith("/"):
