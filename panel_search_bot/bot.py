@@ -599,7 +599,6 @@ async def _execute_search(msg, context: ContextTypes.DEFAULT_TYPE, flow: dict) -
     )
 
     last_edit = {"n": 0}
-    match_hint = {"n": 0}
 
     async def on_progress(done, total, url, online, sms_count, resolved, total_raw=0):
         if cancel.is_set():
