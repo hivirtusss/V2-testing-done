@@ -34,6 +34,8 @@ def format_astik_result_file(
     *,
     elapsed_sec: float,
     dbs_scanned: int,
+    dbs_completed: int | None = None,
+    stopped_early: bool = False,
 ) -> str:
     grouped: dict[tuple[str, str], list[SearchMatch]] = defaultdict(list)
     for match in matches:
@@ -49,11 +51,18 @@ def format_astik_result_file(
     device_groups = sorted(grouped.items(), key=group_sort_key)
     generated = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
 
+    done = dbs_completed if dbs_completed is not None else dbs_scanned
     lines = [
         _astik_header_line(params),
+        *(
+            ["# PARTIAL EXPORT — /stop se scan yahi tak (poora pool nahi)", ""]
+            if stopped_early
+            else []
+        ),
         f"Generated: {generated}",
         f"Search time: {elapsed_sec:.0f}s",
-        f"Total matches: {len(matches)} | Devices: {len(device_groups)} | DBs scanned: {dbs_scanned}",
+        f"Total matches: {len(matches)} | Devices: {len(device_groups)} | "
+        f"DBs done: {done}/{dbs_scanned}",
         "",
     ]
 
@@ -105,13 +114,16 @@ def match_from_cache_row(url: str, row) -> SearchMatch:
 
 
 def match_from_live_item(url: str, item: dict) -> SearchMatch:
+    from panel_search_bot.sms_parser import effective_message_at
+
+    body = item.get("body", "")
     return SearchMatch(
         firebase_url=url,
         db_label=firebase_db_label(url),
         device_id=str(item.get("device_id") or device_id_from_raw_path(str(item.get("raw_path", "")))),
         sender=item.get("sender", ""),
-        body=item.get("body", ""),
-        message_at=item.get("message_at"),
+        body=body,
+        message_at=effective_message_at(item.get("message_at"), body),
         balance=item.get("balance"),
         has_pin=item.get("has_pin", False),
         source="live",

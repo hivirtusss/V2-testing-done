@@ -50,8 +50,10 @@ class SearchMatch:
 class SearchResult:
     matches: list[SearchMatch] = field(default_factory=list)
     dbs_scanned: int = 0
+    dbs_completed: int = 0
     dbs_online: int = 0
     elapsed_sec: float = 0.0
+    stopped_early: bool = False
 
 
 def _pin_ok(has_pin: bool, pin_filter: str) -> bool:
@@ -118,6 +120,8 @@ def format_result_file(
     *,
     elapsed_sec: float = 0.0,
     dbs_scanned: int = 0,
+    dbs_completed: int = 0,
+    stopped_early: bool = False,
 ) -> str:
     from panel_search_bot.export_format import format_astik_result_file
 
@@ -126,6 +130,8 @@ def format_result_file(
         params,
         elapsed_sec=elapsed_sec,
         dbs_scanned=dbs_scanned,
+        dbs_completed=dbs_completed or dbs_scanned,
+        stopped_early=stopped_early,
     )
 
 
@@ -264,7 +270,7 @@ async def run_search(
             update_firebase_status(db, fb_id, online)
         result.dbs_scanned = total_dbs
         result.dbs_online = dbs_online
-        if settings.panel_search_defer_cache_write:
+        if settings.panel_search_defer_cache_write and not (cancel_event and cancel_event.is_set()):
             for fb_id, device_key, sms_list in pending_writes:
                 upsert_cached_sms(db, fb_id, device_key, sms_list)
     elif params.mode == "offline":
@@ -282,4 +288,9 @@ async def run_search(
 
     result.matches = _sort_matches(matches, params.balance_sort)
     result.elapsed_sec = time.time() - started
+    result.stopped_early = bool(cancel_event and cancel_event.is_set())
+    if params.mode in ("online", "both") and settings.panel_search_live_fetch:
+        result.dbs_completed = len(live or {})
+    elif not result.stopped_early:
+        result.dbs_completed = result.dbs_scanned or total_dbs
     return result

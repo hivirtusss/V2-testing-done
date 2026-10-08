@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from typing import Any, Awaitable, Callable
 
 import httpx
@@ -285,6 +286,23 @@ async def fetch_many(
                         resolved,
                     )
 
-        await asyncio.gather(*(one(url) for url in urls))
+        tasks = [asyncio.create_task(one(url)) for url in urls]
+
+        async def _cancel_watch() -> None:
+            while True:
+                if cancel_event and cancel_event.is_set():
+                    for task in tasks:
+                        if not task.done():
+                            task.cancel()
+                    return
+                await asyncio.sleep(0.25)
+
+        watcher = asyncio.create_task(_cancel_watch())
+        try:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        finally:
+            watcher.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await watcher
 
     return results

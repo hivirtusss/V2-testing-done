@@ -603,7 +603,7 @@ async def _execute_search(msg, context: ContextTypes.DEFAULT_TYPE, flow: dict) -
     async def on_progress(done, total, url, online, sms_count, resolved, total_raw=0):
         if cancel.is_set():
             return
-        if done - last_edit["n"] < 2 and done != total:
+        if done - last_edit["n"] < 1 and done != total:
             return
         last_edit["n"] = done
         if url.startswith("http"):
@@ -631,21 +631,21 @@ async def _execute_search(msg, context: ContextTypes.DEFAULT_TYPE, flow: dict) -
         db.close()
         context.application.bot_data.get("active_searches", {}).pop(token, None)
 
-    if cancel.is_set():
-        await status.edit_text(f"⏹ Search stopped ({token})")
-        return
-
+    stopped = cancel.is_set() or result.stopped_early
     content = format_result_file(
         result.matches,
         params,
         elapsed_sec=result.elapsed_sec,
         dbs_scanned=result.dbs_scanned,
+        dbs_completed=result.dbs_completed,
+        stopped_early=stopped,
     )
     size_kb = max(1, len(content.encode("utf-8")) // 1024)
     import time
 
     slug = "_".join(k.replace("/", "").replace(" ", "")[:16] for k in keywords[:3])
-    filename = f"sms_{slug}_{int(time.time())}.txt"
+    suffix = "_partial" if stopped else ""
+    filename = f"sms_{slug}{suffix}_{int(time.time())}.txt"
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".txt", delete=False) as tmp:
         tmp.write(content)
         tmp_path = tmp.name
@@ -654,8 +654,15 @@ async def _execute_search(msg, context: ContextTypes.DEFAULT_TYPE, flow: dict) -
     finally:
         Path(tmp_path).unlink(missing_ok=True)
 
-    summary = search_summary(params, len(result.matches), result.elapsed_sec, size_kb)
-    await status.edit_text(summary + "\n📄 File sent above ☝️")
+    if stopped:
+        await status.edit_text(
+            f"⏹ Stopped — partial export\n"
+            f"📊 {len(result.matches)} matches | DBs {result.dbs_completed}/{result.dbs_scanned}\n"
+            f"📄 File upar ☝️ — ab naya /search chala sakte ho"
+        )
+    else:
+        summary = search_summary(params, len(result.matches), result.elapsed_sec, size_kb)
+        await status.edit_text(summary + "\n📄 File sent above ☝️")
     await msg.reply_text(search_footer(params, len(result.matches), result.elapsed_sec, size_kb))
 
 
