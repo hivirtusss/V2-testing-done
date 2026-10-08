@@ -28,6 +28,13 @@ from aadhaar_bot.services import (
     plan_line,
     revoke_user,
 )
+from aadhaar_bot.ui_dynamo import (
+    DEV_LINE,
+    find_record_searching,
+    holder_name_prompt,
+    record_not_found_text,
+    run_search_with_verify,
+)
 from aadhaar_bot.uidai_client import UidaiBackend
 
 MOBILE_RE = re.compile(r"^\d{10}$")
@@ -136,6 +143,20 @@ async def _access_denied(update: Update, row) -> None:
     msg = update.effective_message
     if msg:
         await msg.reply_text(text, parse_mode="Markdown")
+
+
+async def _reply_welcome(message, user_id: int, username: str | None) -> None:
+    db = db_session()
+    try:
+        row = get_or_create_user(db, user_id, username)
+        plan = plan_line(row, _owners())
+    finally:
+        db.close()
+    await message.reply_text(
+        _welcome_text(plan),
+        parse_mode="Markdown",
+        reply_markup=_welcome_keyboard(),
+    )
 
 
 async def _require_access(update: Update) -> bool:
@@ -334,11 +355,7 @@ async def on_gender(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         context.user_data["aadhaar_name_manual"] = True
         _set_step(context, Step.NAME)
         await q.edit_message_text(
-            "📌 **STEP 2/4 — Holder Name (Manual)**\n\n"
-            "👇 Aadhaar card par **bilkul waisa hi** full name likho.\n"
-            "Isi name se UIDAI record match hoga (mobile + name).\n\n"
-            f"📱 Mobile: `{mobile}`"
-            + _cancel_footer(),
+            holder_name_prompt(mobile, manual=True),
             parse_mode="Markdown",
         )
         return
@@ -350,7 +367,7 @@ async def on_gender(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await q.edit_message_text(
         f"📌 **STEP 2/4 — Holder Name**\n\n"
         f"{emoji} Gender: **{gender.title()}**\n\n"
-        "👇 Card par jaisa **full name** type karo:"
+        "👇 Type the **full name** exactly as printed on the card."
         f"\n\n📱 Mobile: `{mobile}`"
         + _cancel_footer(),
         parse_mode="Markdown",
@@ -405,24 +422,31 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         context.user_data["aadhaar_name_query"] = name_query
         context.user_data["aadhaar_started_at"] = time.time()
         wait = await msg.reply_text(
-            "📌 **STEP 3/4 — Find Record**\n\n"
-            f"⌛ Umang/UIDAI live check: **{name_display}** + `{mobile}`\n"
-            "Please wait...",
+            "📌 **STEP 3/4 — Find Record**\n\n⌛ Looking up this record... Please wait."
+            + _cancel_footer(),
             parse_mode="Markdown",
         )
         backend = _backend(context)
+        user = _telegram_user(update)
         try:
-            verified = await backend.verify_record(
+            _, verified = await run_search_with_verify(
+                wait,
                 mobile,
-                gender,
-                name_display,
-                name_query,
-                manual_name=manual_name,
+                backend.verify_record(
+                    mobile,
+                    gender,
+                    name_display,
+                    name_query,
+                    manual_name=manual_name,
+                ),
             )
             if not verified.ok:
-                await wait.edit_text(verified.message, parse_mode="Markdown")
+                await wait.edit_text(record_not_found_text(), parse_mode="Markdown")
                 _reset_flow(context)
+                if user:
+                    await _reply_welcome(msg, user.id, user.username)
                 return
+            await wait.edit_text(find_record_searching(mobile, 8), parse_mode="Markdown")
             res = await backend.start_lookup(
                 mobile,
                 gender,
@@ -432,12 +456,16 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 preverified_session=verified.session_id,
             )
         except Exception as e:
-            await wait.edit_text(f"❌ Backend error: {e}")
+            await wait.edit_text(f"❌ **Fail:** {e}\n\n{DEV_LINE}", parse_mode="Markdown")
             _reset_flow(context)
+            if user:
+                await _reply_welcome(msg, user.id, user.username)
             return
         if not res.ok:
-            await wait.edit_text(f"❌ {res.message}")
+            await wait.edit_text(record_not_found_text(), parse_mode="Markdown")
             _reset_flow(context)
+            if user:
+                await _reply_welcome(msg, user.id, user.username)
             return
         context.user_data["aadhaar_session"] = res.session_id
         _set_step(context, Step.OTP1)
