@@ -20,7 +20,7 @@ from panel_search_bot.services import (
     wants_bank_filter,
     within_days,
 )
-from panel_search_bot.sms_parser import is_real_bank_sms, is_spam_sms, parse_balance
+from panel_search_bot.sms_parser import is_bank_transaction_sms, is_spam_sms, parse_balance
 
 
 @dataclass
@@ -76,15 +76,7 @@ def _sort_matches(matches: list[SearchMatch], balance_sort: str) -> list[SearchM
 
 
 def _balance_in_range(balance: float | None, balance_sort: str) -> bool:
-    if balance_sort == "skip":
-        return True
-    if balance is None:
-        return False
-    settings = get_settings()
-    if balance_sort == "high":
-        return settings.panel_search_balance_high_min <= balance <= settings.panel_search_balance_high_max
-    if balance_sort == "low":
-        return balance >= settings.panel_search_balance_low_min
+    # High/Low only affects sort order — do not drop bank SMS missing balance or below 70K.
     return True
 
 
@@ -99,9 +91,10 @@ def _filter_row(
     if is_spam_sms(body, sender):
         return False
     blob = f"{sender} {body}"
-    if not match_keywords(blob, params.keywords):
-        return False
-    if wants_bank_filter(params.keywords) and not is_real_bank_sms(body, sender):
+    if wants_bank_filter(params.keywords):
+        if not is_bank_transaction_sms(body, sender):
+            return False
+    elif not match_keywords(blob, params.keywords):
         return False
     if not _pin_ok(has_pin, params.pin_filter):
         return False

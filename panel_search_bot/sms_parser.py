@@ -35,7 +35,13 @@ SPAM_PHRASE = re.compile(
     re.I,
 )
 REAL_BANK_TXN = re.compile(
-    r"\b(?:credited|debited|deposited|withdrawn|received|sent|transfer|txn|transaction|upi|neft|imps|rtgs)\b",
+    r"\b(?:credited|debited|deposited|withdrawn|received|sent|paid|transfer|transferred|txn|"
+    r"transaction|upi|neft|imps|rtgs|ecs|nach|emi|autopay|deducted|refund)\b",
+    re.I,
+)
+DR_CR_AC = re.compile(
+    r"(?:\bdr\.?\s*from|\bcr\.?\s*to|debited from|credited to|sent to|received from|paid to|"
+    r"has been debited|has been credited|amount of rs|amt sent|money sent|a/c \*+|ac no)",
     re.I,
 )
 REAL_BANK_BAL = re.compile(
@@ -46,7 +52,8 @@ REAL_BANK_BAL = re.compile(
 MONEY_AMOUNT = re.compile(r"(?:rs\.?|inr|₹)\s*[\d,]+(?:\.\d{1,2})?", re.I)
 KNOWN_BANK_SENDER = re.compile(
     r"(?:^|[\[-])(?:[A-Z]{2,}-)?(?:SBI|HDFC|ICICI|AXIS|KOTAK|PNB|BOB|CANARA|YES|IDFC|UBIN|"
-    r"BARB|CNRB|INDB|FDRL|UCBA|BKID|CBIN|IOBA|UTIB|PUNB|AIRP|JIOP)",
+    r"BARB|CNRB|INDB|FDRL|UCBA|BKID|CBIN|IOBA|UTIB|PUNB|AIRP|JIOP|BAJAJ|FEDERAL|RBL|CSBK|"
+    r"SVCB|KVB|TMB|DBS|SCBL|NSDL|EPFO|VM-[A-Z]|TX-[A-Z]|BK-[A-Z]|AD-[A-Z]+-S)",
     re.I,
 )
 
@@ -117,25 +124,34 @@ def is_spam_sms(text: str, sender: str = "") -> bool:
 
 
 def is_bank_balance_sms(text: str) -> bool:
-    return is_real_bank_sms(text)
+    return is_bank_transaction_sms(text)
 
 
 def is_real_bank_sms(text: str, sender: str = "") -> bool:
-    """Real bank balance / credit / debit SMS — not panel spam templates."""
+    return is_bank_transaction_sms(text, sender)
+
+
+def is_bank_transaction_sms(text: str, sender: str = "") -> bool:
+    """Bank SMS: credit/debit/received/sent/UPI/balance — spam excluded."""
     if is_spam_sms(text, sender):
         return False
     blob = f"{sender} {text}"
-    if not (MONEY_AMOUNT.search(text) or parse_balance(text)):
-        return False
-    has_txn = bool(REAL_BANK_TXN.search(blob))
-    has_bal = bool(REAL_BANK_BAL.search(blob))
+    lower = text.lower()
+    has_money = bool(MONEY_AMOUNT.search(text) or parse_balance(text))
+    has_txn = bool(REAL_BANK_TXN.search(blob) or DR_CR_AC.search(blob))
+    has_bal = bool(REAL_BANK_BAL.search(blob) or BANK_TXN_HINT.search(blob))
     has_bank = bool(BANK_HINT.search(blob)) or bool(KNOWN_BANK_SENDER.search(sender))
-    has_ac = bool(re.search(r"\ba/c\b|\baccount\b", text, re.I))
-    if has_txn and (has_bank or has_ac or MONEY_AMOUNT.search(text)):
+    has_ac = bool(re.search(r"\ba/c\b|\bac\b|\baccount\b", lower))
+
+    if KNOWN_BANK_SENDER.search(sender) and (has_txn or has_bal or has_money):
         return True
-    if has_bal and (has_bank or KNOWN_BANK_SENDER.search(sender)):
+    if has_txn and (has_money or has_ac or has_bank):
         return True
-    if has_txn and has_bal:
+    if has_bal and (has_bank or has_ac):
+        return True
+    if DR_CR_AC.search(blob) and has_money:
+        return True
+    if re.search(r"\b(inr|rs\.?)\s*[\d,]", lower) and has_txn and (has_bank or has_ac):
         return True
     return False
 
