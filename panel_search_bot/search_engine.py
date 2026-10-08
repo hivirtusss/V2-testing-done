@@ -11,7 +11,6 @@ from panel_search_bot.database import SessionLocal
 from panel_search_bot.firebase_fetch import fetch_many
 from panel_search_bot.models import FirebaseDb
 from panel_search_bot.config import get_settings
-from panel_search_bot.export_format import match_from_cache_row, match_from_live_item
 from panel_search_bot.services import (
     firebase_ids_with_cached_sms,
     iter_cached_sms_for_search,
@@ -158,6 +157,8 @@ async def run_search(
         await on_progress(0, total_dbs, "start", True, 0, "cache+live parallel", 0)
 
     def _scan_cache_sync() -> list[SearchMatch]:
+        from panel_search_bot.export_format import match_from_cache_row
+
         if params.mode not in ("offline", "both", "online"):
             return []
         if cancel_event and cancel_event.is_set():
@@ -245,6 +246,8 @@ async def run_search(
             row = url_to_row[url]
             if online and sms_list:
                 pending_writes.append((row.id, row.url_normalized, sms_list))
+            from panel_search_bot.export_format import match_from_live_item
+
             for item in sms_list:
                 probe = match_from_live_item(url, item)
                 if _filter_row(
