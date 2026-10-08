@@ -35,7 +35,9 @@ class UidaiBackend:
         self._mock_sessions: dict[str, dict] = {}
 
     def _live(self) -> bool:
-        return bool((self.settings.aadhaar_backend_url or "").strip())
+        if self.settings.aadhaar_mock_mode and self.settings.aadhaar_provider.lower() != "uidai":
+            return False
+        return bool(self.settings.effective_backend_url)
 
     def _headers(self) -> dict[str, str]:
         h = {"Content-Type": "application/json"}
@@ -79,7 +81,7 @@ class UidaiBackend:
         payload = self._payload_base(mobile, gender, name_display, name_query, manual_name=manual_name)
 
         if self._live():
-            url = self.settings.aadhaar_backend_url.rstrip("/") + "/v1/lookup/verify"
+            url = self.settings.effective_backend_url.rstrip("/") + "/v1/lookup/verify"
             async with httpx.AsyncClient(timeout=120.0) as client:
                 r = await client.post(url, json=payload, headers=self._headers())
                 r.raise_for_status()
@@ -132,7 +134,7 @@ class UidaiBackend:
             payload["session_id"] = preverified_session
 
         if self._live():
-            url = self.settings.aadhaar_backend_url.rstrip("/") + "/v1/lookup/start"
+            url = self.settings.effective_backend_url.rstrip("/") + "/v1/lookup/start"
             async with httpx.AsyncClient(timeout=120.0) as client:
                 r = await client.post(url, json=payload, headers=self._headers())
                 r.raise_for_status()
@@ -173,7 +175,7 @@ class UidaiBackend:
 
     async def submit_otp1(self, session_id: str, otp: str) -> LookupResult:
         if self._live():
-            url = self.settings.aadhaar_backend_url.rstrip("/") + "/v1/lookup/otp1"
+            url = self.settings.effective_backend_url.rstrip("/") + "/v1/lookup/otp1"
             async with httpx.AsyncClient(timeout=120.0) as client:
                 r = await client.post(
                     url, json={"session_id": session_id, "otp": otp}, headers=self._headers()
@@ -194,7 +196,7 @@ class UidaiBackend:
 
     async def submit_otp2(self, session_id: str, otp: str) -> LookupResult:
         if self._live():
-            url = self.settings.aadhaar_backend_url.rstrip("/") + "/v1/lookup/otp2"
+            url = self.settings.effective_backend_url.rstrip("/") + "/v1/lookup/otp2"
             async with httpx.AsyncClient(timeout=180.0) as client:
                 r = await client.post(
                     url, json={"session_id": session_id, "otp": otp}, headers=self._headers()

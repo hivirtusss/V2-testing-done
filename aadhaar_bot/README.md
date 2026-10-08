@@ -2,7 +2,26 @@
 
 Dynamo-style flow: mobile → gender → name → OTP1 → OTP2 → extraction + PDF.
 
-**UIDAI is not scraped from this repo.** The bot calls **your backend** (`AADHAAR_BACKEND_URL`) where captcha and DOB-less lookup run.
+### Live UIDAI (myAadhaar / tathya)
+
+Set `AADHAAR_PROVIDER=uidai` (default). This starts a **local bridge** that talks to official UIDAI hosts (`tathya.uidai.gov.in`) — captcha auto (`ddddocr` or 2captcha), mobile+name verify, OTP, PDF.
+
+**Must run on India VPS** (UIDAI often blocks foreign IPs). Umang uses the same UIDAI OTP backend; there is no separate public Umang download API.
+
+```bash
+pip install ddddocr   # captcha auto
+./start_uidai_bridge.sh
+./start_aadhaar_bot.sh
+```
+
+Override API paths if UIDAI updates (from your Drive script):
+
+- `UIDAI_VERIFY_MOBILE_URL`
+- `UIDAI_OTP1_URL` / `UIDAI_OTP2_URL`
+- `UIDAI_VALIDATE_OTP_URL`
+- `UIDAI_DOWNLOAD_PDF_URL`
+
+External bridge: `AADHAAR_PROVIDER=remote` + `AADHAAR_BACKEND_URL=...`
 
 ## Run
 

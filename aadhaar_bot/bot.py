@@ -120,20 +120,22 @@ def _telegram_user(update: Update):
 
 async def _access_denied(update: Update, row) -> None:
     owners = _owners()
-    msg = update.effective_message
-    if not msg:
-        return
     if not row.approved and not is_owner(row.telegram_id, owners):
-        await msg.reply_text(
+        text = (
             "🔒 **Access denied**\n\nSirf owner approve ke baad bot use ho sakta hai.\n"
-            "Owner ko apna Telegram ID bhejo.",
-            parse_mode="Markdown",
+            "Owner ko apna Telegram ID bhejo."
         )
+    else:
+        text = (
+            f"🔒 **Credits khatam** ({row.credits} bache).\n\nOwner se `/addcredits` karwao."
+        )
+    q = update.callback_query
+    if q and q.message:
+        await q.message.reply_text(text, parse_mode="Markdown")
         return
-    await msg.reply_text(
-        f"🔒 **Credits khatam** ({row.credits} bache).\n\nOwner se `/addcredits` karwao.",
-        parse_mode="Markdown",
-    )
+    msg = update.effective_message
+    if msg:
+        await msg.reply_text(text, parse_mode="Markdown")
 
 
 async def _require_access(update: Update) -> bool:

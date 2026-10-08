@@ -28,6 +28,10 @@ if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
   exit 0
 fi
 
+if [ "${AADHAAR_PROVIDER:-uidai}" = "uidai" ]; then
+  bash "$ROOT_DIR/start_uidai_bridge.sh"
+fi
+
 python3 -m pip install -r requirements.txt -q
 nohup python3 -m aadhaar_bot.run_bot >> "$LOG_FILE" 2>&1 &
 echo $! > "$PID_FILE"

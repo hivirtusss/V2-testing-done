@@ -12,11 +12,27 @@ class Settings(BaseSettings):
 
     aadhaar_bot_token: str = ""
     aadhaar_owner_ids: str = ""
+    aadhaar_provider: str = "uidai"  # uidai = built-in MyAadhaar bridge | remote = external URL
     aadhaar_backend_url: str = ""
     aadhaar_backend_key: str = ""
-    aadhaar_mock_mode: bool = True
+    aadhaar_mock_mode: bool = False
     aadhaar_db_url: str = "sqlite:///./aadhaar_bot.db"
     aadhaar_notify_chat_id: str = ""
+
+    uidai_bridge_host: str = "127.0.0.1"
+    uidai_bridge_port: int = 8790
+    uidai_tathya_base: str = "https://tathya.uidai.gov.in"
+    uidai_http_timeout: float = 120.0
+    uidai_captcha_length: str = "6"
+    uidai_captcha_type: str = "2"
+    uidai_captcha_url: str = ""
+    uidai_verify_mobile_url: str = ""
+    uidai_otp1_url: str = ""
+    uidai_otp2_url: str = ""
+    uidai_validate_otp_url: str = ""
+    uidai_download_pdf_url: str = ""
+    uidai_captcha_solver: str = "ddddocr"  # ddddocr | 2captcha
+    uidai_2captcha_key: str = ""
 
     @property
     def owner_id_set(self) -> set[int]:
@@ -25,6 +41,14 @@ class Settings(BaseSettings):
             if part.isdigit():
                 out.add(int(part))
         return out
+
+    @property
+    def effective_backend_url(self) -> str:
+        if self.aadhaar_backend_url.strip():
+            return self.aadhaar_backend_url.strip()
+        if self.aadhaar_provider.lower() == "uidai":
+            return f"http://{self.uidai_bridge_host}:{self.uidai_bridge_port}"
+        return ""
 
 
 @lru_cache
