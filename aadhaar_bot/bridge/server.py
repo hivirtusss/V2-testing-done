@@ -98,7 +98,7 @@ async def verify(body: LookupBody) -> dict[str, Any]:
         return {"ok": False, "message": f"UIDAI connect fail (India VPS?): {e}"}
 
     if not _uidai_success(data):
-        return {"ok": False, "message": _fail_message(data)}
+        return {"ok": False, "message": "No Records Found"}
 
     sid = store.create(
         mobile=body.mobile,
@@ -135,7 +135,7 @@ async def start(body: LookupBody) -> dict[str, Any]:
     except Exception as e:
         return {"ok": False, "message": str(e)}
     if not _uidai_success(data):
-        return {"ok": False, "message": _fail_message(data)}
+        return {"ok": False, "message": "No Records Found"}
     sess.otp1_txn = str(data.get("txnId") or data.get("transactionId") or "")
     sess.uidai_payload.update(data)
     return {"ok": True, "message": "OTP 1 sent", "session_id": body.session_id}
@@ -160,7 +160,7 @@ async def otp1(body: OtpBody) -> dict[str, Any]:
     except Exception as e:
         return {"ok": False, "message": str(e)}
     if not _uidai_success(data):
-        return {"ok": False, "message": _fail_message(data)}
+        return {"ok": False, "message": "No Records Found"}
     sess.uidai_payload.update(data)
     try:
         otp2 = await uidai.send_download_otp(
