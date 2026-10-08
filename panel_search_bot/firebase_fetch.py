@@ -65,6 +65,8 @@ def _walk_sms(
                         "raw_path": path,
                     }
                 )
+                if max_items is not None and len(out) >= max_items:
+                    return True
         for key, value in node.items():
             if key in ("metadata", "config", "settings"):
                 continue
@@ -99,6 +101,17 @@ async def _fetch_json(
         return None
 
 
+async def _fetch_subpath(
+    client: httpx.AsyncClient,
+    variant: str,
+    sub: str,
+    timeout: float,
+    max_bytes: int,
+) -> tuple[str, Any | None]:
+    data = await _fetch_json(client, _json_url(variant, sub), timeout, max_bytes=max_bytes)
+    return sub, data
+
+
 async def fetch_sms_from_firebase(client: httpx.AsyncClient, base_url: str) -> tuple[bool, list[dict], str]:
     settings = get_settings()
     timeout = settings.panel_search_fetch_timeout
@@ -124,9 +137,25 @@ async def fetch_sms_from_firebase(client: httpx.AsyncClient, base_url: str) -> t
             extra = [k for k in shallow.keys() if k not in ("metadata", "config", "settings")]
             subpaths = extra[:10] + [s for s in subpaths if s not in extra]
 
+        hot = [s for s in ("messages", "sms", "devices", "device") if s in subpaths or not subpaths]
+        if hot:
+            probes = await asyncio.gather(
+                *[_fetch_subpath(client, variant, sub, timeout, max_bytes) for sub in hot[:4]]
+            )
+            for sub, data in probes:
+                if data is None:
+                    continue
+                variant_ok = True
+                working_url = variant
+                before = len(collected)
+                cap_walk(data, sub or "root")
+                if len(collected) > before:
+                    break
         for sub in subpaths:
             if len(collected) >= max_sms:
                 break
+            if sub in ("messages", "sms", "devices", "device"):
+                continue
             data = await _fetch_json(client, _json_url(variant, sub), timeout, max_bytes=max_bytes)
             if data is None:
                 continue
@@ -134,7 +163,7 @@ async def fetch_sms_from_firebase(client: httpx.AsyncClient, base_url: str) -> t
             working_url = variant
             before = len(collected)
             cap_walk(data, sub or "root")
-            if len(collected) > before and sub in ("messages", "sms", "devices", "device", "inbox", ""):
+            if len(collected) > before and sub in ("inbox", ""):
                 break
         if collected:
             break
@@ -193,20 +222,40 @@ async def fetch_many(
     *,
     on_progress: Callable[..., Awaitable[None]] | None = None,
     cancel_event: asyncio.Event | None = None,
+    skip_urls: set[str] | None = None,
+    progress_total: int | None = None,
 ) -> dict[str, tuple[bool, list[dict], str]]:
     settings = get_settings()
     workers = settings.worker_count
     sem = asyncio.Semaphore(workers)
     results: dict[str, tuple[bool, list[dict], str]] = {}
-    total = len(urls)
-    limits = httpx.Limits(max_connections=workers + 5, max_keepalive_connections=workers)
+    skip_urls = skip_urls or set()
+    total = progress_total if progress_total is not None else len(urls)
+    limits = httpx.Limits(
+        max_connections=min(workers + 32, 288),
+        max_keepalive_connections=min(workers + 16, 256),
+    )
+    done_counter = {"n": 0}
 
     async with httpx.AsyncClient(follow_redirects=True, limits=limits) as client:
 
         url_timeout = settings.panel_search_url_timeout
 
-        async def one(url: str, index: int) -> None:
+        async def one(url: str) -> None:
             if cancel_event and cancel_event.is_set():
+                return
+            if url in skip_urls:
+                results[url] = (True, [], url)
+                done_counter["n"] += 1
+                if on_progress:
+                    await on_progress(
+                        done_counter["n"],
+                        total,
+                        url,
+                        True,
+                        0,
+                        "cached (skip live)",
+                    )
                 return
             async with sem:
                 if cancel_event and cancel_event.is_set():
@@ -219,9 +268,17 @@ async def fetch_many(
                 except asyncio.TimeoutError:
                     online, sms_list, resolved = False, [], url
                 results[url] = (online, sms_list, resolved)
+                done_counter["n"] += 1
                 if on_progress:
-                    await on_progress(index + 1, total, url, online, len(sms_list), resolved)
+                    await on_progress(
+                        done_counter["n"],
+                        total,
+                        url,
+                        online,
+                        len(sms_list),
+                        resolved,
+                    )
 
-        await asyncio.gather(*(one(url, i) for i, url in enumerate(urls)))
+        await asyncio.gather(*(one(url) for url in urls))
 
     return results

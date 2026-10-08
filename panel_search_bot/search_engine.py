@@ -3,15 +3,17 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
 from panel_search_bot.firebase_fetch import fetch_many
-from panel_search_bot.models import CachedSms, FirebaseDb
+from panel_search_bot.models import FirebaseDb
+from panel_search_bot.config import get_settings
 from panel_search_bot.config import get_settings
 from panel_search_bot.services import (
-    load_cached_sms,
+    firebase_ids_with_cached_sms,
+    iter_cached_sms_for_search,
     match_keywords,
     update_firebase_status,
     upsert_cached_sms,
@@ -139,27 +141,79 @@ async def run_search(
     urls = list(url_to_row.keys())
     result = SearchResult()
 
-    if params.mode in ("online", "both") and urls:
+    ids = [row.id for row in firebase_rows]
+    id_to_url = {row.id: row.url_normalized for row in firebase_rows}
+
+    if params.mode in ("offline", "both", "online"):
+        if params.mode == "offline":
+            result.dbs_scanned = len(firebase_rows)
+        if on_progress:
+            await on_progress(0, len(urls), "cache", True, 0, "cache SQL scan…")
+        for row in iter_cached_sms_for_search(
+            db,
+            ids,
+            keywords=params.keywords,
+            balance_sort=params.balance_sort,
+        ):
+            url = id_to_url.get(row.firebase_db_id, "unknown")
+            if _filter_row(row.sender, row.body, row.message_at, row.balance_value, row.has_pin, params):
+                matches.append(
+                    SearchMatch(
+                        firebase_url=url,
+                        sender=row.sender,
+                        body=row.body,
+                        message_at=row.message_at,
+                        balance=row.balance_value,
+                        has_pin=row.has_pin,
+                        source="cache",
+                    )
+                )
+
+    if params.mode in ("online", "both") and urls and get_settings().panel_search_live_fetch:
+        settings = get_settings()
+        cached_ids = firebase_ids_with_cached_sms(db, ids)
+        skip_urls: set[str] = set()
+        offline_cutoff = datetime.utcnow() - timedelta(hours=settings.panel_search_skip_offline_hours)
+        if settings.panel_search_skip_live_if_cached:
+            for row in firebase_rows:
+                if row.id in cached_ids:
+                    skip_urls.add(row.url_normalized)
+        for row in firebase_rows:
+            if row.is_online is False and row.last_checked_at and row.last_checked_at >= offline_cutoff:
+                skip_urls.add(row.url_normalized)
 
         status_updates: list[tuple[int, bool]] = []
+        pending_writes: list[tuple] = []
 
         async def progress(done, total, url, online, sms_count, resolved):
             row = url_to_row.get(url)
-            if row:
+            if row and url not in skip_urls:
                 status_updates.append((row.id, online))
             if on_progress:
                 await on_progress(done, total, url, online, sms_count, resolved)
 
-        live = await fetch_many(urls, on_progress=progress, cancel_event=cancel_event)
+        live = await fetch_many(
+            urls,
+            on_progress=progress,
+            cancel_event=cancel_event,
+            skip_urls=skip_urls,
+            progress_total=len(urls),
+        )
         for fb_id, online in status_updates:
             update_firebase_status(db, fb_id, online)
         result.dbs_scanned = len(urls)
         for url, (online, sms_list, _resolved) in live.items():
+            if url in skip_urls:
+                result.dbs_online += 1
+                continue
             if online:
                 result.dbs_online += 1
             row = url_to_row[url]
             if online and sms_list:
-                upsert_cached_sms(db, row.id, row.url_normalized, sms_list)
+                if settings.panel_search_defer_cache_write:
+                    pending_writes.append((row.id, row.url_normalized, sms_list))
+                else:
+                    upsert_cached_sms(db, row.id, row.url_normalized, sms_list)
             for item in sms_list:
                 if _filter_row(
                     item.get("sender", ""),
@@ -180,27 +234,9 @@ async def run_search(
                             source="live",
                         )
                     )
-
-    if params.mode in ("offline", "both", "online"):
-        ids = [row.id for row in firebase_rows]
-        cached: list[CachedSms] = load_cached_sms(db, ids)
-        if params.mode == "offline":
-            result.dbs_scanned = len(firebase_rows)
-        for row in cached:
-            fb = db.query(FirebaseDb).filter(FirebaseDb.id == row.firebase_db_id).first()
-            url = fb.url_normalized if fb else "unknown"
-            if _filter_row(row.sender, row.body, row.message_at, row.balance_value, row.has_pin, params):
-                matches.append(
-                    SearchMatch(
-                        firebase_url=url,
-                        sender=row.sender,
-                        body=row.body,
-                        message_at=row.message_at,
-                        balance=row.balance_value,
-                        has_pin=row.has_pin,
-                        source="cache",
-                    )
-                )
+        if settings.panel_search_defer_cache_write:
+            for fb_id, device_key, sms_list in pending_writes:
+                upsert_cached_sms(db, fb_id, device_key, sms_list)
 
     seen: set[tuple] = set()
     unique: list[SearchMatch] = []

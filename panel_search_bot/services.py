@@ -5,6 +5,8 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from sqlalchemy import or_
+
 from panel_search_bot.config import get_settings
 from panel_search_bot.firebase_urls import extract_firebase_urls, normalize_firebase_url
 from panel_search_bot.sms_parser import BANK_HINT, is_bank_balance_sms
@@ -136,6 +138,58 @@ def load_cached_sms(db: Session, firebase_db_ids: list[int]) -> list[CachedSms]:
     if not firebase_db_ids:
         return []
     return db.query(CachedSms).filter(CachedSms.firebase_db_id.in_(firebase_db_ids)).all()
+
+
+def firebase_ids_with_cached_sms(db: Session, firebase_db_ids: list[int]) -> set[int]:
+    if not firebase_db_ids:
+        return set()
+    rows = (
+        db.query(CachedSms.firebase_db_id)
+        .filter(CachedSms.firebase_db_id.in_(firebase_db_ids))
+        .distinct()
+        .all()
+    )
+    return {row[0] for row in rows}
+
+
+def _cache_query_for_search(db: Session, firebase_db_ids: list[int], *, keywords: list[str], balance_sort: str):
+    settings = get_settings()
+    query = db.query(CachedSms).filter(CachedSms.firebase_db_id.in_(firebase_db_ids))
+    if wants_bank_filter(keywords):
+        query = query.filter(
+            or_(
+                CachedSms.body.ilike("%avl%"),
+                CachedSms.body.ilike("%bal%"),
+                CachedSms.body.ilike("%bank%"),
+                CachedSms.body.ilike("%a/c%"),
+                CachedSms.body.ilike("%credited%"),
+                CachedSms.body.ilike("%debited%"),
+                CachedSms.body.ilike("%hdfc%"),
+                CachedSms.body.ilike("%sbi%"),
+                CachedSms.body.ilike("%icici%"),
+                CachedSms.body.ilike("%axis%"),
+            )
+        )
+    if balance_sort == "high":
+        query = query.filter(
+            CachedSms.balance_value >= settings.panel_search_balance_high_min,
+            CachedSms.balance_value <= settings.panel_search_balance_high_max,
+        )
+    elif balance_sort == "low":
+        query = query.filter(CachedSms.balance_value >= settings.panel_search_balance_low_min)
+    return query
+
+
+def iter_cached_sms_for_search(
+    db: Session,
+    firebase_db_ids: list[int],
+    *,
+    keywords: list[str],
+    balance_sort: str,
+):
+    settings = get_settings()
+    query = _cache_query_for_search(db, firebase_db_ids, keywords=keywords, balance_sort=balance_sort)
+    yield from query.yield_per(max(500, settings.panel_search_cache_yield))
 
 
 def update_firebase_status(db: Session, fb_id: int, online: bool) -> None:
