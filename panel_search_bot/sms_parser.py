@@ -18,7 +18,12 @@ AVL_BALANCE_PATTERNS = [
 OTHER_BALANCE_PATTERNS = [
     re.compile(r"(?:bal|balance)\s*[:.]?\s*(?:rs\.?|inr|₹)?\s*([\d,]+(?:\.\d{1,2})?)", re.I),
 ]
-PIN_PATTERN = re.compile(r"\b(?:pin|otp|mpin|upi\s*pin)\b", re.I)
+PIN_PATTERN = re.compile(
+    r"\b(?:upi\s*pin|mpin|m-pin|atm\s*pin|pin\s*set|set\s+(?:your\s+)?(?:upi\s+)?pin|"
+    r"pin\s*generated|pin\s*is|enter\s+(?:upi\s+)?pin|use\s+(?:upi\s+)?pin)\b",
+    re.I,
+)
+PIN_LOOSE = re.compile(r"\b(?:upi\s*pin|mpin)\b", re.I)
 BANK_HINT = re.compile(
     r"\b(?:bank|sbi|hdfc|icici|axis|kotak|pnb|bob|idfc|yes|canara|union|paytm|phonepe|gpay|credit|debit)\b",
     re.I,
@@ -108,7 +113,18 @@ def parse_balance(text: str) -> float | None:
 
 
 def message_has_pin(text: str) -> bool:
-    return bool(PIN_PATTERN.search(text))
+    if not text:
+        return False
+    if PIN_PATTERN.search(text) or PIN_LOOSE.search(text):
+        return True
+    lower = text.lower()
+    if "pin" in lower and any(x in lower for x in ("upi", "mpin", "atm", "set", "enter", "share")):
+        return bool(re.search(r"\bpin\b", lower))
+    return False
+
+
+def device_has_upi_pin(messages: list) -> bool:
+    return any(getattr(m, "has_pin", False) or message_has_pin(getattr(m, "body", "")) for m in messages)
 
 
 def is_spam_sms(text: str, sender: str = "") -> bool:
