@@ -388,7 +388,15 @@ def build_app() -> Application:
     if not settings.aadhaar_bot_token:
         raise SystemExit("AADHAAR_BOT_TOKEN missing — .env.aadhaar set karo")
 
-    app = Application.builder().token(settings.aadhaar_bot_token).build()
+    app = (
+        Application.builder()
+        .token(settings.aadhaar_bot_token)
+        .connect_timeout(30.0)
+        .read_timeout(30.0)
+        .write_timeout(30.0)
+        .pool_timeout(30.0)
+        .build()
+    )
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("cancel", cmd_cancel))
     app.add_handler(CallbackQueryHandler(on_back_home, pattern=r"^aadhaar:back_home$"))
