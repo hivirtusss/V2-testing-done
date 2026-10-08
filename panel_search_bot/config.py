@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     panel_search_owner_ids: str = ""
     panel_search_auth_key: str = "astik"
     panel_search_database_url: str = "sqlite:///./panel_search.db"
-    panel_search_concurrency: int = 48
+    panel_search_concurrency: int = 64
     panel_search_max_workers: int = 0  # 0 = use concurrency value
     panel_search_fetch_timeout: float = 10.0
     panel_search_balance_high_min: float = 70_000.0
