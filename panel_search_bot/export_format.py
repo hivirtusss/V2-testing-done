@@ -84,9 +84,10 @@ def format_astik_result_file(
 
 
 def match_from_cache_row(url: str, row) -> SearchMatch:
-    from panel_search_bot.sms_parser import parse_balance
+    from panel_search_bot.sms_parser import effective_message_at, parse_balance
 
     balance = row.balance_value if row.balance_value is not None else parse_balance(row.body)
+    msg_at = effective_message_at(row.message_at, row.body)
     device = device_id_from_raw_path(row.raw_path or "")
     if device == "unknown" and row.device_key and not row.device_key.startswith("http"):
         device = row.device_key[:128]
@@ -96,7 +97,7 @@ def match_from_cache_row(url: str, row) -> SearchMatch:
         device_id=device,
         sender=row.sender,
         body=row.body,
-        message_at=row.message_at,
+        message_at=msg_at,
         balance=balance,
         has_pin=row.has_pin,
         source="cache",

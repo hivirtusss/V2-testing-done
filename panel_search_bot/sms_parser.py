@@ -1,5 +1,5 @@
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 AVL_BALANCE_PATTERNS = [
     re.compile(
@@ -49,6 +49,13 @@ KNOWN_BANK_SENDER = re.compile(
     r"BARB|CNRB|INDB|FDRL|UCBA|BKID|CBIN|IOBA|UTIB|PUNB|AIRP|JIOP)",
     re.I,
 )
+
+BODY_DATE_DMY = re.compile(
+    r"\b(?:on\s+)?(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})(?:\s+\d{1,2}:\d{2})?",
+    re.I,
+)
+BODY_DATE_YMD = re.compile(r"\b(\d{4})[/-](\d{1,2})[/-](\d{1,2})\b")
+BODY_DATE_YMD_SPACE = re.compile(r"Date:\s*(\d{4})\s+(\d{1,2})/(\d{1,2})", re.I)
 
 TS_FIELDS = (
     "timestamp",
@@ -133,6 +140,55 @@ def is_real_bank_sms(text: str, sender: str = "") -> bool:
     return False
 
 
+def _normalize_year(year: int) -> int:
+    if year < 100:
+        return 2000 + year if year <= 70 else 1900 + year
+    return year
+
+
+def parse_date_from_sms_body(text: str) -> datetime | None:
+    """Best-effort transaction date from SMS body (when Firebase has no timestamp)."""
+    if not text:
+        return None
+    candidates: list[datetime] = []
+
+    for match in BODY_DATE_DMY.finditer(text):
+        day, month, year = int(match.group(1)), int(match.group(2)), _normalize_year(int(match.group(3)))
+        try:
+            candidates.append(datetime(year, month, day))
+        except ValueError:
+            continue
+
+    for match in BODY_DATE_YMD.finditer(text):
+        year, month, day = int(match.group(1)), int(match.group(2)), int(match.group(3))
+        try:
+            candidates.append(datetime(year, month, day))
+        except ValueError:
+            continue
+
+    for match in BODY_DATE_YMD_SPACE.finditer(text):
+        year, month, day = int(match.group(1)), int(match.group(2)), int(match.group(3))
+        try:
+            candidates.append(datetime(year, month, day))
+        except ValueError:
+            continue
+
+    if not candidates:
+        return None
+
+    now = datetime.utcnow()
+    valid = [dt for dt in candidates if 2015 <= dt.year <= now.year + 1 and dt <= now + timedelta(days=1)]
+    if not valid:
+        return None
+    return max(valid)
+
+
+def effective_message_at(message_at: datetime | None, body: str) -> datetime | None:
+    if message_at is not None:
+        return message_at
+    return parse_date_from_sms_body(body)
+
+
 def parse_timestamp(value) -> datetime | None:
     if value is None:
         return None
@@ -184,6 +240,8 @@ def extract_message_fields(node: dict) -> tuple[str, str, datetime | None]:
             ts = parse_timestamp(node.get(key))
             if ts:
                 break
+    if ts is None:
+        ts = parse_date_from_sms_body(body)
     return sender, body, ts
 
 

@@ -156,7 +156,14 @@ def firebase_ids_with_cached_sms(db: Session, firebase_db_ids: list[int]) -> set
     return {row[0] for row in rows}
 
 
-def _cache_query_for_search(db: Session, firebase_db_ids: list[int], *, keywords: list[str], balance_sort: str):
+def _cache_query_for_search(
+    db: Session,
+    firebase_db_ids: list[int],
+    *,
+    keywords: list[str],
+    balance_sort: str,
+    days: int | None = None,
+):
     query = db.query(CachedSms).filter(CachedSms.firebase_db_id.in_(firebase_db_ids))
     if wants_bank_filter(keywords):
         query = query.filter(
@@ -184,9 +191,16 @@ def iter_cached_sms_for_search(
     *,
     keywords: list[str],
     balance_sort: str,
+    days: int | None = None,
 ):
     settings = get_settings()
-    query = _cache_query_for_search(db, firebase_db_ids, keywords=keywords, balance_sort=balance_sort)
+    query = _cache_query_for_search(
+        db,
+        firebase_db_ids,
+        keywords=keywords,
+        balance_sort=balance_sort,
+        days=days,
+    )
     yield from query.yield_per(max(500, settings.panel_search_cache_yield))
 
 
@@ -225,11 +239,13 @@ def wants_bank_filter(keywords: list[str]) -> bool:
     return "bank" in blob or "avl" in blob or "bal" in blob
 
 
-def within_days(message_at: datetime | None, days: int | None) -> bool:
+def within_days(message_at: datetime | None, days: int | None, *, body: str | None = None) -> bool:
     if days is None:
         return True
-    # Most panel SMS have no timestamp field — don't drop them on date filter.
-    if message_at is None:
-        return True
+    from panel_search_bot.sms_parser import effective_message_at
+
+    ts = effective_message_at(message_at, body or "")
+    if ts is None:
+        return False
     cutoff = datetime.utcnow() - timedelta(days=days)
-    return message_at >= cutoff
+    return ts >= cutoff

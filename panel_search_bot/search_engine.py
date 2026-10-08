@@ -102,7 +102,7 @@ def _filter_row(
         return False
     if not _pin_ok(has_pin, params.pin_filter):
         return False
-    if not within_days(message_at, params.days):
+    if not within_days(message_at, params.days, body=body):
         return False
     effective_balance = balance if balance is not None else parse_balance(body)
     if not _balance_in_range(effective_balance, params.balance_sort):
@@ -154,6 +154,7 @@ async def run_search(
             ids,
             keywords=params.keywords,
             balance_sort=params.balance_sort,
+            days=params.days,
         ):
             url = id_to_url.get(row.firebase_db_id, "unknown")
             from panel_search_bot.export_format import match_from_cache_row
