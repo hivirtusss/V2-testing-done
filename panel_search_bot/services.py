@@ -162,7 +162,6 @@ def _cache_query_for_search(
     *,
     keywords: list[str],
     balance_sort: str,
-    days: int | None = None,
 ):
     query = db.query(CachedSms).filter(CachedSms.firebase_db_id.in_(firebase_db_ids))
     if wants_bank_filter(keywords):
@@ -194,13 +193,7 @@ def iter_cached_sms_for_search(
     days: int | None = None,
 ):
     settings = get_settings()
-    query = _cache_query_for_search(
-        db,
-        firebase_db_ids,
-        keywords=keywords,
-        balance_sort=balance_sort,
-        days=days,
-    )
+    query = _cache_query_for_search(db, firebase_db_ids, keywords=keywords, balance_sort=balance_sort)
     yield from query.yield_per(max(500, settings.panel_search_cache_yield))
 
 
