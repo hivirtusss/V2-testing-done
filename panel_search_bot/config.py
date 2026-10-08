@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     panel_search_concurrency: int = 12
     panel_search_fetch_timeout: float = 12.0
     panel_search_leak_file: str = ""
+    panel_search_notify_chat_id: str = ""
 
     @property
     def owner_id_set(self) -> set[int]:

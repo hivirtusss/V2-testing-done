@@ -496,12 +496,15 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await msg.reply_text("Use /search or /help")
 
 
-def build_application() -> Application:
+def build_application(post_init=None) -> Application:
     settings = get_settings()
     if not settings.panel_search_bot_token:
         raise RuntimeError("PANEL_SEARCH_BOT_TOKEN set karo (.env)")
 
-    app = Application.builder().token(settings.panel_search_bot_token).build()
+    builder = Application.builder().token(settings.panel_search_bot_token)
+    if post_init is not None:
+        builder = builder.post_init(post_init)
+    app = builder.build()
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("search", cmd_search))
@@ -529,6 +532,17 @@ def main() -> None:
     finally:
         db.close()
 
-    app = build_application()
+    async def _post_init(application: Application) -> None:
+        chat_id = settings.panel_search_notify_chat_id.strip()
+        if chat_id:
+            try:
+                await application.bot.send_message(
+                    chat_id=int(chat_id),
+                    text="🟢 Panel Search bot online (VPS)",
+                )
+            except Exception as exc:
+                print(f"Notify chat failed: {exc}")
+
+    app = build_application(post_init=_post_init)
     print("Panel Search bot running (standalone — Virtus module untouched)")
     app.run_polling(drop_pending_updates=True)

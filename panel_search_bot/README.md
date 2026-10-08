@@ -17,11 +17,23 @@ PANEL_SEARCH_DATABASE_URL=sqlite:///./panel_search.db
 PANEL_SEARCH_LEAK_FILE=/path/to/leak_firebases.txt
 ```
 
-## Run
+## Run (local)
 
 ```bash
-python3 -m panel_search_bot.run_bot
+./start_panel_search.sh
 ```
+
+## VPS (same server as SMS monitor)
+
+```bash
+cd /path/to/V2-testing-done
+git pull
+sudo PANEL_SEARCH_BOT_TOKEN='BOT_TOKEN' \
+  PANEL_SEARCH_OWNER_IDS='YOUR_TELEGRAM_ID' \
+  bash install_panel_search.sh
+```
+
+Service: `panel-search-bot` → logs at `/opt/panel-search-bot/panel_search.log`
 
 ## Commands
 

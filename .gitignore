@@ -1,6 +1,9 @@
 .env
 .sms-monitor.pid
 sms-monitor.log
+.panel-search.pid
+panel_search.log
+.env.panel_search
 __pycache__/
 *.pyc
 *.pyo
