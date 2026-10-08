@@ -245,15 +245,27 @@ async def cmd_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         return
     keywords, mode = _parse_quick_search(context.args or [])
     if keywords and mode:
-        context.user_data["search_flow"] = {
-            "keywords": keywords,
-            "mode": mode,
-            "step": "sort",
-        }
-        await _ask_sort(msg)
+        await _execute_search(
+            msg,
+            context,
+            {
+                "keywords": keywords,
+                "mode": mode,
+                "balance_sort": "high",
+                "days": None,
+                "pin_filter": "both",
+            },
+        )
         return
     if keywords:
-        context.user_data["search_flow"] = {"keywords": keywords, "step": "mode"}
+        context.user_data["search_flow"] = {
+            "keywords": keywords,
+            "mode": "online",
+            "balance_sort": "high",
+            "days": None,
+            "pin_filter": "both",
+            "step": "mode",
+        }
         await _ask_mode(msg, keywords)
         return
     context.user_data["search_flow"] = {"step": "keywords"}
@@ -265,61 +277,70 @@ async def cmd_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     )
 
 
+def _mode_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("🟢 Online → Start", callback_data="srch:mode:online"),
+                InlineKeyboardButton("🔄 Both → Start", callback_data="srch:mode:both"),
+            ],
+            [
+                InlineKeyboardButton("⚫ Offline cache", callback_data="srch:mode:offline"),
+                InlineKeyboardButton("⚙ Custom filters", callback_data="srch:step:custom"),
+            ],
+        ]
+    )
+
+
+def _custom_keyboard(flow: dict) -> InlineKeyboardMarkup:
+    sort = flow.get("balance_sort", "high")
+    days = flow.get("days")
+    pin = flow.get("pin_filter", "both")
+    day_label = days_label(days)
+
+    def mark(label: str, selected: str) -> str:
+        return f"✓ {label}" if label == selected else label
+
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(mark("high", sort), callback_data="srch:sort:high"),
+                InlineKeyboardButton(mark("low", sort), callback_data="srch:sort:low"),
+                InlineKeyboardButton(mark("skip", sort), callback_data="srch:sort:skip"),
+            ],
+            [
+                InlineKeyboardButton("1d", callback_data="srch:days:1"),
+                InlineKeyboardButton("3d", callback_data="srch:days:3"),
+                InlineKeyboardButton("7d", callback_data="srch:days:7"),
+                InlineKeyboardButton("30d", callback_data="srch:days:30"),
+                InlineKeyboardButton("∞", callback_data="srch:days:all"),
+            ],
+            [
+                InlineKeyboardButton(mark("PIN", "with" if pin == "with" else ""), callback_data="srch:pin:with"),
+                InlineKeyboardButton(mark("NoPIN", "without" if pin == "without" else ""), callback_data="srch:pin:without"),
+                InlineKeyboardButton(mark("Both", "both" if pin == "both" else ""), callback_data="srch:pin:both"),
+            ],
+            [InlineKeyboardButton(f"▶ Run ({day_label})", callback_data="srch:run:go")],
+        ]
+    )
+
+
+def _custom_panel_text(flow: dict) -> str:
+    kw = ", ".join(flow.get("keywords") or [])
+    return (
+        f"📌 {kw}\n⚙ Custom — sab ek screen\n"
+        f"Mode: {flow.get('mode', 'online')} | Sort: {flow.get('balance_sort', 'high')} | "
+        f"{days_label(flow.get('days'))} | PIN: {flow.get('pin_filter', 'both')}"
+    )
+
+
 async def _ask_mode(msg, keywords: list[str]) -> None:
-    kb = InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton("🟢 Online", callback_data="srch:mode:online"),
-                InlineKeyboardButton("⚫ Offline", callback_data="srch:mode:offline"),
-            ],
-            [InlineKeyboardButton("🔄 Both", callback_data="srch:mode:both")],
-        ]
+    await msg.reply_text(
+        f"📌 Keywords: {', '.join(keywords)}\n"
+        "🟢 Online / 🔄 Both = ek tap pe search start (High + All + PIN Both).\n"
+        "⚙ Custom = ek hi screen mein baaki options.",
+        reply_markup=_mode_keyboard(),
     )
-    await msg.reply_text(f"📌 Keywords: {', '.join(keywords)}\nSelect mode:", reply_markup=kb)
-
-
-async def _ask_sort(msg) -> None:
-    kb = InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton("💰 High→Low 70K-1Cr", callback_data="srch:sort:high"),
-                InlineKeyboardButton("💰 Low→High 1K+", callback_data="srch:sort:low"),
-            ],
-            [InlineKeyboardButton("⏭ Skip (date order)", callback_data="srch:sort:skip")],
-        ]
-    )
-    await msg.reply_text("Select balance sort:", reply_markup=kb)
-
-
-async def _ask_days(msg) -> None:
-    kb = InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton("1 day", callback_data="srch:days:1"),
-                InlineKeyboardButton("3 days", callback_data="srch:days:3"),
-                InlineKeyboardButton("7 days", callback_data="srch:days:7"),
-            ],
-            [
-                InlineKeyboardButton("15 days", callback_data="srch:days:15"),
-                InlineKeyboardButton("30 days", callback_data="srch:days:30"),
-                InlineKeyboardButton("∞ All Time", callback_data="srch:days:all"),
-            ],
-        ]
-    )
-    await msg.reply_text("Select SMS age:", reply_markup=kb)
-
-
-async def _ask_pin(msg) -> None:
-    kb = InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton("🔑 With PIN", callback_data="srch:pin:with"),
-                InlineKeyboardButton("🚫 Without PIN", callback_data="srch:pin:without"),
-            ],
-            [InlineKeyboardButton("🔄 Both", callback_data="srch:pin:both")],
-        ]
-    )
-    await msg.reply_text("Select PIN filter:", reply_markup=kb)
 
 
 async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -332,21 +353,29 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not await _require_access(update):
         return
     flow = context.user_data.setdefault("search_flow", {})
+    flow.setdefault("balance_sort", "high")
+    flow.setdefault("days", None)
+    flow.setdefault("pin_filter", "both")
     _, kind, value = query.data.split(":", 2)
+
     if kind == "mode":
         flow["mode"] = value
-        flow["step"] = "sort"
-        await _ask_sort(query.message)
+        await query.edit_message_text(f"⚡ Starting… {', '.join(flow.get('keywords') or [])} | {mode_label(value)}")
+        await _execute_search(query.message, context, flow)
+    elif kind == "step" and value == "custom":
+        flow.setdefault("mode", "online")
+        await query.edit_message_text(_custom_panel_text(flow), reply_markup=_custom_keyboard(flow))
     elif kind == "sort":
         flow["balance_sort"] = value
-        flow["step"] = "days"
-        await _ask_days(query.message)
+        await query.edit_message_text(_custom_panel_text(flow), reply_markup=_custom_keyboard(flow))
     elif kind == "days":
         flow["days"] = None if value == "all" else int(value)
-        flow["step"] = "pin"
-        await _ask_pin(query.message)
+        await query.edit_message_text(_custom_panel_text(flow), reply_markup=_custom_keyboard(flow))
     elif kind == "pin":
         flow["pin_filter"] = value
+        await query.edit_message_text(_custom_panel_text(flow), reply_markup=_custom_keyboard(flow))
+    elif kind == "run":
+        await query.edit_message_text("⚡ Starting search…")
         await _execute_search(query.message, context, flow)
 
 
@@ -390,16 +419,17 @@ async def _execute_search(msg, context: ContextTypes.DEFAULT_TYPE, flow: dict) -
 
     last_edit = {"n": 0}
 
-    async def on_progress(done, total, url, online, sms_count):
+    async def on_progress(done, total, url, online, sms_count, resolved):
         if cancel.is_set():
             return
         if done - last_edit["n"] < 3 and done != total:
             return
         last_edit["n"] = done
+        show = resolved or url
         try:
             await status.edit_text(
                 f"🔍 {', '.join(keywords)} | {mode_label(params.mode)}\n"
-                f"📊 {done}/{total} DBs | {'🟢' if online else '🔴'} {url[:40]}… ({sms_count} sms)\n"
+                f"📊 {done}/{total} DBs | {'🟢' if online else '🔴'} {show[:44]}… ({sms_count} raw sms)\n"
                 f"⏱️ scanning… | /stop {token}"
             )
         except Exception:
@@ -486,8 +516,14 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if text.startswith("/"):
             return
         keywords = [k.strip() for k in text.split(",") if k.strip()]
-        flow["keywords"] = keywords
-        flow["step"] = "mode"
+        context.user_data["search_flow"] = {
+            "keywords": keywords,
+            "mode": "online",
+            "balance_sort": "high",
+            "days": None,
+            "pin_filter": "both",
+            "step": "mode",
+        }
         await _ask_mode(msg, keywords)
         return
 

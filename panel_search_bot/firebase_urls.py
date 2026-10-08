@@ -1,12 +1,21 @@
 import re
+from urllib.parse import urlparse
 
 FIREBASE_URL_RE = re.compile(
     r"https?://[a-zA-Z0-9._-]+(?:\.firebaseio\.com|\.firebasedatabase\.app)(?:/[^\s,|\"']*)?",
-    re.IGNORECASE,
+    re.I,
 )
 BARE_HOST_RE = re.compile(
-    r"(?<![/\w@])([a-zA-Z0-9._-]+(?:-default-rtdb)?\.(?:firebaseio\.com|firebasedatabase\.app))(?![/\w])",
-    re.IGNORECASE,
+    r"(?<![/\w@])([a-zA-Z0-9._-]+(?:-default-rtdb)?(?:\.[a-z0-9-]+)?\.(?:firebaseio\.com|firebasedatabase\.app))(?![/\w])",
+    re.I,
+)
+
+FIREBASE_REGIONS = (
+    "",
+    "asia-southeast1",
+    "europe-west1",
+    "us-central1",
+    "asia-south1",
 )
 
 
@@ -16,12 +25,47 @@ def normalize_firebase_url(url: str) -> str:
         cleaned = f"https://{cleaned}"
     if ".firebaseio.com" not in cleaned and ".firebasedatabase.app" not in cleaned:
         raise ValueError("Not a Firebase RTDB URL")
-    # Drop trailing path segments for base URL (search uses root .json)
-    from urllib.parse import urlparse
-
     parsed = urlparse(cleaned)
-    base = f"{parsed.scheme}://{parsed.netloc}"
-    return base.rstrip("/")
+    return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
+
+
+def _project_id_from_host(host: str) -> str | None:
+    host = host.lower()
+    if host.endswith(".firebaseio.com"):
+        return host.replace(".firebaseio.com", "").split(".")[0]
+    if ".firebasedatabase.app" in host:
+        part = host.split(".firebasedatabase.app")[0]
+        if part.endswith("-default-rtdb"):
+            return part[: -len("-default-rtdb")].split(".")[-1]
+        return part.split(".")[-1]
+    return None
+
+
+def firebase_url_variants(base: str) -> list[str]:
+    """Try legacy firebaseio.com and regional firebasedatabase.app URLs."""
+    base = normalize_firebase_url(base)
+    parsed = urlparse(base)
+    host = parsed.netloc.lower()
+    project = _project_id_from_host(host)
+    if not project:
+        return [base]
+
+    variants: list[str] = []
+    seen: set[str] = set()
+
+    def add(url: str) -> None:
+        if url not in seen:
+            seen.add(url)
+            variants.append(url)
+
+    add(f"https://{project}-default-rtdb.firebaseio.com")
+    for region in FIREBASE_REGIONS:
+        if region:
+            add(f"https://{project}-default-rtdb.{region}.firebasedatabase.app")
+        else:
+            add(f"https://{project}-default-rtdb.firebasedatabase.app")
+    add(base)
+    return variants
 
 
 def extract_firebase_urls(text: str) -> list[str]:

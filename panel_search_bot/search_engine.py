@@ -93,8 +93,11 @@ def _filter_row(
     blob = f"{sender} {body}"
     if not match_keywords(blob, params.keywords):
         return False
-    if wants_bank_filter(params.keywords) and not is_bank_balance_sms(body):
-        return False
+    if wants_bank_filter(params.keywords):
+        if not is_bank_balance_sms(body) and balance is None:
+            lower = body.lower()
+            if not any(x in lower for x in ("credited", "debited", "avl", "bal", "a/c", "bank")):
+                return False
     if not _pin_ok(has_pin, params.pin_filter):
         return False
     if not within_days(message_at, params.days):
@@ -137,16 +140,16 @@ async def run_search(
 
     if params.mode in ("online", "both") and urls:
 
-        async def progress(done, total, url, online, sms_count):
+        async def progress(done, total, url, online, sms_count, resolved):
             row = url_to_row.get(url)
             if row:
                 update_firebase_status(db, row.id, online)
             if on_progress:
-                await on_progress(done, total, url, online, sms_count)
+                await on_progress(done, total, url, online, sms_count, resolved)
 
         live = await fetch_many(urls, on_progress=progress, cancel_event=cancel_event)
         result.dbs_scanned = len(urls)
-        for url, (online, sms_list) in live.items():
+        for url, (online, sms_list, _resolved) in live.items():
             if online:
                 result.dbs_online += 1
             row = url_to_row[url]
