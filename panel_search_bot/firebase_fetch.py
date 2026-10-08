@@ -6,7 +6,7 @@ from typing import Any, Awaitable, Callable
 import httpx
 
 from panel_search_bot.config import get_settings
-from panel_search_bot.firebase_urls import firebase_url_variants
+from panel_search_bot.firebase_urls import device_id_from_raw_path, firebase_url_variants
 from panel_search_bot.sms_parser import extract_message_fields, message_has_pin, parse_balance
 
 # Most panels store SMS under these — try first and stop early when data is found.
@@ -63,6 +63,7 @@ def _walk_sms(
                         "balance": parse_balance(body),
                         "has_pin": message_has_pin(body),
                         "raw_path": path,
+                        "device_id": device_id_from_raw_path(path),
                     }
                 )
                 if max_items is not None and len(out) >= max_items:

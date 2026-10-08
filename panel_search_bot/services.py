@@ -8,7 +8,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
 from panel_search_bot.config import get_settings
-from panel_search_bot.firebase_urls import extract_firebase_urls, normalize_firebase_url
+from panel_search_bot.firebase_urls import (
+    device_id_from_raw_path,
+    extract_firebase_urls,
+    normalize_firebase_url,
+)
 from panel_search_bot.sms_parser import BANK_HINT, is_bank_balance_sms
 from panel_search_bot.models import BotUser, CachedSms, FirebaseDb
 
@@ -119,7 +123,7 @@ def upsert_cached_sms(db: Session, firebase_db_id: int, device_key: str, rows: l
     mappings = [
         {
             "firebase_db_id": firebase_db_id,
-            "device_key": device_key,
+            "device_key": str(row.get("device_id") or device_id_from_raw_path(str(row.get("raw_path", ""))))[:256],
             "sender": str(row.get("sender", ""))[:128],
             "body": str(row.get("body", "")),
             "message_at": row.get("message_at"),
@@ -153,7 +157,6 @@ def firebase_ids_with_cached_sms(db: Session, firebase_db_ids: list[int]) -> set
 
 
 def _cache_query_for_search(db: Session, firebase_db_ids: list[int], *, keywords: list[str], balance_sort: str):
-    settings = get_settings()
     query = db.query(CachedSms).filter(CachedSms.firebase_db_id.in_(firebase_db_ids))
     if wants_bank_filter(keywords):
         query = query.filter(
@@ -170,13 +173,6 @@ def _cache_query_for_search(db: Session, firebase_db_ids: list[int], *, keywords
                 CachedSms.body.ilike("%axis%"),
             )
         )
-    if balance_sort == "high":
-        query = query.filter(
-            CachedSms.balance_value >= settings.panel_search_balance_high_min,
-            CachedSms.balance_value <= settings.panel_search_balance_high_max,
-        )
-    elif balance_sort == "low":
-        query = query.filter(CachedSms.balance_value >= settings.panel_search_balance_low_min)
     return query
 
 

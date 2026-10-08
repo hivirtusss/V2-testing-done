@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 from panel_search_bot.firebase_fetch import fetch_many
 from panel_search_bot.models import FirebaseDb
 from panel_search_bot.config import get_settings
-from panel_search_bot.config import get_settings
 from panel_search_bot.services import (
     firebase_ids_with_cached_sms,
     iter_cached_sms_for_search,
@@ -41,6 +40,8 @@ class SearchMatch:
     balance: float | None
     has_pin: bool
     source: str  # live | cache
+    device_id: str = "unknown"
+    db_label: str = ""
 
 
 @dataclass
@@ -110,21 +111,21 @@ def _filter_row(
     return True
 
 
-def format_result_file(matches: list[SearchMatch], params: SearchParams) -> str:
-    lines = [
-        "# Panel Search export",
-        f"# keywords: {', '.join(params.keywords)}",
-        f"# mode: {params.mode} | sort: {params.balance_sort} | days: {params.days or 'all'}",
-        "",
-    ]
-    for index, m in enumerate(matches, start=1):
-        ts = m.message_at.isoformat(sep=" ", timespec="seconds") if m.message_at else "unknown-time"
-        bal = f"{m.balance:.2f}" if m.balance is not None else "-"
-        lines.append(f"--- #{index} | {m.firebase_url} | {ts} | bal={bal} | pin={m.has_pin} ---")
-        lines.append(f"From: {m.sender}")
-        lines.append(m.body)
-        lines.append("")
-    return "\n".join(lines)
+def format_result_file(
+    matches: list[SearchMatch],
+    params: SearchParams,
+    *,
+    elapsed_sec: float = 0.0,
+    dbs_scanned: int = 0,
+) -> str:
+    from panel_search_bot.export_format import format_astik_result_file
+
+    return format_astik_result_file(
+        matches,
+        params,
+        elapsed_sec=elapsed_sec,
+        dbs_scanned=dbs_scanned,
+    )
 
 
 async def run_search(
@@ -156,18 +157,18 @@ async def run_search(
             balance_sort=params.balance_sort,
         ):
             url = id_to_url.get(row.firebase_db_id, "unknown")
-            if _filter_row(row.sender, row.body, row.message_at, row.balance_value, row.has_pin, params):
-                matches.append(
-                    SearchMatch(
-                        firebase_url=url,
-                        sender=row.sender,
-                        body=row.body,
-                        message_at=row.message_at,
-                        balance=row.balance_value,
-                        has_pin=row.has_pin,
-                        source="cache",
-                    )
-                )
+            from panel_search_bot.export_format import match_from_cache_row
+
+            probe = match_from_cache_row(url, row)
+            if _filter_row(
+                probe.sender,
+                probe.body,
+                probe.message_at,
+                probe.balance,
+                probe.has_pin,
+                params,
+            ):
+                matches.append(probe)
 
     if params.mode in ("online", "both") and urls and get_settings().panel_search_live_fetch:
         settings = get_settings()
@@ -215,25 +216,18 @@ async def run_search(
                 else:
                     upsert_cached_sms(db, row.id, row.url_normalized, sms_list)
             for item in sms_list:
+                from panel_search_bot.export_format import match_from_live_item
+
+                probe = match_from_live_item(url, item)
                 if _filter_row(
-                    item.get("sender", ""),
-                    item.get("body", ""),
-                    item.get("message_at"),
-                    item.get("balance"),
-                    item.get("has_pin", False),
+                    probe.sender,
+                    probe.body,
+                    probe.message_at,
+                    probe.balance,
+                    probe.has_pin,
                     params,
                 ):
-                    matches.append(
-                        SearchMatch(
-                            firebase_url=url,
-                            sender=item.get("sender", ""),
-                            body=item.get("body", ""),
-                            message_at=item.get("message_at"),
-                            balance=item.get("balance"),
-                            has_pin=item.get("has_pin", False),
-                            source="live",
-                        )
-                    )
+                    matches.append(probe)
         if settings.panel_search_defer_cache_write:
             for fb_id, device_key, sms_list in pending_writes:
                 upsert_cached_sms(db, fb_id, device_key, sms_list)

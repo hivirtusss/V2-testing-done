@@ -19,7 +19,7 @@ from telegram.ext import (
 
 from panel_search_bot.config import get_settings
 from panel_search_bot.database import SessionLocal, init_db
-from panel_search_bot.firebase_urls import extract_firebase_urls
+from panel_search_bot.firebase_urls import extract_firebase_urls, firebase_db_label
 from panel_search_bot.search_engine import SearchParams, format_result_file, run_search
 from panel_search_bot.models import FirebaseDb
 from panel_search_bot.services import (
@@ -606,11 +606,16 @@ async def _execute_search(msg, context: ContextTypes.DEFAULT_TYPE, flow: dict) -
         if done - last_edit["n"] < 2 and done != total:
             return
         last_edit["n"] = done
-        show = resolved or url
+        if resolved and resolved.startswith("http"):
+            show = firebase_db_label(resolved)
+        elif url.startswith("http"):
+            show = firebase_db_label(url)
+        else:
+            show = resolved or url
         try:
             await status.edit_text(
                 f"🔍 {', '.join(keywords)} | {mode_label(params.mode)}\n"
-                f"📊 {done}/{total} DBs | {'🟢' if online else '🔴'} {show[:44]}… ({sms_count} raw sms)\n"
+                f"📊 {done}/{total} DBs | {'🟢' if online else '🔴'} DB: {show[:36]} ({sms_count} sms)\n"
                 f"⏱️ scanning… | /stop {token}"
             )
         except Exception:
@@ -627,7 +632,12 @@ async def _execute_search(msg, context: ContextTypes.DEFAULT_TYPE, flow: dict) -
         await status.edit_text(f"⏹ Search stopped ({token})")
         return
 
-    content = format_result_file(result.matches, params)
+    content = format_result_file(
+        result.matches,
+        params,
+        elapsed_sec=result.elapsed_sec,
+        dbs_scanned=result.dbs_scanned,
+    )
     size_kb = max(1, len(content.encode("utf-8")) // 1024)
     import time
 
