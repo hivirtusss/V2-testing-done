@@ -36,13 +36,23 @@ class UidaiBackend:
             h["Authorization"] = f"Bearer {self.settings.aadhaar_backend_key}"
         return h
 
-    async def start_lookup(self, mobile: str, gender: str, name: str) -> LookupResult:
+    async def start_lookup(
+        self,
+        mobile: str,
+        gender: str,
+        name_display: str,
+        name_query: str,
+        *,
+        manual_name: bool,
+    ) -> LookupResult:
         if self.settings.aadhaar_mock_mode or not self.settings.aadhaar_backend_url:
             sid = secrets.token_hex(8)
             self._mock_sessions[sid] = {
                 "mobile": mobile,
                 "gender": gender,
-                "name": name.upper(),
+                "name": name_display,
+                "name_query": name_query,
+                "manual_name": manual_name,
                 "otp1": "541679",
                 "otp2": "670299",
             }
@@ -53,7 +63,15 @@ class UidaiBackend:
                 phone=mobile,
             )
         url = self.settings.aadhaar_backend_url.rstrip("/") + "/v1/lookup/start"
-        payload = {"mobile": mobile, "gender": gender, "name": name, "skip_dob": True}
+        payload = {
+            "mobile": mobile,
+            "gender": gender,
+            "holder_name": name_display,
+            "name": name_query,
+            "fetch_by_name": True,
+            "manual_name": manual_name,
+            "skip_dob": True,
+        }
         async with httpx.AsyncClient(timeout=120.0) as client:
             r = await client.post(url, json=payload, headers=self._headers())
             r.raise_for_status()
@@ -98,7 +116,7 @@ class UidaiBackend:
                 message="Extraction complete (mock)",
                 session_id=session_id,
                 aadhaar_masked="9815 7689 9641",
-                name=name.title(),
+                name=name,
                 numeric_id="0231191050808620260509095954",
                 pdf_password_hint=name[:4].upper() + "2003",
                 phone=s["mobile"],

@@ -16,6 +16,7 @@ from telegram.ext import (
 )
 
 from aadhaar_bot.config import get_settings
+from aadhaar_bot.name_utils import prepare_holder_name
 from aadhaar_bot.uidai_client import UidaiBackend
 
 MOBILE_RE = re.compile(r"^\d{10}$")
@@ -56,6 +57,8 @@ def _reset_flow(context: ContextTypes.DEFAULT_TYPE) -> None:
         "aadhaar_mobile",
         "aadhaar_gender",
         "aadhaar_name",
+        "aadhaar_name_query",
+        "aadhaar_name_manual",
         "aadhaar_session",
         "aadhaar_started_at",
         "aadhaar_last_result",
@@ -179,11 +182,13 @@ async def on_gender(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await q.answer()
     mobile = context.user_data.get("aadhaar_mobile", "")
     if q.data == CB_NAME_MANUAL:
-        context.user_data.setdefault("aadhaar_gender", "unspecified")
+        context.user_data["aadhaar_gender"] = "unspecified"
+        context.user_data["aadhaar_name_manual"] = True
         _set_step(context, Step.NAME)
         await q.edit_message_text(
-            "📌 **STEP 2/4 — Holder Name**\n\n"
-            "👇 Card par jaisa **full name** likho:\n\n"
+            "📌 **STEP 2/4 — Holder Name (Manual)**\n\n"
+            "👇 Aadhaar card par **bilkul waisa hi** full name likho.\n"
+            "Isi name se UIDAI record match hoga (mobile + name).\n\n"
             f"📱 Mobile: `{mobile}`"
             + _cancel_footer(),
             parse_mode="Markdown",
@@ -191,6 +196,7 @@ async def on_gender(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     gender = "male" if q.data == CB_GENDER_M else "female"
     context.user_data["aadhaar_gender"] = gender
+    context.user_data["aadhaar_name_manual"] = False
     _set_step(context, Step.NAME)
     emoji = "👦" if gender == "male" else "👧"
     await q.edit_message_text(
@@ -240,18 +246,27 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await msg.reply_text("❌ Name kam se kam 2 characters hona chahiye.")
             return
         mobile = context.user_data.get("aadhaar_mobile", "")
-        gender = context.user_data.get("aadhaar_gender", "male")
-        name = text.upper()
-        context.user_data["aadhaar_name"] = name
+        gender = context.user_data.get("aadhaar_gender", "unspecified")
+        manual_name = bool(context.user_data.get("aadhaar_name_manual"))
+        name_display, name_query = prepare_holder_name(text)
+        context.user_data["aadhaar_name"] = name_display
+        context.user_data["aadhaar_name_query"] = name_query
         context.user_data["aadhaar_started_at"] = time.time()
         wait = await msg.reply_text(
             "📌 **STEP 3/4 — Find Record**\n\n"
-            "⌛ Looking up this record... Please wait.",
+            f"⌛ UIDAI par is name se dhundh rahe hain: **{name_display}**\n"
+            "Please wait...",
             parse_mode="Markdown",
         )
         backend = _backend(context)
         try:
-            res = await backend.start_lookup(mobile, gender, name)
+            res = await backend.start_lookup(
+                mobile,
+                gender,
+                name_display,
+                name_query,
+                manual_name=manual_name,
+            )
         except Exception as e:
             await wait.edit_text(f"❌ Backend error: {e}")
             _reset_flow(context)
@@ -266,7 +281,8 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "📌 **STEP 3/4 — OTP 1 Verification**\n\n"
             "🚀 OTP 1 sent successfully!\n\n"
             "👇 Type the OTP in chat and send it:\n\n"
-            f"📱 Mobile: `{mobile}`"
+            f"📱 Mobile: `{mobile}`\n"
+            f"👤 Name: **{context.user_data.get('aadhaar_name', '')}**"
             + _cancel_footer(),
             parse_mode="Markdown",
         )
@@ -292,7 +308,8 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "📌 **STEP 4/4 — OTP 2 Verification**\n\n"
             "✅ OTP 2 sent successfully!\n\n"
             "👇 Type the OTP in chat and send it:\n\n"
-            f"📱 Mobile: `{mobile}`"
+            f"📱 Mobile: `{mobile}`\n"
+            f"👤 Name: **{context.user_data.get('aadhaar_name', '')}**"
             + _cancel_footer(),
             parse_mode="Markdown",
         )

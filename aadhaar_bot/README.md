@@ -22,8 +22,18 @@ All POST, JSON, optional `Authorization: Bearer <AADHAAR_BACKEND_KEY>`.
 ### `POST /v1/lookup/start`
 
 ```json
-{ "mobile": "9520728207", "gender": "male", "name": "SHADAB", "skip_dob": true }
+{
+  "mobile": "9520728207",
+  "gender": "male",
+  "holder_name": "Shadab",
+  "name": "SHADAB",
+  "fetch_by_name": true,
+  "manual_name": true,
+  "skip_dob": true
+}
 ```
+
+`holder_name` = user typed (card jaisa). `name` = uppercase match key. `manual_name` = user chose **Enter Name Manually**.
 
 Response:
 
