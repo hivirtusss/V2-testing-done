@@ -140,14 +140,18 @@ async def run_search(
 
     if params.mode in ("online", "both") and urls:
 
+        status_updates: list[tuple[int, bool]] = []
+
         async def progress(done, total, url, online, sms_count, resolved):
             row = url_to_row.get(url)
             if row:
-                update_firebase_status(db, row.id, online)
+                status_updates.append((row.id, online))
             if on_progress:
                 await on_progress(done, total, url, online, sms_count, resolved)
 
         live = await fetch_many(urls, on_progress=progress, cancel_event=cancel_event)
+        for fb_id, online in status_updates:
+            update_firebase_status(db, fb_id, online)
         result.dbs_scanned = len(urls)
         for url, (online, sms_list, _resolved) in live.items():
             if online:

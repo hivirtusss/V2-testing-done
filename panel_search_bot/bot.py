@@ -603,7 +603,7 @@ async def _execute_search(msg, context: ContextTypes.DEFAULT_TYPE, flow: dict) -
     async def on_progress(done, total, url, online, sms_count, resolved):
         if cancel.is_set():
             return
-        if done - last_edit["n"] < 3 and done != total:
+        if done - last_edit["n"] < 1 and done != total:
             return
         last_edit["n"] = done
         show = resolved or url

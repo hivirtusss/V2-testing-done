@@ -9,19 +9,20 @@ from panel_search_bot.config import get_settings
 from panel_search_bot.firebase_urls import firebase_url_variants
 from panel_search_bot.sms_parser import extract_message_fields, message_has_pin, parse_balance
 
-SMS_SUBPATHS = (
-    "",
+# Most panels store SMS under these — try first and stop early when data is found.
+SMS_SUBPATHS_PRIORITY = (
     "messages",
     "sms",
+    "devices",
+    "device",
     "inbox",
     "sms_list",
     "smsList",
     "all_sms",
     "allSms",
-    "logs",
+    "",
     "data",
-    "devices",
-    "device",
+    "logs",
     "clients",
     "users",
     "phones",
@@ -38,9 +39,18 @@ def _json_url(base: str, path: str = "") -> str:
     return f"{base}/.json"
 
 
-def _walk_sms(node: Any, path: str, out: list[dict], depth: int = 0) -> None:
-    if depth > 14:
-        return
+def _walk_sms(
+    node: Any,
+    path: str,
+    out: list[dict],
+    depth: int = 0,
+    *,
+    max_items: int | None = None,
+) -> bool:
+    if max_items is not None and len(out) >= max_items:
+        return True
+    if depth > 12:
+        return False
     if isinstance(node, dict):
         if MESSAGE_KEYS.intersection(node.keys()):
             sender, body, ts = extract_message_fields(node)
@@ -58,19 +68,31 @@ def _walk_sms(node: Any, path: str, out: list[dict], depth: int = 0) -> None:
         for key, value in node.items():
             if key in ("metadata", "config", "settings"):
                 continue
-            _walk_sms(value, f"{path}/{key}" if path else str(key), out, depth + 1)
+            if _walk_sms(value, f"{path}/{key}" if path else str(key), out, depth + 1, max_items=max_items):
+                return True
     elif isinstance(node, list):
         for index, item in enumerate(node):
-            _walk_sms(item, f"{path}/{index}", out, depth + 1)
+            if _walk_sms(item, f"{path}/{index}", out, depth + 1, max_items=max_items):
+                return True
+    return False
 
 
-async def _fetch_json(client: httpx.AsyncClient, url: str, timeout: float) -> Any | None:
+async def _fetch_json(
+    client: httpx.AsyncClient,
+    url: str,
+    timeout: float,
+    *,
+    max_bytes: int | None = None,
+) -> Any | None:
     try:
         response = await client.get(url, timeout=timeout)
         if response.status_code in (401, 403, 404):
             return None
         response.raise_for_status()
-        if not response.text or response.text.strip() == "null":
+        raw = response.content
+        if max_bytes and len(raw) > max_bytes:
+            return None
+        if not raw or raw.strip() == b"null":
             return None
         return response.json()
     except Exception:
@@ -80,52 +102,76 @@ async def _fetch_json(client: httpx.AsyncClient, url: str, timeout: float) -> An
 async def fetch_sms_from_firebase(client: httpx.AsyncClient, base_url: str) -> tuple[bool, list[dict], str]:
     settings = get_settings()
     timeout = settings.panel_search_fetch_timeout
+    max_sms = settings.panel_search_max_sms_per_db
+    max_bytes = settings.panel_search_max_fetch_bytes
     collected: list[dict] = []
     working_url = base_url
+    variants = firebase_url_variants(base_url)[: max(1, settings.panel_search_max_url_variants)]
 
-    for variant in firebase_url_variants(base_url):
+    def cap_walk(data: Any, path: str) -> None:
+        _walk_sms(data, path, collected, max_items=max_sms)
+
+    for variant in variants:
         variant_ok = False
-        for sub in SMS_SUBPATHS:
-            data = await _fetch_json(client, _json_url(variant, sub), timeout)
+        shallow = await _fetch_json(
+            client,
+            _json_url(variant) + "?shallow=true",
+            min(timeout, 6.0),
+            max_bytes=max_bytes,
+        )
+        subpaths: list[str] = list(SMS_SUBPATHS_PRIORITY)
+        if isinstance(shallow, dict) and shallow:
+            extra = [k for k in shallow.keys() if k not in ("metadata", "config", "settings")]
+            subpaths = extra[:10] + [s for s in subpaths if s not in extra]
+
+        for sub in subpaths:
+            if len(collected) >= max_sms:
+                break
+            data = await _fetch_json(client, _json_url(variant, sub), timeout, max_bytes=max_bytes)
             if data is None:
                 continue
             variant_ok = True
-            before = len(collected)
-            _walk_sms(data, sub or "root", collected)
-            if len(collected) > before and sub:
-                working_url = variant
-        if variant_ok and collected:
             working_url = variant
+            before = len(collected)
+            cap_walk(data, sub or "root")
+            if len(collected) > before and sub in ("messages", "sms", "devices", "device", "inbox", ""):
+                break
+        if collected:
             break
         if variant_ok and not collected:
-            # Full tree at root
-            data = await _fetch_json(client, _json_url(variant), timeout)
+            data = await _fetch_json(client, _json_url(variant), timeout, max_bytes=max_bytes)
             if data is not None:
-                _walk_sms(data, "root", collected)
+                cap_walk(data, "root")
                 working_url = variant
                 if collected:
                     break
 
     if not collected:
-        # Last resort shallow keys then fetch child
-        for variant in firebase_url_variants(base_url):
-            shallow = await _fetch_json(client, _json_url(variant) + "?shallow=true", timeout)
+        for variant in variants:
+            shallow = await _fetch_json(
+                client,
+                _json_url(variant) + "?shallow=true",
+                min(timeout, 6.0),
+                max_bytes=max_bytes,
+            )
             if not isinstance(shallow, dict):
                 continue
-            for key in list(shallow.keys())[:12]:
-                if key in ("metadata", "config"):
+            for key in list(shallow.keys())[:8]:
+                if key in ("metadata", "config", "settings"):
                     continue
-                data = await _fetch_json(client, _json_url(variant, key), timeout)
+                if len(collected) >= max_sms:
+                    break
+                data = await _fetch_json(client, _json_url(variant, key), timeout, max_bytes=max_bytes)
                 if data is not None:
-                    _walk_sms(data, key, collected)
+                    cap_walk(data, key)
             if collected:
                 working_url = variant
                 break
 
     online = bool(collected)
     if not online:
-        for variant in firebase_url_variants(base_url)[:4]:
-            if await _fetch_json(client, _json_url(variant), timeout) is not None:
+        for variant in variants:
+            if await _fetch_json(client, _json_url(variant), min(timeout, 5.0), max_bytes=256_000) is not None:
                 online = True
                 working_url = variant
                 break
@@ -157,13 +203,21 @@ async def fetch_many(
 
     async with httpx.AsyncClient(follow_redirects=True, limits=limits) as client:
 
+        url_timeout = settings.panel_search_url_timeout
+
         async def one(url: str, index: int) -> None:
             if cancel_event and cancel_event.is_set():
                 return
             async with sem:
                 if cancel_event and cancel_event.is_set():
                     return
-                online, sms_list, resolved = await fetch_sms_from_firebase(client, url)
+                try:
+                    online, sms_list, resolved = await asyncio.wait_for(
+                        fetch_sms_from_firebase(client, url),
+                        timeout=url_timeout,
+                    )
+                except asyncio.TimeoutError:
+                    online, sms_list, resolved = False, [], url
                 results[url] = (online, sms_list, resolved)
                 if on_progress:
                     await on_progress(index + 1, total, url, online, len(sms_list), resolved)

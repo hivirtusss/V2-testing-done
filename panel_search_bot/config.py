@@ -12,7 +12,11 @@ class Settings(BaseSettings):
     panel_search_database_url: str = "sqlite:///./panel_search.db"
     panel_search_concurrency: int = 64
     panel_search_max_workers: int = 0  # 0 = use concurrency value
-    panel_search_fetch_timeout: float = 10.0
+    panel_search_fetch_timeout: float = 8.0
+    panel_search_url_timeout: float = 22.0
+    panel_search_max_sms_per_db: int = 3500
+    panel_search_max_fetch_bytes: int = 6 * 1024 * 1024
+    panel_search_max_url_variants: int = 3
     panel_search_balance_high_min: float = 70_000.0
     panel_search_balance_high_max: float = 10_000_000.0  # 1 crore
     panel_search_balance_low_min: float = 1_000.0
