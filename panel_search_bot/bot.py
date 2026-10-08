@@ -282,8 +282,8 @@ async def _ask_sort(msg) -> None:
     kb = InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("💰 High → Low", callback_data="srch:sort:high"),
-                InlineKeyboardButton("💰 Low → High", callback_data="srch:sort:low"),
+                InlineKeyboardButton("💰 High→Low 70K-1Cr", callback_data="srch:sort:high"),
+                InlineKeyboardButton("💰 Low→High 1K+", callback_data="srch:sort:low"),
             ],
             [InlineKeyboardButton("⏭ Skip (date order)", callback_data="srch:sort:skip")],
         ]
@@ -388,9 +388,14 @@ async def _execute_search(msg, context: ContextTypes.DEFAULT_TYPE, flow: dict) -
         f"⏱️ 0s | /stop {token}"
     )
 
+    last_edit = {"n": 0}
+
     async def on_progress(done, total, url, online, sms_count):
         if cancel.is_set():
             return
+        if done - last_edit["n"] < 3 and done != total:
+            return
+        last_edit["n"] = done
         try:
             await status.edit_text(
                 f"🔍 {', '.join(keywords)} | {mode_label(params.mode)}\n"

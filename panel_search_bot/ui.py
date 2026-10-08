@@ -7,8 +7,8 @@ def mode_label(mode: str) -> str:
 
 def sort_label(sort: str) -> str:
     return {
-        "high": "💰 High → Low",
-        "low": "💰 Low → High",
+        "high": "💰 High → Low (70K–1Cr)",
+        "low": "💰 Low → High (1K+)",
         "skip": "⏭ date order",
     }.get(sort, sort)
 

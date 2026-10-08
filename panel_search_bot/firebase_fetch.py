@@ -104,11 +104,13 @@ async def fetch_many(
     cancel_event: asyncio.Event | None = None,
 ) -> dict[str, tuple[bool, list[dict]]]:
     settings = get_settings()
-    sem = asyncio.Semaphore(settings.panel_search_concurrency)
+    workers = settings.worker_count
+    sem = asyncio.Semaphore(workers)
     results: dict[str, tuple[bool, list[dict]]] = {}
     total = len(urls)
+    limits = httpx.Limits(max_connections=workers + 5, max_keepalive_connections=workers)
 
-    async with httpx.AsyncClient(follow_redirects=True) as client:
+    async with httpx.AsyncClient(follow_redirects=True, limits=limits) as client:
 
         async def one(url: str, index: int) -> None:
             if cancel_event and cancel_event.is_set():

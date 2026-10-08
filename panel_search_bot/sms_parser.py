@@ -1,13 +1,32 @@
 import re
 from datetime import datetime, timezone
 
-BALANCE_PATTERNS = [
-    re.compile(r"(?:avl|available|a/c|ac)\s*(?:bal|balance)?\s*[:.]?\s*(?:rs\.?|inr|₹)?\s*([\d,]+(?:\.\d{1,2})?)", re.I),
+AVL_BALANCE_PATTERNS = [
+    re.compile(
+        r"(?:available|avl\.?)\s*(?:bal\.?|balance)?\s*[:.]?\s*(?:is\s*)?(?:rs\.?|inr|₹)?\s*([\d,]+(?:\.\d{1,2})?)",
+        re.I,
+    ),
+    re.compile(
+        r"(?:a/c|ac)\s*(?:bal\.?|balance)\s*[:.]?\s*(?:rs\.?|inr|₹)?\s*([\d,]+(?:\.\d{1,2})?)",
+        re.I,
+    ),
+    re.compile(
+        r"(?:bal\.?|balance)\s*[:.]?\s*(?:rs\.?|inr|₹)?\s*([\d,]+(?:\.\d{1,2})?)\s*(?:is\s*)?(?:available|avl)",
+        re.I,
+    ),
+]
+OTHER_BALANCE_PATTERNS = [
     re.compile(r"(?:bal|balance)\s*[:.]?\s*(?:rs\.?|inr|₹)?\s*([\d,]+(?:\.\d{1,2})?)", re.I),
-    re.compile(r"(?:rs\.?|inr|₹)\s*([\d,]+(?:\.\d{1,2})?)", re.I),
 ]
 PIN_PATTERN = re.compile(r"\b(?:pin|otp|mpin|upi\s*pin)\b", re.I)
-BANK_HINT = re.compile(r"\b(?:bank|sbi|hdfc|icici|axis|kotak|pnb|bob|idfc|yes|canara|union|paytm|phonepe|gpay)\b", re.I)
+BANK_HINT = re.compile(
+    r"\b(?:bank|sbi|hdfc|icici|axis|kotak|pnb|bob|idfc|yes|canara|union|paytm|phonepe|gpay|credit|debit)\b",
+    re.I,
+)
+BANK_TXN_HINT = re.compile(
+    r"\b(?:credited|debited|credit|debit|avl|available|a/c|ac\s*bal|balance)\b",
+    re.I,
+)
 
 TS_FIELDS = (
     "timestamp",
@@ -24,20 +43,42 @@ TS_FIELDS = (
 )
 
 
+def _to_amount(raw: str) -> float | None:
+    try:
+        return float(raw.replace(",", ""))
+    except ValueError:
+        return None
+
+
 def parse_balance(text: str) -> float | None:
-    for pattern in BALANCE_PATTERNS:
-        match = pattern.search(text)
-        if match:
-            raw = match.group(1).replace(",", "")
-            try:
-                return float(raw)
-            except ValueError:
-                continue
+    avl_amounts: list[float] = []
+    for pattern in AVL_BALANCE_PATTERNS:
+        for match in pattern.finditer(text):
+            amount = _to_amount(match.group(1))
+            if amount is not None:
+                avl_amounts.append(amount)
+    if avl_amounts:
+        return max(avl_amounts)
+
+    other: list[float] = []
+    for pattern in OTHER_BALANCE_PATTERNS:
+        for match in pattern.finditer(text):
+            amount = _to_amount(match.group(1))
+            if amount is not None:
+                other.append(amount)
+    if other:
+        return max(other)
     return None
 
 
 def message_has_pin(text: str) -> bool:
     return bool(PIN_PATTERN.search(text))
+
+
+def is_bank_balance_sms(text: str) -> bool:
+    if not BANK_HINT.search(text) and "bank" not in text.lower():
+        return False
+    return bool(BANK_TXN_HINT.search(text))
 
 
 def parse_timestamp(value) -> datetime | None:

@@ -144,9 +144,19 @@ def match_keywords(text: str, keywords: list[str]) -> bool:
             continue
         if cleaned.startswith("\\"):
             cleaned = cleaned[1:]
+        if "/" in cleaned:
+            parts = [p.strip() for p in cleaned.split("/") if p.strip()]
+            if not any(p in lower for p in parts):
+                return False
+            continue
         if cleaned not in lower:
             return False
     return True
+
+
+def wants_bank_filter(keywords: list[str]) -> bool:
+    blob = " ".join(keywords).lower()
+    return "bank" in blob or "avl" in blob or "bal" in blob
 
 
 def within_days(message_at: datetime | None, days: int | None) -> bool:
