@@ -18,6 +18,7 @@ from telegram.ext import (
 
 from aadhaar_bot.config import get_settings
 from aadhaar_bot.database import db_session, init_db
+from aadhaar_bot.bot_errors import format_user_error
 from aadhaar_bot.name_utils import prepare_holder_name
 from aadhaar_bot.services import (
     add_credits,
@@ -216,19 +217,20 @@ async def _run_uidai_lookup(
             elif isinstance(verified, Exception):
                 await safe_edit(
                     wait,
-                    f"❌ **Fail:** {verified}\n\n{DEV_LINE}",
+                    f"❌ **Fail:** {format_user_error(verified)}\n\n{DEV_LINE}",
                     parse_mode="Markdown",
                 )
             _reset_flow(context)
-            if user and not (verified is None):
-                await _reply_welcome(msg, user.id, user.username)
             return
-        if not verified.ok:
+        if not getattr(verified, "ok", False):
             await safe_edit(wait, record_not_found_text(), parse_mode="Markdown")
             _reset_flow(context)
             if user:
                 await _reply_welcome(msg, user.id, user.username)
             return
+        if verified.name:
+            context.user_data["aadhaar_name"] = verified.name
+            name_display = verified.name
         await safe_edit(
             wait,
             find_record_otp_pending(mobile, name_display),
@@ -249,7 +251,11 @@ async def _run_uidai_lookup(
                 await _reply_welcome(msg, user.id, user.username)
             return
     except Exception as e:
-        await safe_edit(wait, f"❌ **Fail:** {e}\n\n{DEV_LINE}", parse_mode="Markdown")
+        await safe_edit(
+            wait,
+            f"❌ **Fail:** {format_user_error(e)}\n\n{DEV_LINE}",
+            parse_mode="Markdown",
+        )
         _reset_flow(context)
         if user:
             await _reply_welcome(msg, user.id, user.username)

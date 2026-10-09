@@ -18,6 +18,7 @@ from aadhaar_bot.bridge.retrieve_parse import (
     otp_sent_ok,
     uid_retrieved_ok,
 )
+from aadhaar_bot.name_utils import uidai_name_candidates
 from aadhaar_bot.pdf_password import pdf_password_hint
 from aadhaar_bot.bridge.session_store import SessionStore
 from aadhaar_bot.bridge.uidai_http import UidaiHttpError, UidaiMyAadhaarHttp
@@ -59,19 +60,18 @@ async def health() -> dict[str, str]:
     return {"status": "ok", "api": "retrieveuideid"}
 
 
-@app.post("/v1/lookup/verify")
-async def verify(body: LookupBody) -> dict[str, Any]:
-    """UIDAI record check — OTP request (otp=null, captcha=null)."""
-    name = (body.holder_name or body.name or "").strip()
-    if len(name) < 2:
-        return {"ok": False, "message": "Name required"}
+async def _verify_uidai_name(
+    mobile: str,
+    name: str,
+) -> tuple[dict[str, Any] | None, str, str, str, str, str]:
+    """Returns (uidai_data, matched_name, captcha_txn, captcha_val, otp_txn) or Nones."""
     last_err = "No Records Found"
     for attempt in range(3):
         try:
             captcha_txn, captcha_val = await _prepare_captcha()
             otp_txn = UidaiMyAadhaarHttp.new_otp_txn_id()
             data = await uidai.retrieve_uid_eid(
-                mobile=body.mobile,
+                mobile=mobile,
                 name=name,
                 captcha_txn_id=captcha_txn,
                 otp_txn_id=otp_txn,
@@ -84,32 +84,67 @@ async def verify(body: LookupBody) -> dict[str, Any]:
             last_err = str(e)
             if attempt < 2 and "captcha" in last_err.lower():
                 continue
-            return {"ok": False, "message": last_err}
+            raise UidaiHttpError(last_err) from e
         except Exception as e:
-            return {"ok": False, "message": f"UIDAI connect fail (India VPS?): {e}"}
+            raise UidaiHttpError(f"UIDAI connect fail (India VPS?): {e}") from e
 
         if is_no_record(data):
-            return {"ok": False, "message": "No Records Found"}
+            return None, name, captcha_txn, captcha_val, otp_txn, last_err
         if otp_sent_ok(data):
-            break
+            return data, name, captcha_txn, captcha_val, otp_txn, ""
         last_err = str(data.get("message") or data.get("statusMessage") or "OTP not sent")
         if attempt < 2:
             continue
-        return {"ok": False, "message": "No Records Found"}
-    else:
-        return {"ok": False, "message": last_err}
+        return None, name, captcha_txn, captcha_val, otp_txn, last_err
+    return None, name, "", "", "", last_err
+
+
+@app.post("/v1/lookup/verify")
+async def verify(body: LookupBody) -> dict[str, Any]:
+    """UIDAI record check — OTP request (otp=null, captcha=null)."""
+    input_name = (body.holder_name or body.name or "").strip()
+    if len(input_name) < 2:
+        return {"ok": False, "message": "Name required"}
+
+    matched: dict[str, Any] | None = None
+    matched_name = ""
+    captcha_txn = captcha_val = otp_txn = ""
+    last_err = "No Records Found"
+
+    for candidate in uidai_name_candidates(input_name):
+        try:
+            data, used_name, captcha_txn, captcha_val, otp_txn, err = await _verify_uidai_name(
+                body.mobile, candidate
+            )
+        except UidaiHttpError as e:
+            return {"ok": False, "message": str(e)}
+
+        if data is not None:
+            matched = data
+            matched_name = used_name
+            break
+        last_err = err or last_err
+
+    if not matched:
+        return {"ok": False, "message": "No Records Found", "tried_names": uidai_name_candidates(input_name)}
 
     sid = store.create(
         mobile=body.mobile,
-        name=name,
+        name=matched_name,
         gender=body.gender,
         captcha_txn_id=captcha_txn,
         captcha_value=captcha_val,
         otp_txn_id=otp_txn,
-        uidai_payload=data,
+        uidai_payload=matched,
         otp_stage=1,
     )
-    return {"ok": True, "message": "Record found", "session_id": sid}
+    return {
+        "ok": True,
+        "message": "Record found",
+        "session_id": sid,
+        "name": matched_name,
+        "matched_name": matched_name,
+    }
 
 
 @app.post("/v1/lookup/start")

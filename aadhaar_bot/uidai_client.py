@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 
 from aadhaar_bot.config import get_settings
+from aadhaar_bot.name_utils import uidai_name_candidates
 from aadhaar_bot.pdf_password import pdf_password_hint
 
 # Demo pair only when no live backend (mock strict mode)
@@ -84,8 +85,11 @@ class UidaiBackend:
             "source": "retrieveuideid",
         }
 
-    def _mock_record_exists(self, mobile: str, name_query: str) -> bool:
-        return mobile == _MOCK_DEMO_MOBILE and name_query == _MOCK_DEMO_NAME
+    def _mock_record_exists(self, mobile: str, name_display: str) -> bool:
+        if mobile != _MOCK_DEMO_MOBILE:
+            return False
+        entered = name_display.upper()
+        return entered == _MOCK_DEMO_NAME or _MOCK_DEMO_NAME in uidai_name_candidates(name_display)
 
     async def verify_record(
         self,
@@ -113,17 +117,24 @@ class UidaiBackend:
                     ),
                     raw=data,
                 )
+            matched = str(data.get("matched_name") or data.get("name") or name_display)
             return LookupResult(
                 ok=True,
                 message=str(data.get("message", "Record found")),
                 session_id=str(data.get("session_id", "")),
+                name=matched,
                 phone=mobile,
                 raw=data,
             )
 
         if self.settings.aadhaar_mock_mode:
-            if self._mock_record_exists(mobile, name_query):
-                return LookupResult(ok=True, message="Record found (demo)", phone=mobile)
+            if self._mock_record_exists(mobile, name_display):
+                return LookupResult(
+                    ok=True,
+                    message="Record found (demo)",
+                    phone=mobile,
+                    name=name_display,
+                )
             return LookupResult(
                 ok=False,
                 message=(
@@ -172,7 +183,7 @@ class UidaiBackend:
                 raw=data,
             )
 
-        if self.settings.aadhaar_mock_mode and self._mock_record_exists(mobile, name_query):
+        if self.settings.aadhaar_mock_mode and self._mock_record_exists(mobile, name_display):
             sid = secrets.token_hex(8)
             self._mock_sessions[sid] = {
                 "mobile": mobile,
