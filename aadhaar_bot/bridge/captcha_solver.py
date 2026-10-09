@@ -1,9 +1,24 @@
 from __future__ import annotations
 
 import base64
-import io
+import threading
 
 from aadhaar_bot.config import get_settings
+
+_OCR_LOCK = threading.Lock()
+_OCR = None
+
+
+def _get_ddddocr():
+    global _OCR
+    if _OCR is not None:
+        return _OCR
+    with _OCR_LOCK:
+        if _OCR is None:
+            import ddddocr  # type: ignore
+
+            _OCR = ddddocr.DdddOcr(show_ad=False)
+    return _OCR
 
 
 def solve_captcha_image(b64_image: str) -> str:
@@ -16,12 +31,11 @@ def solve_captcha_image(b64_image: str) -> str:
 
 def _solve_ddddocr(raw: bytes) -> str:
     try:
-        import ddddocr  # type: ignore
+        ocr = _get_ddddocr()
     except ImportError as e:
         raise RuntimeError(
             "Captcha auto ke liye: pip install ddddocr  (ya UIDAI_CAPTCHA_SOLVER=2captcha + key)"
         ) from e
-    ocr = ddddocr.DdddOcr(show_ad=False)
     text = ocr.classification(raw)
     return text.strip().replace(" ", "")[:8]
 

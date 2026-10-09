@@ -40,16 +40,24 @@ def otp_sent_ok(data: dict[str, Any]) -> bool:
     if is_no_record(data):
         return False
     m = _msg(data).lower()
-    if "otp" in m and any(x in m for x in ("sent", "success", "generated")):
+    if "otp" in m and any(x in m for x in ("sent", "success", "generated", "trigger", "dispatch")):
+        return True
+    if "mobile" in m and "otp" in m:
         return True
     st = str(data.get("status") or data.get("responseStatus") or "").lower()
-    if st in ("success", "y", "ok"):
+    if st in ("success", "y", "ok", "s"):
         return True
-    if data.get("statusCode") in (200, "200"):
+    code = data.get("statusCode")
+    if code in (200, "200", 0, "0"):
         if data.get("uid") or data.get("aadhaarNumber"):
             return False
         return True
-    return bool(data.get("otpTxnId"))
+    if data.get("otpTxnId") or data.get("txnId"):
+        return True
+    nested = data.get("responseData") or data.get("data") or data.get("result")
+    if isinstance(nested, dict) and otp_sent_ok(nested):
+        return True
+    return False
 
 
 def uid_retrieved_ok(data: dict[str, Any]) -> bool:

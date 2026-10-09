@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     uidai_2captcha_key: str = ""
     aadhaar_pdf_year_from: int = 1960
     aadhaar_pdf_year_to: int = 2025
+    aadhaar_verify_timeout: float = 150.0
 
     @property
     def owner_id_set(self) -> set[int]:

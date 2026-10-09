@@ -46,6 +46,24 @@ class UidaiBackend:
             h["Authorization"] = f"Bearer {self.settings.aadhaar_backend_key}"
         return h
 
+    def _http_timeout(self) -> httpx.Timeout:
+        t = float(self.settings.aadhaar_verify_timeout)
+        return httpx.Timeout(connect=12.0, read=t, write=30.0, pool=12.0)
+
+    async def ping_bridge(self) -> tuple[bool, str]:
+        if not self._live():
+            return True, "mock"
+        url = self.settings.effective_backend_url.rstrip("/") + "/health"
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(8.0)) as client:
+                r = await client.get(url, headers=self._headers())
+                r.raise_for_status()
+            return True, "ok"
+        except httpx.ConnectError:
+            return False, "Bridge tak connect nahi ho paya (process band? galat port?)."
+        except Exception as e:
+            return False, str(e)
+
     def _payload_base(
         self,
         mobile: str,
@@ -83,7 +101,7 @@ class UidaiBackend:
 
         if self._live():
             url = self.settings.effective_backend_url.rstrip("/") + "/v1/lookup/verify"
-            async with httpx.AsyncClient(timeout=120.0) as client:
+            async with httpx.AsyncClient(timeout=self._http_timeout()) as client:
                 r = await client.post(url, json=payload, headers=self._headers())
                 r.raise_for_status()
                 data = r.json()
@@ -136,7 +154,7 @@ class UidaiBackend:
 
         if self._live():
             url = self.settings.effective_backend_url.rstrip("/") + "/v1/lookup/start"
-            async with httpx.AsyncClient(timeout=120.0) as client:
+            async with httpx.AsyncClient(timeout=self._http_timeout()) as client:
                 r = await client.post(url, json=payload, headers=self._headers())
                 r.raise_for_status()
                 data = r.json()
@@ -177,7 +195,7 @@ class UidaiBackend:
     async def submit_otp1(self, session_id: str, otp: str) -> LookupResult:
         if self._live():
             url = self.settings.effective_backend_url.rstrip("/") + "/v1/lookup/otp1"
-            async with httpx.AsyncClient(timeout=120.0) as client:
+            async with httpx.AsyncClient(timeout=self._http_timeout()) as client:
                 r = await client.post(
                     url, json={"session_id": session_id, "otp": otp}, headers=self._headers()
                 )

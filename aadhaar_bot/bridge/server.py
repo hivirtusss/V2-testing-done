@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import uuid
 from typing import Any
@@ -49,7 +50,7 @@ async def _prepare_captcha() -> tuple[str, str]:
     b64 = cap.get("captchaBase64String") or cap.get("captchaImage") or ""
     if not txn or not b64:
         raise UidaiHttpError(f"Captcha incomplete: {str(cap)[:120]}")
-    solved = solve_captcha_image(b64)
+    solved = await asyncio.to_thread(solve_captcha_image, b64)
     return txn, solved
 
 
@@ -61,27 +62,42 @@ async def health() -> dict[str, str]:
 @app.post("/v1/lookup/verify")
 async def verify(body: LookupBody) -> dict[str, Any]:
     """UIDAI record check — OTP request (otp=null, captcha=null)."""
-    name = body.holder_name or body.name
-    try:
-        captcha_txn, captcha_val = await _prepare_captcha()
-        otp_txn = UidaiMyAadhaarHttp.new_otp_txn_id()
-        data = await uidai.retrieve_uid_eid(
-            mobile=body.mobile,
-            name=name,
-            captcha_txn_id=captcha_txn,
-            otp_txn_id=otp_txn,
-            otp=None,
-            captcha=None,
-            dob=None,
-            resend_otp=False,
-        )
-    except UidaiHttpError as e:
-        return {"ok": False, "message": str(e)}
-    except Exception as e:
-        return {"ok": False, "message": f"UIDAI connect fail (India VPS?): {e}"}
+    name = (body.holder_name or body.name or "").strip()
+    if len(name) < 2:
+        return {"ok": False, "message": "Name required"}
+    last_err = "No Records Found"
+    for attempt in range(3):
+        try:
+            captcha_txn, captcha_val = await _prepare_captcha()
+            otp_txn = UidaiMyAadhaarHttp.new_otp_txn_id()
+            data = await uidai.retrieve_uid_eid(
+                mobile=body.mobile,
+                name=name,
+                captcha_txn_id=captcha_txn,
+                otp_txn_id=otp_txn,
+                otp=None,
+                captcha=None,
+                dob=None,
+                resend_otp=False,
+            )
+        except UidaiHttpError as e:
+            last_err = str(e)
+            if attempt < 2 and "captcha" in last_err.lower():
+                continue
+            return {"ok": False, "message": last_err}
+        except Exception as e:
+            return {"ok": False, "message": f"UIDAI connect fail (India VPS?): {e}"}
 
-    if is_no_record(data) or not otp_sent_ok(data):
+        if is_no_record(data):
+            return {"ok": False, "message": "No Records Found"}
+        if otp_sent_ok(data):
+            break
+        last_err = str(data.get("message") or data.get("statusMessage") or "OTP not sent")
+        if attempt < 2:
+            continue
         return {"ok": False, "message": "No Records Found"}
+    else:
+        return {"ok": False, "message": last_err}
 
     sid = store.create(
         mobile=body.mobile,

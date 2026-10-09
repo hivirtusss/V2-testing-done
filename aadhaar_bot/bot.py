@@ -31,11 +31,14 @@ from aadhaar_bot.services import (
 )
 from aadhaar_bot.ui_dynamo import (
     DEV_LINE,
-    find_record_searching,
+    bridge_down_text,
+    find_record_otp_pending,
     holder_name_prompt,
     record_not_found_text,
     run_search_with_verify,
     safe_edit,
+    step_header,
+    verify_timeout_text,
 )
 from aadhaar_bot.pdf_worker import unlock_pdf
 from aadhaar_bot.uidai_client import UidaiBackend
@@ -102,9 +105,12 @@ def _set_step(context: ContextTypes.DEFAULT_TYPE, step: Step) -> None:
 
 def _welcome_text(active_plan_line: str) -> str:
     return (
-        "Welcome to **Dynamo DocumentBot**\n\n"
+        "╭──────────────────────╮\n"
+        "│ **Dynamo DocumentBot**\n"
+        "╰──────────────────────╯\n\n"
         f"{active_plan_line}\n\n"
-        "👇 Choose an option:"
+        "👇 Choose an option:\n\n"
+        f"{DEV_LINE}"
     )
 
 
@@ -172,15 +178,22 @@ async def _run_uidai_lookup(
     name_display: str,
     name_query: str,
 ) -> None:
+    settings = get_settings()
     wait = await msg.reply_text(
-        "📌 **STEP 3/4 — Find Record**\n\n⌛ Looking up this record... Please wait."
+        f"{step_header(3, 4, 'Find Record')}\n\n"
+        "⌛ Initializing secure lookup…"
         + _cancel_footer(),
         parse_mode="Markdown",
     )
     backend = _backend(context)
     user = _telegram_user(update)
+    ok_bridge, bridge_msg = await backend.ping_bridge()
+    if not ok_bridge:
+        await safe_edit(wait, bridge_down_text(bridge_msg), parse_mode="Markdown")
+        _reset_flow(context)
+        return
     try:
-        _, verified = await run_search_with_verify(
+        search_ok, verified = await run_search_with_verify(
             wait,
             mobile,
             backend.verify_record(
@@ -190,13 +203,37 @@ async def _run_uidai_lookup(
                 name_query,
                 manual_name=manual_name,
             ),
+            name=name_display,
+            timeout_sec=settings.aadhaar_verify_timeout,
         )
+        if not search_ok:
+            if verified is None:
+                await safe_edit(
+                    wait,
+                    verify_timeout_text(int(settings.aadhaar_verify_timeout)),
+                    parse_mode="Markdown",
+                )
+            elif isinstance(verified, Exception):
+                await safe_edit(
+                    wait,
+                    f"❌ **Fail:** {verified}\n\n{DEV_LINE}",
+                    parse_mode="Markdown",
+                )
+            _reset_flow(context)
+            if user and not (verified is None):
+                await _reply_welcome(msg, user.id, user.username)
+            return
         if not verified.ok:
             await safe_edit(wait, record_not_found_text(), parse_mode="Markdown")
             _reset_flow(context)
             if user:
                 await _reply_welcome(msg, user.id, user.username)
             return
+        await safe_edit(
+            wait,
+            find_record_otp_pending(mobile, name_display),
+            parse_mode="Markdown",
+        )
         res = await backend.start_lookup(
             mobile,
             gender,
@@ -221,11 +258,11 @@ async def _run_uidai_lookup(
     _set_step(context, Step.OTP1)
     await safe_edit(
         wait,
-        "📌 **STEP 3/4 — OTP 1 Verification**\n\n"
-        "🚀 OTP 1 sent successfully!\n\n"
-        "👇 Type the OTP in chat and send it:\n\n"
-        f"📱 Mobile: `{mobile}`\n"
-        f"👤 Name: **{context.user_data.get('aadhaar_name', '')}**"
+        f"{step_header(3, 4, 'OTP 1')}\n\n"
+        "🚀 **OTP 1 sent** — registered mobile par check karo.\n\n"
+        "👇 6-digit OTP yahi chat me bhejo:\n\n"
+        f"📱 `{mobile}`\n"
+        f"👤 **{name_display}**"
         + _cancel_footer(),
         parse_mode="Markdown",
     )
@@ -409,7 +446,7 @@ async def on_get_aadhaar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     _reset_flow(context)
     _set_step(context, Step.MOBILE)
     await q.edit_message_text(
-        "📌 **STEP 1/4 — Mobile**\n\n"
+        f"{step_header(1, 4, 'Mobile')}\n\n"
         "👇 Apna **10 digit** mobile number type karke bhejo:"
         + _cancel_footer(),
         parse_mode="Markdown",
@@ -437,10 +474,10 @@ async def on_gender(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     _set_step(context, Step.NAME)
     emoji = "👦" if gender == "male" else "👧"
     await q.edit_message_text(
-        f"📌 **STEP 2/4 — Holder Name**\n\n"
-        f"{emoji} Gender: **{gender.title()}**\n\n"
+        f"{step_header(2, 4, 'Holder Name')}\n\n"
+        f"{emoji} Gender · **{gender.title()}**\n\n"
         "👇 Type the **full name** exactly as printed on the card."
-        f"\n\n📱 Mobile: `{mobile}`"
+        f"\n\n📱 Mobile · `{mobile}`"
         + _cancel_footer(),
         parse_mode="Markdown",
     )
@@ -471,9 +508,9 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             ]
         )
         await msg.reply_text(
-            "📌 **STEP 2/4 — Gender**\n\n"
+            f"{step_header(2, 4, 'Gender')}\n\n"
             "👇 Select gender:\n\n"
-            f"📱 Mobile: `{text}`"
+            f"📱 Mobile · `{text}`"
             + _cancel_footer(),
             parse_mode="Markdown",
             reply_markup=kb,
@@ -513,11 +550,11 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             return
         _set_step(context, Step.OTP2)
         await msg.reply_text(
-            "📌 **STEP 4/4 — OTP 2 Verification**\n\n"
-            "✅ OTP 2 sent successfully!\n\n"
-            "👇 Type the OTP in chat and send it:\n\n"
-            f"📱 Mobile: `{mobile}`\n"
-            f"👤 Name: **{context.user_data.get('aadhaar_name', '')}**"
+            f"{step_header(4, 4, 'OTP 2')}\n\n"
+            "✅ **OTP 2 sent** — dubara SMS check karo.\n\n"
+            "👇 6-digit OTP yahi chat me bhejo:\n\n"
+            f"📱 `{mobile}`\n"
+            f"👤 **{context.user_data.get('aadhaar_name', '')}**"
             + _cancel_footer(),
             parse_mode="Markdown",
         )
