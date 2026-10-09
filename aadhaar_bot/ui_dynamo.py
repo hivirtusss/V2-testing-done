@@ -8,7 +8,7 @@ from telegram import Message
 from telegram.error import BadRequest
 
 BRAND_NAME = "Virtus"
-FOOTER_LINE = f"🛡 {BRAND_NAME} · @ifeelrichhh"
+FOOTER_LINE = f"🛡 {BRAND_NAME} · @liqdy"
 DEV_LINE = FOOTER_LINE  # legacy import name
 
 SEARCH_STATUSES = (

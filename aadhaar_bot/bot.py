@@ -408,7 +408,7 @@ async def on_plans_or_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await q.answer()
     if q.data == CB_PLANS:
         await q.edit_message_text(
-            "💳 **Plans**\n\nOwner se contact karo — `@ifeelrichhh`",
+            "💳 **Plans**\n\nOwner se contact karo — `@liqdy`",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup(
                 [[InlineKeyboardButton("« Back", callback_data="aadhaar:back_home")]]
@@ -416,7 +416,7 @@ async def on_plans_or_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         )
     elif q.data == CB_HELP:
         await q.edit_message_text(
-            "💬 **Help & Support**\n\n`@ifeelrichhh` · Virtus",
+            "💬 **Help & Support**\n\n`@liqdy` · Virtus",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup(
                 [[InlineKeyboardButton("« Back", callback_data="aadhaar:back_home")]]
