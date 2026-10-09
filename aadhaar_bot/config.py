@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     uidai_captcha_type: str = "2"
     uidai_captcha_url: str = ""
     uidai_retrieve_url: str = ""
+    uidai_eaadhaar_download_url: str = ""
     uidai_user_agent: str = (
         "Mozilla/5.0 (Linux; Android 16; Mobile) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/144.0.0.0 Mobile Safari/537.36"

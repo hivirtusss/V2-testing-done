@@ -25,6 +25,9 @@ class UidaiMyAadhaarHttp:
         self.retrieve_url = self.settings.uidai_retrieve_url or (
             f"{self.base}/retrieveEidUid/ext/v1/generic/retrieveuideid"
         )
+        self.eaadhaar_download_url = self.settings.uidai_eaadhaar_download_url or (
+            f"{self.base}/eAadhaarService/api/download/v2/generateAndDownloadEAadhaar"
+        )
 
     def _headers_myaadhaar(self) -> dict[str, str]:
         return {
@@ -95,3 +98,46 @@ class UidaiMyAadhaarHttp:
                 return r.json()
             except Exception as e:
                 raise UidaiHttpError(f"Invalid JSON: {r.text[:300]}") from e
+
+    async def download_eaadhaar_pdf(
+        self,
+        *,
+        uid: str,
+        mobile: str,
+        name: str,
+        otp: str,
+        captcha_txn_id: str,
+        captcha: str,
+        otp_txn_id: str,
+    ) -> bytes:
+        """Official e-Aadhaar PDF (typically front + back in one file)."""
+        payload = {
+            "uidNumber": uid,
+            "mobileNumber": mobile,
+            "name": name,
+            "otp": otp,
+            "captchaTxnId": captcha_txn_id,
+            "captcha": captcha,
+            "otpTxnId": otp_txn_id,
+            "downloadFormat": "PDF",
+            "fullPage": True,
+        }
+        async with httpx.AsyncClient(timeout=self.timeout, verify=True) as client:
+            r = await client.post(
+                self.eaadhaar_download_url,
+                content=__import__("json").dumps(payload),
+                headers=self._headers_myaadhaar(),
+            )
+            r.raise_for_status()
+            if r.content[:4] == b"%PDF":
+                return r.content
+            data = r.json()
+        import base64
+
+        for key in ("pdfBase64", "eAadhaarPdfBase64", "eaadhaarPdf", "fileBase64"):
+            b64 = data.get(key)
+            if b64:
+                raw = base64.b64decode(b64)
+                if raw[:4] == b"%PDF":
+                    return raw
+        raise UidaiHttpError(f"e-Aadhaar PDF missing in response: {str(data)[:200]}")

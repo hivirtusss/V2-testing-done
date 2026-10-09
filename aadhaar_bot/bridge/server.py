@@ -9,12 +9,15 @@ from pydantic import BaseModel
 
 from aadhaar_bot.bridge.captcha_solver import solve_captcha_image
 from aadhaar_bot.bridge.retrieve_parse import (
+    extract_pdf_bytes,
     extract_reference_id,
+    extract_uid_digits,
     extract_uid_masked,
     is_no_record,
     otp_sent_ok,
     uid_retrieved_ok,
 )
+from aadhaar_bot.pdf_password import pdf_password_hint
 from aadhaar_bot.bridge.session_store import SessionStore
 from aadhaar_bot.bridge.uidai_http import UidaiHttpError, UidaiMyAadhaarHttp
 
@@ -173,8 +176,26 @@ async def otp2(body: OtpBody) -> dict[str, Any]:
 
     masked = extract_uid_masked(data)
     ref = extract_reference_id(data)
-    pdf_stub = b"%PDF-1.4\n% UIDAI retrieve OK\n"
-    pwd_hint = (sess.name.replace(" ", "")[:4].upper() if sess.name else "AADH") + "2003"
+    pwd_hint = pdf_password_hint(sess.name, data)
+
+    pdf_bytes = extract_pdf_bytes(data)
+    if not pdf_bytes:
+        uid = extract_uid_digits(data)
+        if uid:
+            try:
+                pdf_bytes = await uidai.download_eaadhaar_pdf(
+                    uid=uid,
+                    mobile=sess.mobile,
+                    name=sess.name,
+                    otp=body.otp.strip(),
+                    captcha_txn_id=sess.captcha_txn_id,
+                    captcha=sess.captcha_value,
+                    otp_txn_id=sess.otp_txn_id,
+                )
+            except Exception:
+                pdf_bytes = None
+
+    pdf_b64 = base64.b64encode(pdf_bytes).decode() if pdf_bytes else ""
 
     return {
         "ok": True,
@@ -184,6 +205,6 @@ async def otp2(body: OtpBody) -> dict[str, Any]:
         "numeric_id": ref,
         "pdf_password": pwd_hint,
         "phone": sess.mobile,
-        "pdf_base64": base64.b64encode(pdf_stub).decode(),
+        "pdf_base64": pdf_b64,
         "raw": data,
     }

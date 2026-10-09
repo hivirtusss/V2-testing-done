@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from typing import Any
 
 
@@ -81,5 +82,44 @@ def extract_reference_id(data: dict[str, Any]) -> str:
         or data.get("refId")
         or data.get("eid")
         or data.get("enrolmentId")
+        or data.get("enrollmentId")
+        or data.get("numericId")
         or ""
     )
+
+
+def extract_uid_digits(data: dict[str, Any]) -> str:
+    raw = str(
+        data.get("uid")
+        or data.get("aadhaarNumber")
+        or data.get("aadhaar")
+        or data.get("uidNumber")
+        or ""
+    )
+    digits = "".join(c for c in raw if c.isdigit())
+    if len(digits) >= 12:
+        return digits[-12:]
+    return digits
+
+
+def extract_pdf_bytes(data: dict[str, Any]) -> bytes | None:
+    for key in (
+        "pdfBase64",
+        "eAadhaarPdfBase64",
+        "eaadhaarPdf",
+        "pdf",
+        "fileBase64",
+        "aadhaarPdf",
+    ):
+        val = data.get(key)
+        if isinstance(val, str) and len(val) > 100:
+            try:
+                raw = base64.b64decode(val)
+                if raw[:4] == b"%PDF":
+                    return raw
+            except Exception:
+                continue
+    nested = data.get("responseData") or data.get("data") or data.get("result")
+    if isinstance(nested, dict):
+        return extract_pdf_bytes(nested)
+    return None

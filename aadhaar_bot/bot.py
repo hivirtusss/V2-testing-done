@@ -59,9 +59,6 @@ class Step(str, Enum):
     OTP2 = "otp2"
 
 
-DOB_RE = re.compile(r"^\d{2}/\d{2}/\d{4}$")
-
-
 def _owners() -> set[int]:
     return get_settings().owner_id_set
 
@@ -576,20 +573,23 @@ async def _send_extraction_complete(update_message, context: ContextTypes.DEFAUL
     phone = data.get("phone", "—")
     elapsed = data.get("elapsed", 0)
 
-    body = (
+    await update_message.reply_text(
         "✅ **Process Completed!** Document details have been sent above.\n\n"
-        "`@ifeelrichhh` | Dynamo\n\n"
+        "DEV: @ifeelrichhh | Dynamo",
+        parse_mode="Markdown",
+    )
+    body = (
         "━━━━━━━━━━━━━━━━\n"
         "✅ **EXTRACTION COMPLETE**\n"
         "━━━━━━━━━━━━━━━━\n"
         "**Document Aadhar**\n\n"
-        f"🪪 Aadhaar: `{aadhaar}`\n"
+        f"🪪 `{aadhaar}`\n"
         f"🔢 `{aadhaar_compact}`\n\n"
-        f"👤 Name: **{name}**\n"
+        f"👤 **Name:** {name}\n"
         f"🆔 `{numeric_id}`\n\n"
-        f"🔑 Password: `{pwd}`\n"
-        f"📱 Phone: `{phone}`\n\n"
-        f"⏱ Processing Time: `{elapsed} sec`"
+        f"🔑 `{pwd}`\n"
+        f"📱 `{phone}`\n\n"
+        f"⏱ `{elapsed} sec`"
     )
     kb = InlineKeyboardMarkup(
         [
@@ -597,7 +597,11 @@ async def _send_extraction_complete(update_message, context: ContextTypes.DEFAUL
             [InlineKeyboardButton("🔄 Get Another Document", callback_data=CB_GET)],
         ]
     )
-    await update_message.reply_text(body, parse_mode="Markdown", reply_markup=kb)
+    await update_message.reply_text(
+        body + "\n\n_Unsealed copy — use the button below._",
+        parse_mode="Markdown",
+        reply_markup=kb,
+    )
 
 
 async def on_download_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -613,8 +617,12 @@ async def on_download_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     name = (data.get("name") or "aadhaar").replace(" ", "_")
     await q.message.reply_document(
         document=io.BytesIO(pdf),
-        filename=f"{name}_aadhaar.pdf",
-        caption="📎 Aadhaar PDF (password hint upar message me hai)",
+        filename=f"{name}_eAadhaar_full.pdf",
+        caption=(
+            "📎 **e-Aadhaar PDF** (front + back)\n"
+            f"🔑 Password: `{data.get('pdf_password_hint', '—')}`"
+        ),
+        parse_mode="Markdown",
     )
 
 

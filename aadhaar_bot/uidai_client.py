@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 
 from aadhaar_bot.config import get_settings
+from aadhaar_bot.pdf_password import pdf_password_hint
 
 # Demo pair only when no live backend (mock strict mode)
 _MOCK_DEMO_MOBILE = "9520728207"
