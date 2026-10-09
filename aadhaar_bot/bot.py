@@ -36,6 +36,7 @@ from aadhaar_bot.ui_dynamo import (
     find_record_otp_pending,
     holder_name_prompt,
     record_not_found_text,
+    search_failed_text,
     run_search_with_verify,
     safe_edit,
     step_header,
@@ -223,7 +224,11 @@ async def _run_uidai_lookup(
             _reset_flow(context)
             return
         if not getattr(verified, "ok", False):
-            await safe_edit(wait, record_not_found_text(), parse_mode="Markdown")
+            await safe_edit(
+                wait,
+                search_failed_text(getattr(verified, "message", "") or ""),
+                parse_mode="Markdown",
+            )
             _reset_flow(context)
             if user:
                 await _reply_welcome(msg, user.id, user.username)
@@ -245,7 +250,11 @@ async def _run_uidai_lookup(
             preverified_session=verified.session_id,
         )
         if not res.ok:
-            await safe_edit(wait, record_not_found_text(), parse_mode="Markdown")
+            await safe_edit(
+                wait,
+                search_failed_text(res.message or ""),
+                parse_mode="Markdown",
+            )
             _reset_flow(context)
             if user:
                 await _reply_welcome(msg, user.id, user.username)

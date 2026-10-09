@@ -14,9 +14,11 @@ from aadhaar_bot.bridge.retrieve_parse import (
     extract_reference_id,
     extract_uid_digits,
     extract_uid_masked,
+    is_captcha_retry,
     is_no_record,
     otp_sent_ok,
     uid_retrieved_ok,
+    _msg,
 )
 from aadhaar_bot.name_utils import uidai_name_candidates
 from aadhaar_bot.pdf_password import pdf_password_hint
@@ -64,38 +66,53 @@ async def _verify_uidai_name(
     mobile: str,
     name: str,
 ) -> tuple[dict[str, Any] | None, str, str, str, str, str]:
-    """Returns (uidai_data, matched_name, captcha_txn, captcha_val, otp_txn) or Nones."""
+    """Returns (uidai_data, matched_name, captcha_txn, captcha_val, otp_txn, err)."""
     last_err = "No Records Found"
     for attempt in range(3):
         try:
             captcha_txn, captcha_val = await _prepare_captcha()
             otp_txn = UidaiMyAadhaarHttp.new_otp_txn_id()
-            data = await uidai.retrieve_uid_eid(
-                mobile=mobile,
-                name=name,
-                captcha_txn_id=captcha_txn,
-                otp_txn_id=otp_txn,
-                otp=None,
-                captcha=None,
-                dob=None,
-                resend_otp=False,
-            )
         except UidaiHttpError as e:
-            last_err = str(e)
-            if attempt < 2 and "captcha" in last_err.lower():
-                continue
-            raise UidaiHttpError(last_err) from e
+            raise UidaiHttpError(str(e).strip() or "Captcha fetch fail") from e
         except Exception as e:
-            raise UidaiHttpError(f"UIDAI connect fail (India VPS?): {e}") from e
+            err = str(e).strip() or type(e).__name__
+            raise UidaiHttpError(f"UIDAI connect fail (India VPS required): {err}") from e
 
-        if is_no_record(data):
-            return None, name, captcha_txn, captcha_val, otp_txn, last_err
-        if otp_sent_ok(data):
+        data: dict[str, Any] | None = None
+        for captcha in (None, captcha_val):
+            try:
+                data = await uidai.retrieve_uid_eid(
+                    mobile=mobile,
+                    name=name,
+                    captcha_txn_id=captcha_txn,
+                    otp_txn_id=otp_txn,
+                    otp=None,
+                    captcha=captcha,
+                    dob=None,
+                    resend_otp=False,
+                )
+            except Exception as e:
+                err = str(e).strip() or type(e).__name__
+                last_err = f"UIDAI connect fail: {err}"
+                if attempt < 2:
+                    break
+                return None, name, captcha_txn, captcha_val, otp_txn, last_err
+
+            if otp_sent_ok(data):
+                return data, name, captcha_txn, captcha_val, otp_txn, ""
+            if is_no_record(data):
+                return None, name, captcha_txn, captcha_val, otp_txn, _msg(data) or last_err
+            if captcha is None and is_captcha_retry(data):
+                continue
+            last_err = _msg(data) or "OTP not sent"
+            break
+
+        if data and otp_sent_ok(data):
             return data, name, captcha_txn, captcha_val, otp_txn, ""
-        last_err = str(data.get("message") or data.get("statusMessage") or "OTP not sent")
-        if attempt < 2:
+        if attempt < 2 and (not data or is_captcha_retry(data)):
             continue
-        return None, name, captcha_txn, captcha_val, otp_txn, last_err
+        if data and is_no_record(data):
+            return None, name, captcha_txn, captcha_val, otp_txn, last_err
     return None, name, "", "", "", last_err
 
 
@@ -126,7 +143,12 @@ async def verify(body: LookupBody) -> dict[str, Any]:
         last_err = err or last_err
 
     if not matched:
-        return {"ok": False, "message": "No Records Found", "tried_names": uidai_name_candidates(input_name)}
+        msg = last_err if last_err and last_err != "No Records Found" else "No Records Found"
+        return {
+            "ok": False,
+            "message": msg,
+            "tried_names": uidai_name_candidates(input_name),
+        }
 
     sid = store.create(
         mobile=body.mobile,

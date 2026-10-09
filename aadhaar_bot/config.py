@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     aadhaar_pdf_year_from: int = 1960
     aadhaar_pdf_year_to: int = 2025
     aadhaar_verify_timeout: float = 150.0
+    # Keep 1 — in-memory OTP sessions; use higher Panel Search workers for bulk search.
+    uidai_bridge_workers: int = 1
 
     @property
     def owner_id_set(self) -> set[int]:

@@ -51,7 +51,8 @@ class UidaiMyAadhaarHttp:
             "captchaLength": self.settings.uidai_captcha_length,
             "captchaType": self.settings.uidai_captcha_type,
         }
-        async with httpx.AsyncClient(timeout=self.timeout, verify=True) as client:
+        timeout = httpx.Timeout(connect=20.0, read=float(self.timeout), write=30.0, pool=20.0)
+        async with httpx.AsyncClient(timeout=timeout, verify=True) as client:
             r = await client.post(
                 self.captcha_url,
                 json=payload,
@@ -87,7 +88,8 @@ class UidaiMyAadhaarHttp:
             "captcha": captcha,
             "resendOtp": resend_otp,
         }
-        async with httpx.AsyncClient(timeout=self.timeout, verify=True) as client:
+        timeout = httpx.Timeout(connect=20.0, read=float(self.timeout), write=30.0, pool=20.0)
+        async with httpx.AsyncClient(timeout=timeout, verify=True) as client:
             r = await client.post(
                 self.retrieve_url,
                 content=__import__("json").dumps(payload),

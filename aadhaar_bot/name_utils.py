@@ -103,6 +103,8 @@ def uidai_name_candidates(raw: str, *, max_out: int = 12) -> list[str]:
         pool.append(n)
 
     add(base)
+    if base != base.title():
+        add(base.title())
     rev = _swap_word_order(base)
     if rev:
         add(rev)

@@ -83,9 +83,28 @@ def find_record_otp_pending(mobile: str, name: str) -> str:
     return _frame("STEP 3/4 · OTP DISPATCH", body)
 
 
-def record_not_found_text() -> str:
-    body = "❌ **No records found**\n\nMobile + name UIDAI se match nahi hue."
+def search_failed_text(detail: str = "") -> str:
+    detail = (detail or "").strip()
+    lower = detail.lower()
+    if not detail or "no record" in lower:
+        body = (
+            "❌ **No records found**\n\n"
+            "Mobile + name **card jaisa exact** hona chahiye (spelling, order).\n"
+            "Try: poora naam, `Mohd` ↔ `Mohammed`, order ulta."
+        )
+    elif "connect fail" in lower or "timeout" in lower or "unreachable" in lower:
+        body = (
+            "❌ **UIDAI tak connect nahi hua**\n\n"
+            f"{detail}\n\n"
+            "_Bot + bridge **India VPS** par chalao — cloud se UIDAI block hota hai._"
+        )
+    else:
+        body = f"❌ **Search failed**\n\n{detail}"
     return _frame("SEARCH FAILED", body)
+
+
+def record_not_found_text() -> str:
+    return search_failed_text("")
 
 
 def bridge_down_text(detail: str) -> str:
@@ -146,7 +165,7 @@ async def run_search_with_verify(
         if text != last_text:
             await safe_edit(message, text, parse_mode="Markdown")
             last_text = text
-        await asyncio.sleep(0.45)
+        await asyncio.sleep(0.28)
 
     try:
         result = task.result()

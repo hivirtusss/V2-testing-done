@@ -14,25 +14,42 @@ def _msg(data: dict[str, Any]) -> str:
     )
 
 
-def is_no_record(data: dict[str, Any]) -> bool:
+def is_captcha_retry(data: dict[str, Any]) -> bool:
     m = _msg(data).lower()
-    if any(
-        x in m
-        for x in (
-            "no record",
-            "not found",
-            "does not exist",
-            "invalid",
-            "mismatch",
-            "fail",
-            "error",
-        )
-    ):
+    return "captcha" in m and any(
+        x in m for x in ("invalid", "incorrect", "wrong", "expired", "required", "mismatch")
+    )
+
+
+def is_no_record(data: dict[str, Any]) -> bool:
+    """Strict — generic 'error' / 'invalid captcha' must NOT count as no Aadhaar."""
+    if data.get("uid") or data.get("aadhaarNumber") or data.get("aadhaar"):
+        return False
+    if is_captcha_retry(data):
+        return False
+    m = _msg(data).lower()
+    if not m:
+        code = str(data.get("statusCode") or data.get("code") or "")
+        return code in ("404", "4001", "1004")
+    explicit = (
+        "no record",
+        "not found",
+        "does not exist",
+        "record not found",
+        "no aadhaar",
+        "aadhaar not found",
+        "no data found",
+        "details not found",
+        "mobile number not registered",
+        "not registered with aadhaar",
+        "demographic data did not match",
+        "name did not match",
+        "no match",
+    )
+    if any(x in m for x in explicit):
         return True
-    code = data.get("statusCode") or data.get("code")
-    if code not in (None, 200, "200", 0, "0", "SUCCESS", "Success"):
-        if code in (404, "404", 400, "400", 500, "500"):
-            return True
+    if "mismatch" in m and "captcha" not in m and "otp" not in m:
+        return True
     return False
 
 
@@ -40,7 +57,9 @@ def otp_sent_ok(data: dict[str, Any]) -> bool:
     if is_no_record(data):
         return False
     m = _msg(data).lower()
-    if "otp" in m and any(x in m for x in ("sent", "success", "generated", "trigger", "dispatch")):
+    if "otp" in m and any(
+        x in m for x in ("sent", "success", "generated", "trigger", "dispatch", "registered")
+    ):
         return True
     if "mobile" in m and "otp" in m:
         return True
