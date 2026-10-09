@@ -642,7 +642,7 @@ async def _send_extraction_complete(update_message, context: ContextTypes.DEFAUL
 
     await update_message.reply_text(
         "✅ **Process Completed!** Document details have been sent above.\n\n"
-        FOOTER_LINE,
+        f"{FOOTER_LINE}",
         parse_mode="Markdown",
     )
     body = (
