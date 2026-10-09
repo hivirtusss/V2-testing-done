@@ -209,6 +209,8 @@ class UidaiBackend:
                 import base64
 
                 pdf_b = base64.b64decode(data["pdf_base64"])
+            inner = data.get("raw")
+            uidai_raw = inner if isinstance(inner, dict) else {}
             return LookupResult(
                 ok=bool(data.get("ok", False)),
                 message=str(data.get("message", "Done")),
@@ -219,7 +221,7 @@ class UidaiBackend:
                 pdf_password_hint=str(data.get("pdf_password", "")),
                 phone=str(data.get("phone", "")),
                 pdf_bytes=pdf_b,
-                raw=data,
+                raw=uidai_raw,
             )
 
         s = self._mock_sessions.get(session_id)
@@ -233,7 +235,7 @@ class UidaiBackend:
             aadhaar_masked="9815 7689 9641",
             name=name,
             numeric_id="0231191050808620260509095954",
-            pdf_password_hint=(s.get("name_query") or name)[:4].upper() + "2003",
+            pdf_password_hint=pdf_password_hint(name, s),
             phone=s["mobile"],
             pdf_bytes=b"%PDF-1.4 mock aadhaar export\n",
             raw={"mock": True},

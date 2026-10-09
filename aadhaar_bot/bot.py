@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import io
 import re
 import time
@@ -36,6 +37,7 @@ from aadhaar_bot.ui_dynamo import (
     run_search_with_verify,
     safe_edit,
 )
+from aadhaar_bot.pdf_worker import unlock_pdf
 from aadhaar_bot.uidai_client import UidaiBackend
 
 MOBILE_RE = re.compile(r"^\d{10}$")
@@ -538,6 +540,21 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not res.ok:
             await wait.edit_text(f"❌ {res.message}")
             return
+        await safe_edit(wait, "🔓 PDF password auto (DOB/year scan)...", parse_mode="Markdown")
+        uidai_raw = res.raw if isinstance(res.raw, dict) else {}
+        holder = context.user_data.get("aadhaar_name") or res.name
+        pdf_bytes = res.pdf_bytes or b""
+        pdf_unlocked = bool(pdf_bytes)
+        if pdf_bytes:
+            unlocked = await asyncio.to_thread(unlock_pdf, pdf_bytes, holder, uidai_raw)
+            pdf_bytes = unlocked.pdf_bytes
+            pdf_unlocked = unlocked.unlocked
+            cracked_pwd = unlocked.password if unlocked.unlocked else res.pdf_password_hint
+            if not unlocked.unlocked:
+                cracked_pwd = cracked_pwd or "— (auto-crack fail, manual try)"
+        else:
+            cracked_pwd = res.pdf_password_hint
+            pdf_unlocked = False
         tg_user = _telegram_user(update)
         db = db_session()
         try:
@@ -553,9 +570,11 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "aadhaar_masked": res.aadhaar_masked,
             "name": res.name,
             "numeric_id": res.numeric_id,
-            "pdf_password_hint": res.pdf_password_hint,
+            "pdf_password_hint": cracked_pwd,
             "phone": res.phone or mobile,
-            "pdf_bytes": res.pdf_bytes,
+            "pdf_bytes": pdf_bytes,
+            "pdf_unlocked": pdf_unlocked,
+            "uidai_raw": uidai_raw,
             "elapsed": elapsed,
         }
         _reset_flow(context)
@@ -598,8 +617,13 @@ async def _send_extraction_complete(update_message, context: ContextTypes.DEFAUL
             [InlineKeyboardButton("🔄 Get Another Document", callback_data=CB_GET)],
         ]
     )
+    foot = (
+        "_Unsealed copy — use the button below._"
+        if data.get("pdf_unlocked", True)
+        else "_PDF abhi locked ho sakta hai — password upar try karo ya owner se range badhwao._"
+    )
     await update_message.reply_text(
-        body + "\n\n_Unsealed copy — use the button below._",
+        body + f"\n\n{foot}",
         parse_mode="Markdown",
         reply_markup=kb,
     )
@@ -620,8 +644,9 @@ async def on_download_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         document=io.BytesIO(pdf),
         filename=f"{name}_eAadhaar_full.pdf",
         caption=(
-            "📎 **e-Aadhaar PDF** (front + back)\n"
-            f"🔑 Password: `{data.get('pdf_password_hint', '—')}`"
+            "📎 **e-Aadhaar PDF** (front + back"
+            + (", auto-unlocked)" if data.get("pdf_unlocked", True) else ", encrypted)")
+            + f"\n🔑 Password: `{data.get('pdf_password_hint', '—')}`"
         ),
         parse_mode="Markdown",
     )

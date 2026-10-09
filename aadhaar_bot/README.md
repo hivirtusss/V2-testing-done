@@ -21,7 +21,7 @@ Official API wired (your script):
 - Call 1: `otp=null`, `captcha=null` → OTP SMS (record nahi to **No Records Found**)
 - Call 2: `otp` + `captcha` → UID / Aadhaar data
 
-**DOB user se nahi — hamesha `dob: null` (auto skip).**
+**DOB user se nahi — hamesha `dob: null` (auto skip).** PDF password bot khud try karta hai: UIDAI response se birth year + naam ke pehle 4 chars, phir `AADHAAR_PDF_YEAR_FROM`–`AADHAAR_PDF_YEAR_TO` brute (`pdf_worker.py` / `pypdf`).
 
 Override: `UIDAI_RETRIEVE_URL`
 

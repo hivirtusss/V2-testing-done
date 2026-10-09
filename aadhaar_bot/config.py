@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     )
     uidai_captcha_solver: str = "ddddocr"  # ddddocr | 2captcha
     uidai_2captcha_key: str = ""
+    aadhaar_pdf_year_from: int = 1960
+    aadhaar_pdf_year_to: int = 2025
 
     @property
     def owner_id_set(self) -> set[int]:
