@@ -41,6 +41,8 @@ from aadhaar_bot.ui_dynamo import (
     safe_edit,
     step_header,
     verify_timeout_text,
+    welcome_card,
+    FOOTER_LINE,
 )
 from aadhaar_bot.pdf_worker import unlock_pdf
 from aadhaar_bot.uidai_client import UidaiBackend
@@ -106,23 +108,16 @@ def _set_step(context: ContextTypes.DEFAULT_TYPE, step: Step) -> None:
 
 
 def _welcome_text(active_plan_line: str) -> str:
-    return (
-        "╭──────────────────────╮\n"
-        "│ **Dynamo DocumentBot**\n"
-        "╰──────────────────────╯\n\n"
-        f"{active_plan_line}\n\n"
-        "👇 Choose an option:\n\n"
-        f"{DEV_LINE}"
-    )
+    return welcome_card(active_plan_line)
 
 
 def _welcome_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
-            [InlineKeyboardButton("📄 Get Aadhaar", callback_data=CB_GET)],
+            [InlineKeyboardButton("🪪 Get Aadhaar", callback_data=CB_GET)],
             [
                 InlineKeyboardButton("💳 Plans", callback_data=CB_PLANS),
-                InlineKeyboardButton("💬 Payment & help ↗️", callback_data=CB_HELP),
+                InlineKeyboardButton("💬 Help & Support", callback_data=CB_HELP),
             ],
         ]
     )
@@ -421,7 +416,7 @@ async def on_plans_or_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         )
     elif q.data == CB_HELP:
         await q.edit_message_text(
-            "💬 **Payment & help**\n\nSupport: `@ifeelrichhh` | Dynamo",
+            "💬 **Help & Support**\n\n`@ifeelrichhh` · Virtus",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup(
                 [[InlineKeyboardButton("« Back", callback_data="aadhaar:back_home")]]
@@ -647,14 +642,14 @@ async def _send_extraction_complete(update_message, context: ContextTypes.DEFAUL
 
     await update_message.reply_text(
         "✅ **Process Completed!** Document details have been sent above.\n\n"
-        "DEV: @ifeelrichhh | Dynamo",
+        FOOTER_LINE,
         parse_mode="Markdown",
     )
     body = (
-        "━━━━━━━━━━━━━━━━\n"
-        "✅ **EXTRACTION COMPLETE**\n"
-        "━━━━━━━━━━━━━━━━\n"
-        "**Document Aadhar**\n\n"
+        "┏━━━━━━━━━━━━━━━━━━━━━━┓\n"
+        "┃ ✅ **EXTRACTION COMPLETE**\n"
+        "┗━━━━━━━━━━━━━━━━━━━━━━┛\n"
+        "**Aadhaar Document**\n\n"
         f"🪪 `{aadhaar}`\n"
         f"🔢 `{aadhaar_compact}`\n\n"
         f"👤 **Name:** {name}\n"

@@ -7,7 +7,9 @@ from typing import Any, Awaitable, Callable
 from telegram import Message
 from telegram.error import BadRequest
 
-DEV_LINE = "DEV: @ifeelrichhh | Dynamo"
+BRAND_NAME = "Virtus"
+FOOTER_LINE = f"🛡 {BRAND_NAME} · @ifeelrichhh"
+DEV_LINE = FOOTER_LINE  # legacy import name
 
 SEARCH_STATUSES = (
     "Connecting UIDAI gateway…",
@@ -21,15 +23,26 @@ SEARCH_STATUSES = (
 
 def _frame(title: str, body: str, *, footer: bool = True) -> str:
     lines = [
-        "╭──────────────────────╮",
-        f"│ {title}",
-        "╰──────────────────────╯",
+        "┏━━━━━━━━━━━━━━━━━━━━━━┓",
+        f"┃ **{title}**",
+        "┗━━━━━━━━━━━━━━━━━━━━━━┛",
         "",
         body,
     ]
     if footer:
-        lines.extend(["", DEV_LINE])
+        lines.extend(["", FOOTER_LINE])
     return "\n".join(lines)
+
+
+def welcome_card(plan_line: str) -> str:
+    return (
+        "┏━━━━━━━━━━━━━━━━━━━━━━┓\n"
+        f"┃ 🛡 **{BRAND_NAME}** Document Bot\n"
+        "┗━━━━━━━━━━━━━━━━━━━━━━┛\n\n"
+        f"▸ {plan_line}\n\n"
+        "👇 **Select a service**\n\n"
+        f"{FOOTER_LINE}"
+    )
 
 
 def progress_bar(filled: int, total: int = 10) -> str:
@@ -38,7 +51,7 @@ def progress_bar(filled: int, total: int = 10) -> str:
 
 
 def step_header(step: int, total: int, label: str) -> str:
-    return f"📌 **STEP {step}/{total} — {label}**"
+    return f"▸ **Step {step}/{total}** · {label}"
 
 
 def holder_name_prompt(mobile: str, *, manual: bool = False) -> str:
@@ -70,7 +83,7 @@ def find_record_searching(
         f"`{bar}`  {pct}%\n\n"
         f"⏳ _{status}_"
     )
-    return _frame("STEP 3/4 · FIND RECORD", body)
+    return _frame(f"{BRAND_NAME} · Find Record", body)
 
 
 def find_record_otp_pending(mobile: str, name: str) -> str:
@@ -80,7 +93,7 @@ def find_record_otp_pending(mobile: str, name: str) -> str:
         f"👤 **{name}**\n\n"
         "📨 Sending **OTP 1** to registered mobile…"
     )
-    return _frame("STEP 3/4 · OTP DISPATCH", body)
+    return _frame(f"{BRAND_NAME} · OTP Dispatch", body)
 
 
 def search_failed_text(detail: str = "") -> str:
