@@ -14,7 +14,6 @@ class BridgeSession:
     captcha_txn_id: str
     captcha_value: str
     otp_txn_id: str
-    dob: str | None = None
     uidai_payload: dict[str, Any] = field(default_factory=dict)
     otp_stage: int = 1
     created_at: float = field(default_factory=time.time)

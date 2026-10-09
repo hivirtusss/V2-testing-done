@@ -21,7 +21,7 @@ Official API wired (your script):
 - Call 1: `otp=null`, `captcha=null` → OTP SMS (record nahi to **No Records Found**)
 - Call 2: `otp` + `captcha` → UID / Aadhaar data
 
-Optional DOB (better match): `AADHAAR_REQUIRE_DOB=true` in `.env.aadhaar`
+**DOB user se nahi — hamesha `dob: null` (auto skip).**
 
 Override: `UIDAI_RETRIEVE_URL`
 

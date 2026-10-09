@@ -29,7 +29,6 @@ class LookupBody(BaseModel):
     gender: str = "unspecified"
     holder_name: str = ""
     name: str = ""
-    dob: str | None = None
     fetch_by_name: bool = True
     manual_name: bool = False
     skip_dob: bool = True
@@ -39,12 +38,6 @@ class LookupBody(BaseModel):
 class OtpBody(BaseModel):
     session_id: str
     otp: str
-
-
-def _dob(body: LookupBody) -> str | None:
-    if body.skip_dob and not body.dob:
-        return None
-    return body.dob
 
 
 async def _prepare_captcha() -> tuple[str, str]:
@@ -76,7 +69,7 @@ async def verify(body: LookupBody) -> dict[str, Any]:
             otp_txn_id=otp_txn,
             otp=None,
             captcha=None,
-            dob=_dob(body),
+            dob=None,
             resend_otp=False,
         )
     except UidaiHttpError as e:
@@ -94,7 +87,6 @@ async def verify(body: LookupBody) -> dict[str, Any]:
         captcha_txn_id=captcha_txn,
         captcha_value=captcha_val,
         otp_txn_id=otp_txn,
-        dob=_dob(body),
         uidai_payload=data,
         otp_stage=1,
     )
@@ -122,7 +114,7 @@ async def otp1(body: OtpBody) -> dict[str, Any]:
             otp_txn_id=sess.otp_txn_id,
             otp=body.otp.strip(),
             captcha=sess.captcha_value,
-            dob=sess.dob,
+            dob=None,
             resend_otp=False,
         )
     except Exception as e:
@@ -142,7 +134,7 @@ async def otp1(body: OtpBody) -> dict[str, Any]:
                 otp_txn_id=sess.otp_txn_id,
                 otp=None,
                 captcha=None,
-                dob=sess.dob,
+                dob=None,
                 resend_otp=True,
             )
             sess.uidai_payload.update(resend)
@@ -170,7 +162,7 @@ async def otp2(body: OtpBody) -> dict[str, Any]:
             otp_txn_id=sess.otp_txn_id,
             otp=body.otp.strip(),
             captcha=sess.captcha_value,
-            dob=sess.dob,
+            dob=None,
             resend_otp=False,
         )
     except Exception as e:

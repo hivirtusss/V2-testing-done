@@ -18,8 +18,6 @@ class Settings(BaseSettings):
     aadhaar_mock_mode: bool = False
     aadhaar_db_url: str = "sqlite:///./aadhaar_bot.db"
     aadhaar_notify_chat_id: str = ""
-    aadhaar_require_dob: bool = False
-
     uidai_bridge_host: str = "127.0.0.1"
     uidai_bridge_port: int = 8790
     uidai_tathya_base: str = "https://tathya.uidai.gov.in"

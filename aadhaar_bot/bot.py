@@ -55,7 +55,6 @@ class Step(str, Enum):
     MOBILE = "mobile"
     GENDER = "gender"
     NAME = "name"
-    DOB = "dob"
     OTP1 = "otp1"
     OTP2 = "otp2"
 
@@ -81,7 +80,6 @@ def _reset_flow(context: ContextTypes.DEFAULT_TYPE) -> None:
         "aadhaar_name",
         "aadhaar_name_query",
         "aadhaar_name_manual",
-        "aadhaar_dob",
         "aadhaar_session",
         "aadhaar_started_at",
         "aadhaar_last_result",
@@ -174,7 +172,6 @@ async def _run_uidai_lookup(
     name_display: str,
     name_query: str,
 ) -> None:
-    dob = context.user_data.get("aadhaar_dob")
     wait = await msg.reply_text(
         "📌 **STEP 3/4 — Find Record**\n\n⌛ Looking up this record... Please wait."
         + _cancel_footer(),
@@ -192,7 +189,6 @@ async def _run_uidai_lookup(
                 name_display,
                 name_query,
                 manual_name=manual_name,
-                dob=dob,
             ),
         )
         if not verified.ok:
@@ -209,7 +205,6 @@ async def _run_uidai_lookup(
             name_query,
             manual_name=manual_name,
             preverified_session=verified.session_id,
-            dob=dob,
         )
     except Exception as e:
         await wait.edit_text(f"❌ **Fail:** {e}\n\n{DEV_LINE}", parse_mode="Markdown")
@@ -497,34 +492,8 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         name_display, name_query = prepare_holder_name(text)
         context.user_data["aadhaar_name"] = name_display
         context.user_data["aadhaar_name_query"] = name_query
-        if get_settings().aadhaar_require_dob:
-            _set_step(context, Step.DOB)
-            await msg.reply_text(
-                "📌 **DOB (UIDAI)**\n\n"
-                "👇 Card par jaisa **DD/MM/YYYY** bhejo (jaise `26/08/2008`):"
-                f"\n\n📱 Mobile: `{mobile}`"
-                + _cancel_footer(),
-                parse_mode="Markdown",
-            )
-            return
         context.user_data["aadhaar_started_at"] = time.time()
         await _run_uidai_lookup(msg, context, update, mobile, gender, manual_name, name_display, name_query)
-        return
-
-    if step == Step.DOB:
-        if not DOB_RE.match(text):
-            await msg.reply_text("❌ Format: DD/MM/YYYY (example 26/08/2008)")
-            return
-        context.user_data["aadhaar_dob"] = text.strip()
-        context.user_data["aadhaar_started_at"] = time.time()
-        mobile = context.user_data.get("aadhaar_mobile", "")
-        gender = context.user_data.get("aadhaar_gender", "unspecified")
-        manual_name = bool(context.user_data.get("aadhaar_name_manual"))
-        name_display = context.user_data.get("aadhaar_name", "")
-        name_query = context.user_data.get("aadhaar_name_query", "")
-        await _run_uidai_lookup(
-            msg, context, update, mobile, gender, manual_name, name_display, name_query
-        )
         return
 
     if step == Step.OTP1:

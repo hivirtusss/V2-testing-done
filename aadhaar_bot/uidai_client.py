@@ -53,7 +53,6 @@ class UidaiBackend:
         name_query: str,
         *,
         manual_name: bool,
-        dob: str | None = None,
     ) -> dict[str, Any]:
         return {
             "mobile": mobile,
@@ -62,8 +61,7 @@ class UidaiBackend:
             "name": name_display,
             "fetch_by_name": True,
             "manual_name": manual_name,
-            "skip_dob": dob is None,
-            "dob": dob,
+            "skip_dob": True,
             "source": "retrieveuideid",
         }
 
@@ -78,12 +76,9 @@ class UidaiBackend:
         name_query: str,
         *,
         manual_name: bool,
-        dob: str | None = None,
     ) -> LookupResult:
-        """Live UIDAI retrieveuideid — record check + OTP trigger."""
-        payload = self._payload_base(
-            mobile, gender, name_display, name_query, manual_name=manual_name, dob=dob
-        )
+        """Live UIDAI retrieveuideid — record check + OTP trigger (no DOB)."""
+        payload = self._payload_base(mobile, gender, name_display, name_query, manual_name=manual_name)
 
         if self._live():
             url = self.settings.effective_backend_url.rstrip("/") + "/v1/lookup/verify"
@@ -133,11 +128,8 @@ class UidaiBackend:
         *,
         manual_name: bool,
         preverified_session: str = "",
-        dob: str | None = None,
     ) -> LookupResult:
-        payload = self._payload_base(
-            mobile, gender, name_display, name_query, manual_name=manual_name, dob=dob
-        )
+        payload = self._payload_base(mobile, gender, name_display, name_query, manual_name=manual_name)
         if preverified_session:
             payload["session_id"] = preverified_session
 
