@@ -34,6 +34,7 @@ from aadhaar_bot.ui_dynamo import (
     holder_name_prompt,
     record_not_found_text,
     run_search_with_verify,
+    safe_edit,
 )
 from aadhaar_bot.uidai_client import UidaiBackend
 
@@ -189,12 +190,11 @@ async def _run_uidai_lookup(
             ),
         )
         if not verified.ok:
-            await wait.edit_text(record_not_found_text(), parse_mode="Markdown")
+            await safe_edit(wait, record_not_found_text(), parse_mode="Markdown")
             _reset_flow(context)
             if user:
                 await _reply_welcome(msg, user.id, user.username)
             return
-        await wait.edit_text(find_record_searching(mobile, 8), parse_mode="Markdown")
         res = await backend.start_lookup(
             mobile,
             gender,
@@ -203,21 +203,22 @@ async def _run_uidai_lookup(
             manual_name=manual_name,
             preverified_session=verified.session_id,
         )
+        if not res.ok:
+            await safe_edit(wait, record_not_found_text(), parse_mode="Markdown")
+            _reset_flow(context)
+            if user:
+                await _reply_welcome(msg, user.id, user.username)
+            return
     except Exception as e:
-        await wait.edit_text(f"❌ **Fail:** {e}\n\n{DEV_LINE}", parse_mode="Markdown")
-        _reset_flow(context)
-        if user:
-            await _reply_welcome(msg, user.id, user.username)
-        return
-    if not res.ok:
-        await wait.edit_text(record_not_found_text(), parse_mode="Markdown")
+        await safe_edit(wait, f"❌ **Fail:** {e}\n\n{DEV_LINE}", parse_mode="Markdown")
         _reset_flow(context)
         if user:
             await _reply_welcome(msg, user.id, user.username)
         return
     context.user_data["aadhaar_session"] = res.session_id
     _set_step(context, Step.OTP1)
-    await wait.edit_text(
+    await safe_edit(
+        wait,
         "📌 **STEP 3/4 — OTP 1 Verification**\n\n"
         "🚀 OTP 1 sent successfully!\n\n"
         "👇 Type the OTP in chat and send it:\n\n"
