@@ -15,11 +15,12 @@ done
 rm -f "$ROOT_DIR/_run/panel-search/.panel-search.pid" 2>/dev/null || true
 sleep 1
 
+echo "▶ SMS Monitor (Virtus)…"
+bash "$ROOT_DIR/ensure_sms_env.sh" || true
 if [ -f "$ROOT_DIR/.env" ]; then
-  echo "▶ SMS Monitor (Virtus)…"
   bash "$ROOT_DIR/start.sh" || echo "   ⚠️  SMS monitor failed"
 else
-  echo "⏭  SMS Monitor — root .env missing (TELEGRAM_BOT_TOKEN)"
+  echo "   ⚠️  SMS Monitor — no token (.env.aadhaar / TELEGRAM_BOT_TOKEN)"
 fi
 
 if [ -f "$ROOT_DIR/start_panel_search.sh" ]; then
