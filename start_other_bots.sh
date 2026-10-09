@@ -15,12 +15,12 @@ done
 rm -f "$ROOT_DIR/_run/panel-search/.panel-search.pid" 2>/dev/null || true
 sleep 1
 
-echo "▶ SMS Monitor (Virtus)…"
-bash "$ROOT_DIR/ensure_sms_env.sh" || true
-if [ -f "$ROOT_DIR/.env" ]; then
+# SMS Monitor = alag repo token (.env) — Aadhaar / Panel se mix mat karo
+if [ -f "$ROOT_DIR/.env" ] && grep -qE '^TELEGRAM_BOT_TOKEN=' "$ROOT_DIR/.env" 2>/dev/null; then
+  echo "▶ SMS Monitor (Virtus) — own .env…"
   bash "$ROOT_DIR/start.sh" || echo "   ⚠️  SMS monitor failed"
 else
-  echo "   ⚠️  SMS Monitor — no token (.env.aadhaar / TELEGRAM_BOT_TOKEN)"
+  echo "⏭  SMS Monitor — apna .env + TELEGRAM_BOT_TOKEN (Aadhaar se alag)"
 fi
 
 if [ -f "$ROOT_DIR/start_panel_search.sh" ]; then
