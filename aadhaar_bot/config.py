@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     aadhaar_mock_mode: bool = False
     aadhaar_db_url: str = "sqlite:///./aadhaar_bot.db"
     aadhaar_notify_chat_id: str = ""
+    aadhaar_require_dob: bool = False
 
     uidai_bridge_host: str = "127.0.0.1"
     uidai_bridge_port: int = 8790
@@ -26,11 +27,11 @@ class Settings(BaseSettings):
     uidai_captcha_length: str = "6"
     uidai_captcha_type: str = "2"
     uidai_captcha_url: str = ""
-    uidai_verify_mobile_url: str = ""
-    uidai_otp1_url: str = ""
-    uidai_otp2_url: str = ""
-    uidai_validate_otp_url: str = ""
-    uidai_download_pdf_url: str = ""
+    uidai_retrieve_url: str = ""
+    uidai_user_agent: str = (
+        "Mozilla/5.0 (Linux; Android 16; Mobile) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/144.0.0.0 Mobile Safari/537.36"
+    )
     uidai_captcha_solver: str = "ddddocr"  # ddddocr | 2captcha
     uidai_2captcha_key: str = ""
 

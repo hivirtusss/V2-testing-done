@@ -53,16 +53,18 @@ class UidaiBackend:
         name_query: str,
         *,
         manual_name: bool,
+        dob: str | None = None,
     ) -> dict[str, Any]:
         return {
             "mobile": mobile,
             "gender": gender,
             "holder_name": name_display,
-            "name": name_query,
+            "name": name_display,
             "fetch_by_name": True,
             "manual_name": manual_name,
-            "skip_dob": True,
-            "source": "umang_or_uidai",
+            "skip_dob": dob is None,
+            "dob": dob,
+            "source": "retrieveuideid",
         }
 
     def _mock_record_exists(self, mobile: str, name_query: str) -> bool:
@@ -76,9 +78,12 @@ class UidaiBackend:
         name_query: str,
         *,
         manual_name: bool,
+        dob: str | None = None,
     ) -> LookupResult:
-        """Live UIDAI/Umang check — no OTP until record exists."""
-        payload = self._payload_base(mobile, gender, name_display, name_query, manual_name=manual_name)
+        """Live UIDAI retrieveuideid — record check + OTP trigger."""
+        payload = self._payload_base(
+            mobile, gender, name_display, name_query, manual_name=manual_name, dob=dob
+        )
 
         if self._live():
             url = self.settings.effective_backend_url.rstrip("/") + "/v1/lookup/verify"
@@ -128,8 +133,11 @@ class UidaiBackend:
         *,
         manual_name: bool,
         preverified_session: str = "",
+        dob: str | None = None,
     ) -> LookupResult:
-        payload = self._payload_base(mobile, gender, name_display, name_query, manual_name=manual_name)
+        payload = self._payload_base(
+            mobile, gender, name_display, name_query, manual_name=manual_name, dob=dob
+        )
         if preverified_session:
             payload["session_id"] = preverified_session
 

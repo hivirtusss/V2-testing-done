@@ -14,12 +14,16 @@ pip install ddddocr   # captcha auto
 ./start_aadhaar_bot.sh
 ```
 
-Override API paths if UIDAI updates (from your Drive script):
+Official API wired (your script):
 
-- `UIDAI_VERIFY_MOBILE_URL`
-- `UIDAI_OTP1_URL` / `UIDAI_OTP2_URL`
-- `UIDAI_VALIDATE_OTP_URL`
-- `UIDAI_DOWNLOAD_PDF_URL`
+`POST https://tathya.uidai.gov.in/retrieveEidUid/ext/v1/generic/retrieveuideid`
+
+- Call 1: `otp=null`, `captcha=null` → OTP SMS (record nahi to **No Records Found**)
+- Call 2: `otp` + `captcha` → UID / Aadhaar data
+
+Optional DOB (better match): `AADHAAR_REQUIRE_DOB=true` in `.env.aadhaar`
+
+Override: `UIDAI_RETRIEVE_URL`
 
 External bridge: `AADHAAR_PROVIDER=remote` + `AADHAAR_BACKEND_URL=...`
 
