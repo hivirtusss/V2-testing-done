@@ -87,13 +87,8 @@ def list_search_urls(db: Session, telegram_id: int, owner_ids: set[int]) -> list
     personal = db.query(FirebaseDb).filter(FirebaseDb.owner_telegram_id == telegram_id).all()
     leaks = db.query(FirebaseDb).filter(FirebaseDb.pool == "leak").all()
     if telegram_id in owner_ids:
-        all_rows = db.query(FirebaseDb).all()
-        seen = {row.url_normalized for row in all_rows}
-        merged = list(all_rows)
-        for row in personal + leaks:
-            if row.url_normalized not in seen:
-                merged.append(row)
-        return merged
+        by_url = {row.url_normalized: row for row in db.query(FirebaseDb).all()}
+        return list(by_url.values())
     by_url = {row.url_normalized: row for row in leaks}
     for row in personal:
         by_url[row.url_normalized] = row

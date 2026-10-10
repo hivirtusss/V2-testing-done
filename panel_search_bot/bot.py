@@ -251,7 +251,12 @@ def _parse_quick_search(args: list[str]) -> tuple[list[str], str | None]:
     keywords = [k.strip() for k in text.split(",") if k.strip()]
     if not keywords and text:
         keywords = [text]
+    keywords = _normalize_keywords(keywords)
     return keywords, mode
+
+
+def _flow_keywords_ok(flow: dict) -> bool:
+    return bool(_normalize_keywords(flow.get("keywords") or []))
 
 
 async def cmd_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -268,14 +273,14 @@ async def cmd_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             "balance_sort": "high",
             "days": 7,
             "pin_filter": "both",
-            "wizard": "sort",
+            "wizard": "days",
         }
         flow = context.user_data["search_flow"]
         sent = await msg.reply_text(
             f"📌 Keywords: {_keywords_line(flow)}\n"
             f"Mode: {mode_label(flow.get('mode', 'online'))}\n\n"
-            "Select balance sort:",
-            reply_markup=_sort_keyboard(),
+            "Kitne din purane SMS? (1/3/7/15/30):",
+            reply_markup=_days_keyboard(),
         )
         flow["wizard_chat_id"] = sent.chat_id
         flow["wizard_msg_id"] = sent.message_id
@@ -294,9 +299,9 @@ async def cmd_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     context.user_data["search_flow"] = {"step": "keywords"}
     await msg.reply_text(
         "🔍 Search Commands\n\n"
-        "Quick: /search keyword1,keyword2 online\n"
-        "Step-by-step: /search then type keywords\n\n"
-        "Mode: online (default), offline, both"
+        "Quick: /search avl/bal, bank online\n"
+        "Steps: /search → keywords → Online/Offline/Both → days → PIN → High/Low → Start\n\n"
+        "Mode: online = online DBs | offline = dead | both = dono"
     )
 
 
@@ -332,10 +337,10 @@ def _sort_keyboard() -> InlineKeyboardMarkup:
         [
             [
                 InlineKeyboardButton("💰 High→Low 70K-1Cr", callback_data="srch:sort:high"),
-                InlineKeyboardButton("💰 Low→High 1K+", callback_data="srch:sort:low"),
+                InlineKeyboardButton("💰 Low→High 3K-50K", callback_data="srch:sort:low"),
             ],
             [InlineKeyboardButton("⏭ Skip (date order)", callback_data="srch:sort:skip")],
-            [InlineKeyboardButton("« Back", callback_data="srch:step:mode")],
+            [InlineKeyboardButton("« Back", callback_data="srch:step:pin")],
         ]
     )
 
@@ -353,7 +358,7 @@ def _days_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton("30 days", callback_data="srch:days:30"),
                 InlineKeyboardButton("∞ All Time", callback_data="srch:days:all"),
             ],
-            [InlineKeyboardButton("« Back", callback_data="srch:step:sort")],
+            [InlineKeyboardButton("« Back", callback_data="srch:step:mode")],
         ]
     )
 
@@ -375,7 +380,7 @@ def _confirm_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
             [InlineKeyboardButton("▶ Start Search", callback_data="srch:run:go")],
-            [InlineKeyboardButton("« Back (PIN)", callback_data="srch:step:pin")],
+            [InlineKeyboardButton("« Back (balance sort)", callback_data="srch:step:sort")],
         ]
     )
 
@@ -441,8 +446,11 @@ async def _wizard_edit_sort(context, flow: dict, *, query=None) -> None:
         context,
         flow,
         f"📌 Keywords: {_keywords_line(flow)}\n"
-        f"Mode: {mode_label(flow.get('mode', 'online'))}\n\n"
-        "Select balance sort:",
+        f"Mode: {mode_label(flow.get('mode', 'online'))} | {days_label(flow.get('days'))} | "
+        f"{pin_label(flow.get('pin_filter', 'both'))}\n\n"
+        "Balance sort:\n"
+        "• High→Low = 70K se 1Cr+\n"
+        "• Low→High = 3K se 50K",
         _sort_keyboard(),
         query=query,
     )
@@ -454,8 +462,8 @@ async def _wizard_edit_days(context, flow: dict, *, query=None) -> None:
         context,
         flow,
         f"📌 Keywords: {_keywords_line(flow)}\n"
-        f"Mode: {mode_label(flow.get('mode', 'online'))} | Sort: {sort_label(flow.get('balance_sort', 'high'))}\n\n"
-        "Select SMS age:",
+        f"Mode: {mode_label(flow.get('mode', 'online'))}\n\n"
+        "Kitne din purane SMS chahiye? (device ke andar utne din ke SMS):",
         _days_keyboard(),
         query=query,
     )
@@ -467,8 +475,7 @@ async def _wizard_edit_pin(context, flow: dict, *, query=None) -> None:
         context,
         flow,
         f"📌 Keywords: {_keywords_line(flow)}\n"
-        f"Mode: {mode_label(flow.get('mode', 'online'))} | Sort: {sort_label(flow.get('balance_sort', 'high'))} | "
-        f"{days_label(flow.get('days'))}\n\n"
+        f"Mode: {mode_label(flow.get('mode', 'online'))} | {days_label(flow.get('days'))}\n\n"
         "UPI PIN filter (device mix):\n"
         "• Both = with + without PIN dono\n"
         "• With = sirf PIN wali SMS\n"
@@ -538,13 +545,24 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     flow.setdefault("pin_filter", "both")
     _, kind, value = query.data.split(":", 2)
 
+    if kind in ("run", "sort", "days", "pin", "mode") and not _flow_keywords_ok(flow):
+        await query.edit_message_text(
+            "❌ Keywords missing.\n\n"
+            "Pehle bhejo:\n"
+            "`/search avl/bal, bank`\n"
+            "ya `/search` → phir keywords type karo",
+            parse_mode="Markdown",
+        )
+        context.user_data.pop("search_flow", None)
+        return
+
     flow["wizard_chat_id"] = query.message.chat_id
     flow["wizard_msg_id"] = query.message.message_id
 
     if kind == "mode":
         flow["mode"] = value
         flow.pop("step", None)
-        await _wizard_edit_sort(context, flow, query=query)
+        await _wizard_edit_days(context, flow, query=query)
     elif kind == "step" and value == "custom":
         flow["step"] = "custom"
         flow.setdefault("mode", "online")
@@ -569,7 +587,11 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if flow.get("step") == "custom":
             await query.edit_message_text(_custom_panel_text(flow), reply_markup=_custom_keyboard(flow))
         else:
-            await _wizard_edit_days(context, flow, query=query)
+            flow["wizard"] = "confirm"
+            await query.edit_message_text(
+                confirm_panel_text(flow),
+                reply_markup=_confirm_keyboard(),
+            )
     elif kind == "days":
         flow["days"] = None if value == "all" else int(value)
         if flow.get("step") == "custom":
@@ -581,11 +603,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if flow.get("step") == "custom":
             await query.edit_message_text(_custom_panel_text(flow), reply_markup=_custom_keyboard(flow))
         else:
-            flow["wizard"] = "confirm"
-            await query.edit_message_text(
-                confirm_panel_text(flow),
-                reply_markup=_confirm_keyboard(),
-            )
+            await _wizard_edit_sort(context, flow, query=query)
     elif kind == "run":
         flow.pop("step", None)
         flow.pop("wizard", None)
@@ -780,7 +798,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if flow and flow.get("step") == "keywords":
         if text.startswith("/"):
             return
-        keywords = [k.strip() for k in text.split(",") if k.strip()]
+        keywords = _normalize_keywords([k.strip() for k in text.split(",") if k.strip()])
         context.user_data["search_flow"] = {
             "keywords": keywords,
             "mode": "online",

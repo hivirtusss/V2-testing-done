@@ -148,7 +148,11 @@ def _balance_in_range(balance: float | None, balance_sort: str) -> bool:
     if balance_sort == "high":
         return settings.panel_search_balance_high_min <= balance <= settings.panel_search_balance_high_max
     if balance_sort == "low":
-        return balance >= settings.panel_search_balance_low_min
+        return (
+            settings.panel_search_balance_low_min
+            <= balance
+            <= settings.panel_search_balance_low_max
+        )
     return True
 
 
@@ -412,7 +416,7 @@ async def run_search(
     del db  # use thread-local SessionLocal for SQLite work
     started = time.time()
     url_to_row = {row.url_normalized: row for row in firebase_rows}
-    urls = list(url_to_row.keys())
+    urls = list(dict.fromkeys(url_to_row.keys()))
     match_prog = MatchProgress()
 
     async def emit(done: int, total: int, url: str, online: bool, note: str) -> None:

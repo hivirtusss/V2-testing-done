@@ -16,7 +16,7 @@ def sort_label(sort: str) -> str:
 def sort_label_long(sort: str) -> str:
     return {
         "high": "💰 High→Low (70K–1Cr)",
-        "low": "💰 Low→High (1K+)",
+        "low": "💰 Low→High (3K–50K)",
         "skip": "⏭ date order",
     }.get(sort, sort)
 
