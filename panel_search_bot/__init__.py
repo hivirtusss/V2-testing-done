@@ -1,1 +1,1 @@
-"""Panel Search Telegram bot — separate from Virtus module / Virtus GL."""
+"""Panel Search Telegram bot — standalone (SMS monitor alag product)."""

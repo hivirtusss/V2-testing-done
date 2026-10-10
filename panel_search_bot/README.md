@@ -2,7 +2,7 @@
 
 Telegram bot — screenshot jaisa flow: Firebase `.txt` upload, global leak pool, bank SMS search, balance sort, date filter.
 
-**Virtus module / Virtus GL se alag** — un folders mein koi change nahi chahiye.
+**Virtus SMS monitor se alag** — SMS module / GL code is repo mein nahi chahiye.
 
 ## Setup
 
