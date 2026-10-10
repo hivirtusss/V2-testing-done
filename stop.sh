@@ -18,3 +18,8 @@ else
 fi
 
 rm -f "$PID_FILE"
+
+# Duplicate run.py (purana PID / 409 Conflict) — sirf is install folder
+while read -r orphan; do
+    [ -n "$orphan" ] && [ "$orphan" != "$PID" ] && kill "$orphan" 2>/dev/null && echo "✅ Stopped orphan (PID $orphan)"
+done < <(pgrep -f "${ROOT_DIR}/run.py" 2>/dev/null || true)
