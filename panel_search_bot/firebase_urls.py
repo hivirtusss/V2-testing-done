@@ -74,6 +74,64 @@ def firebase_url_variants(base: str) -> list[str]:
     return variants
 
 
+_DEVICE_MARKERS = frozenset(
+    {
+        "devices",
+        "device",
+        "phones",
+        "phone",
+        "clients",
+        "client",
+        "users",
+        "user",
+        "imei",
+        "android",
+    }
+)
+_SMS_MARKERS = frozenset({"messages", "sms", "inbox", "sms_list", "smslist", "data"})
+
+
+def firebase_db_label(url: str) -> str:
+    try:
+        norm = normalize_firebase_url(url)
+    except ValueError:
+        return url[:80]
+    host = urlparse(norm).netloc.lower()
+    project = _project_id_from_host(host)
+    if project:
+        return project[:120]
+    return host[:120]
+
+
+def device_id_from_raw_path(raw_path: str) -> str:
+    if not raw_path or raw_path in ("root", "/"):
+        return "unknown"
+    parts = [p for p in raw_path.replace("\\", "/").split("/") if p and p != "."]
+    if not parts:
+        return "unknown"
+    lowered = [p.lower() for p in parts]
+    for marker in _DEVICE_MARKERS:
+        if marker in lowered:
+            idx = lowered.index(marker)
+            if idx + 1 < len(parts):
+                candidate = parts[idx + 1]
+                if candidate.lower() not in _SMS_MARKERS and not candidate.isdigit():
+                    return candidate[:128]
+    if lowered[0] in _SMS_MARKERS and len(parts) >= 2:
+        candidate = parts[1]
+        if candidate.lower() not in _SMS_MARKERS and not candidate.isdigit():
+            return candidate[:128]
+    for i, part in enumerate(lowered):
+        if part in _SMS_MARKERS and i > 0:
+            prev = parts[i - 1]
+            if prev.lower() not in _SMS_MARKERS and not prev.isdigit():
+                return prev[:128]
+    for p in parts:
+        if len(p) >= 8 and not p.isdigit() and p.lower() not in _DEVICE_MARKERS:
+            return p[:128]
+    return parts[-1][:128] if parts else "unknown"
+
+
 def extract_firebase_urls(text: str) -> list[str]:
     found: list[str] = []
     seen: set[str] = set()

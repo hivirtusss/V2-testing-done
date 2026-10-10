@@ -7,7 +7,7 @@ from typing import Any, Awaitable, Callable
 import httpx
 
 from panel_search_bot.config import get_settings
-from panel_search_bot.firebase_urls import firebase_url_variants
+from panel_search_bot.firebase_urls import device_id_from_raw_path, firebase_url_variants
 from panel_search_bot.sms_parser import extract_message_fields, message_has_pin, parse_balance
 
 FAST_SUBPATHS = ("messages", "sms", "")
@@ -58,6 +58,7 @@ def _walk_sms(node: Any, path: str, out: list[dict], depth: int = 0) -> None:
                         "balance": parse_balance(body),
                         "has_pin": message_has_pin(body),
                         "raw_path": path,
+                        "device_id": device_id_from_raw_path(path),
                     }
                 )
         for key, value in node.items():

