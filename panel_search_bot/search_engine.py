@@ -282,11 +282,26 @@ def _db_ids_for_mode(
         return list(firebase_ids_with_cache(db, all_ids))
 
     if mode == "online":
+        online_ids: list[int] = []
+        for url, (online, sms_list, _) in live.items():
+            row = url_to_row.get(url)
+            if not row:
+                continue
+            if online or sms_list:
+                online_ids.append(row.id)
+        if online_ids:
+            hit = list(firebase_ids_with_cache(db, online_ids))
+            if hit:
+                return hit
+        if live_online:
+            hit = list(firebase_ids_with_cache(db, list(live_online)))
+            if hit:
+                return hit
         scanned_ids = [url_to_row[u].id for u in live if u in url_to_row]
         if scanned_ids:
-            return list(firebase_ids_with_cache(db, scanned_ids))
-        if live_online:
-            return list(firebase_ids_with_cache(db, list(live_online)))
+            hit = list(firebase_ids_with_cache(db, scanned_ids))
+            if hit:
+                return hit
         flagged = [
             fb_id
             for fb_id, is_on in db.query(FirebaseDb.id, FirebaseDb.is_online)

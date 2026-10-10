@@ -335,12 +335,19 @@ def transaction_date_for_filter(
     *,
     days_filter_active: bool,
 ) -> datetime | None:
-    """Day filter: only SMS with a parseable txn date in body (sync time is unreliable)."""
+    """Day filter: prefer SMS body txn date; else cached timestamp if in window."""
     body_dt = parse_date_from_sms_body(body)
     if body_dt is not None:
         return body_dt
-    if days_filter_active:
+    if not days_filter_active:
+        return message_at
+    if message_at is None:
         return None
+    # Body me purana saal likha ho to sync time mat maano
+    now = datetime.utcnow()
+    for match in re.finditer(r"\b(20(?:1[89]|2[0-3]))\b", body or ""):
+        if int(match.group(1)) < now.year - 1:
+            return datetime(int(match.group(1)), 6, 1)
     return message_at
 
 

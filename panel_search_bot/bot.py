@@ -301,7 +301,18 @@ async def cmd_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 
 def _keywords_line(flow: dict) -> str:
-    return ", ".join(flow.get("keywords") or [])
+    return ", ".join(_normalize_keywords(flow.get("keywords") or []))
+
+
+def _normalize_keywords(keywords: list[str]) -> list[str]:
+    """'avl/bal, bank' ek string me ho to alag keywords bana do."""
+    out: list[str] = []
+    for raw in keywords:
+        for part in raw.split(","):
+            part = part.strip()
+            if part:
+                out.append(part)
+    return out
 
 
 def _mode_keyboard() -> InlineKeyboardMarkup:
@@ -587,7 +598,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 async def _execute_search(msg, context: ContextTypes.DEFAULT_TYPE, flow: dict) -> None:
     user = msg.chat
-    keywords = flow.get("keywords") or []
+    keywords = _normalize_keywords(flow.get("keywords") or [])
     if not keywords:
         await msg.reply_text("❌ Keywords missing. /search se start karo.")
         return
@@ -704,11 +715,13 @@ async def _execute_search(msg, context: ContextTypes.DEFAULT_TYPE, flow: dict) -
 
     summary = search_summary(params, len(result.matches), result.elapsed_sec, size_kb)
     hint = ""
-    if not result.matches and params.mode in ("online", "both"):
+    if not result.matches:
         hint = (
-            "\n\n💡 0 matches: VPS pe purani panel_search.db upload ki? "
-            "(scp panel_search.db → /opt/panel-search-bot/) phir restart. "
-            "Nayi 724 list pe pehli scan cache khali — Both + Last 7 days try karo."
+            "\n\n💡 0 matches tips:\n"
+            "• Mode 🔄 Both try karo (Online + cache — Online-only kabhi 0)\n"
+            "• Sort Skip ya Low→High (High 70K+ strict hai)\n"
+            "• Pehli scan: 1–2 min wait; VPS pe `panel_search.db` upload + restart\n"
+            "• Keywords: `avl/bal, bank` (comma se alag)"
         )
     await status.edit_text(summary + "\n📄 File sent above ☝️" + hint)
     await msg.reply_text(search_footer(params, len(result.matches), result.elapsed_sec, size_kb))
