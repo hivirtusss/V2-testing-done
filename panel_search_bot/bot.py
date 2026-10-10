@@ -285,7 +285,7 @@ async def cmd_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             "keywords": keywords,
             "mode": "online",
             "balance_sort": "high",
-            "days": None,
+            "days": 7,
             "pin_filter": "both",
             "wizard": "mode",
         }
@@ -772,7 +772,7 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "keywords": keywords,
             "mode": "online",
             "balance_sort": "high",
-            "days": None,
+            "days": 7,
             "pin_filter": "both",
             "wizard": "mode",
         }
