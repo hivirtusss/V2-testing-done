@@ -235,9 +235,13 @@ def parse_date_from_sms_body(text: str) -> datetime | None:
 
 
 def effective_message_at(message_at: datetime | None, body: str) -> datetime | None:
-    if message_at is not None:
+    body_dt = parse_date_from_sms_body(body)
+    if message_at is None:
+        return body_dt
+    if body_dt is None:
         return message_at
-    return parse_date_from_sms_body(body)
+    # Body date often correct; cache timestamp kabhi purana/wrong hota hai (7-day filter fix).
+    return max(message_at, body_dt)
 
 
 def parse_timestamp(value) -> datetime | None:

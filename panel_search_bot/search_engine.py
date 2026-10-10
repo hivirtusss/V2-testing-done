@@ -23,7 +23,7 @@ from panel_search_bot.services import (
     within_days,
 )
 from panel_search_bot.firebase_urls import device_id_from_raw_path, firebase_db_label
-from panel_search_bot.sms_parser import effective_message_at, is_bank_balance_sms, is_junk_sms
+from panel_search_bot.sms_parser import effective_message_at, is_bank_balance_sms, is_junk_sms, parse_balance
 
 
 @dataclass
@@ -110,7 +110,10 @@ def _filter_row(
     msg_when = effective_message_at(message_at, body)
     if not within_days(msg_when, params.days):
         return False
-    if not _balance_in_range(balance, params.balance_sort):
+    bal = balance
+    if bal is None and params.balance_sort != "skip":
+        bal = parse_balance(body)
+    if not _balance_in_range(bal, params.balance_sort):
         return False
     return True
 
