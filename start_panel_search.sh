@@ -38,7 +38,9 @@ if [ ! -x "$VENV_PY" ]; then
   echo "📦 Creating .venv (Mac/Homebrew safe)..."
   python3 -m venv "$ROOT_DIR/.venv"
 fi
-"$ROOT_DIR/.venv/bin/pip" install -r requirements.txt -q
+REQ="$ROOT_DIR/requirements-panel-search.txt"
+[ -f "$REQ" ] || REQ="$ROOT_DIR/requirements.txt"
+"$ROOT_DIR/.venv/bin/pip" install -r "$REQ" -q
 nohup "$VENV_PY" -m panel_search_bot.run_bot >> "$LOG_FILE" 2>&1 &
 echo $! > "$PID_FILE"
 echo "✅ Panel Search bot started PID $(cat "$PID_FILE")"
