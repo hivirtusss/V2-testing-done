@@ -57,7 +57,7 @@ def confirm_panel_text(flow: dict) -> str:
         f"│ Balance: {sort_label(sort)}\n"
         f"│ Days: {days_label(days)}\n"
         "└────────────────────────────\n\n"
-        f"Matlab: {kw} wali **bank SMS** (credit/debit/avl/sent/received) — "
+        f"Matlab: {kw} wali bank SMS (credit/debit/avl/sent/received) — "
         f"spam/OTP/FASTag skip.\n"
         f"{mode_label(mode)} | {pin_label(pin)} | {sort_label(sort)} | {days_label(days)}\n\n"
         "✅ Start search?"
