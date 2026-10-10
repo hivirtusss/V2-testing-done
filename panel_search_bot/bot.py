@@ -38,7 +38,6 @@ from panel_search_bot.ui import (
     days_label,
     mode_label,
     pin_label,
-    search_footer,
     search_start_line,
     search_summary,
     sort_label,
