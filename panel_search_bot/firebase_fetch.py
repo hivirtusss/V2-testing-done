@@ -139,7 +139,8 @@ async def quick_probe_firebase(
             return "empty", True, variant
         if _shallow_has_data(root):
             return "ok", True, variant
-        return "empty", True, variant
+        # Online but no devices/messages at root — skip heavy fetch
+        return "empty", False, variant
 
     return "dead", False, base_url
 

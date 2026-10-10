@@ -296,9 +296,9 @@ async def run_search(
     has_cache = len(cached_ids) >= settings.panel_search_min_cached_dbs_for_fast_both
 
     if settings.panel_search_skip_live_if_cached and cached_ids:
-        fetch_urls = [u for u in fetch_urls if url_to_row[u].id not in cached_ids]
-        skipped_cached = {u for u in urls if u in skipped_cached or url_to_row[u].id in cached_ids}
-        skipped_n = len({u for u in urls if url_to_row[u].id in cached_ids})
+        skipped_cached = {u for u in urls if url_to_row[u].id in cached_ids}
+        fetch_urls = [u for u in fetch_urls if u not in skipped_cached]
+        skipped_n = len(skipped_cached)
 
     base_skip = len(skipped_offline)
     live_total = len(fetch_urls)
