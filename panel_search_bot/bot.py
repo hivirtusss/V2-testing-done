@@ -713,16 +713,28 @@ async def _execute_search(msg, context: ContextTypes.DEFAULT_TYPE, flow: dict) -
         await status.edit_text(f"⏹ Search stopped ({token})")
         return
 
-    content = format_astik_result_file(
-        result.matches,
-        params,
-        elapsed_sec=result.elapsed_sec,
-        dbs_scanned=result.dbs_scanned,
-    )
-    size_kb = max(1, len(content.encode("utf-8")) // 1024)
+    try:
+        await status.edit_text(
+            f"🔍 {', '.join(keywords)} | {mode_label(params.mode)}\n"
+            f"📊 Scan complete · ✅ {len(result.matches)} matches\n"
+            f"📄 TXT upload ho rahi hai…"
+        )
+    except Exception:
+        pass
 
-    slug = "_".join(k.replace("/", "").replace(" ", "")[:16] for k in keywords[:3])
-    filename = f"sms_{slug}_{int(time.time())}.txt"
+    def _build_file() -> tuple[str, str, int]:
+        body = format_astik_result_file(
+            result.matches,
+            params,
+            elapsed_sec=result.elapsed_sec,
+            dbs_scanned=result.dbs_scanned,
+        )
+        kb = max(1, len(body.encode("utf-8")) // 1024)
+        slug = "_".join(k.replace("/", "").replace(" ", "")[:16] for k in keywords[:3])
+        return body, f"sms_{slug}_{int(time.time())}.txt", kb
+
+    content, filename, size_kb = await asyncio.to_thread(_build_file)
+
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".txt", delete=False) as tmp:
         tmp.write(content)
         tmp_path = tmp.name
@@ -742,7 +754,6 @@ async def _execute_search(msg, context: ContextTypes.DEFAULT_TYPE, flow: dict) -
             "• Keywords: `avl/bal, bank` (comma se alag)"
         )
     await status.edit_text(summary + "\n📄 File sent above ☝️" + hint)
-    await msg.reply_text(search_footer(params, len(result.matches), result.elapsed_sec, size_kb))
 
 
 async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
