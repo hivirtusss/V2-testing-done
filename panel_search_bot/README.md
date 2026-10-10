@@ -17,11 +17,19 @@ PANEL_SEARCH_DATABASE_URL=sqlite:///./panel_search.db
 PANEL_SEARCH_LEAK_FILE=/path/to/leak_firebases.txt
 ```
 
-## Run (local)
+## Run (local / PC 24×7)
+
+1. `cp .env.panel_search.example .env.panel_search` — apna **Panel Search token** + owner ID daalo.
+2. `panel_search.db` same folder mein rakho (724 Firebase + cache yahi rehti hai).
+3. Start / stop:
 
 ```bash
 ./start_panel_search.sh
+./stop_panel_search.sh
 ```
+
+**Update:** `git pull` on branch `cursor/panel-search-bot-8042` → `./stop_panel_search.sh` → `./start_panel_search.sh`.  
+Sirf **ek** instance chalao (do terminal se start mat karo — Telegram 409 / 0 results ho sakta hai).
 
 ## VPS (same server as SMS monitor)
 

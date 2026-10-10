@@ -4,6 +4,7 @@ import asyncio
 import re
 import secrets
 import tempfile
+import time
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -19,7 +20,7 @@ from telegram.ext import (
 
 from panel_search_bot.config import get_settings
 from panel_search_bot.database import SessionLocal, init_db
-from panel_search_bot.firebase_urls import extract_firebase_urls, firebase_db_label
+from panel_search_bot.firebase_urls import extract_firebase_urls
 from panel_search_bot.search_engine import SearchParams, format_result_file, run_search
 from panel_search_bot.models import FirebaseDb
 from panel_search_bot.services import (
@@ -214,20 +215,26 @@ async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     msg = update.effective_message
+    user = update.effective_user
     if not msg:
         return
     token = context.args[0] if context.args else None
     active: dict = context.application.bot_data.setdefault("active_searches", {})
+    by_user: dict = context.application.bot_data.setdefault("user_search_token", {})
+    if not token and msg.chat:
+        token = by_user.get(msg.chat.id)
+    if not token and user:
+        token = by_user.get(user.id)
     if token and token in active:
         active[token].set()
-        await msg.reply_text(f"⏹ Stopping search {token}...")
+        await msg.reply_text(f"⏹ Stopping search `{token}`…", parse_mode="Markdown")
         return
     if active:
         for ev in active.values():
             ev.set()
         await msg.reply_text("⏹ All running searches stopped.")
     else:
-        await msg.reply_text("No active search.")
+        await msg.reply_text("No active search. (Chal rahi ho to `/stop <token>` use karo)", parse_mode="Markdown")
 
 
 def _parse_quick_search(args: list[str]) -> tuple[list[str], str | None]:
@@ -587,6 +594,8 @@ async def _execute_search(msg, context: ContextTypes.DEFAULT_TYPE, flow: dict) -
     token = secrets.token_hex(4)
     cancel = asyncio.Event()
     context.application.bot_data.setdefault("active_searches", {})[token] = cancel
+    if msg.chat:
+        context.application.bot_data.setdefault("user_search_token", {})[msg.chat.id] = token
 
     pool_line = f"📦 YOUR {personal_count} DBs"
     if leak_count:
@@ -598,54 +607,54 @@ async def _execute_search(msg, context: ContextTypes.DEFAULT_TYPE, flow: dict) -
         f"⏱️ /stop {token}"
     )
 
-    last_edit = {"n": 0}
+    settings = get_settings()
+    edit_lock = asyncio.Lock()
+    last_edit = {"n": 0, "t": 0.0}
 
-    async def on_progress(done, total, url, online, sms_count, resolved, total_raw=0):
+    async def on_progress(done, total, url, online, sms_count, resolved):
         if cancel.is_set():
             return
-        if done - last_edit["n"] < 1 and done != total:
+        now = time.monotonic()
+        min_gap = settings.panel_search_ui_edit_interval
+        if done != total and done - last_edit["n"] < 3 and (now - last_edit["t"]) < min_gap:
             return
-        last_edit["n"] = done
-        if url.startswith("http"):
-            show = firebase_db_label(url)
-        elif resolved and not resolved.startswith("http"):
-            show = resolved
-        else:
-            show = firebase_db_label(resolved) if resolved and resolved.startswith("http") else (resolved or url)
-        here = sms_count
-        sigma = total_raw
-        try:
-            await status.edit_text(
-                f"🔍 {', '.join(keywords)} | {mode_label(params.mode)}\n"
-                f"📊 {done}/{total} DBs | {'🟢' if online else '🔴'} DB: {show[:32]}\n"
-                f"📥 is DB: {here} sms | total fetched: {sigma}\n"
-                f"⏱️ scanning… | /stop {token}"
-            )
-        except Exception:
-            pass
+        async with edit_lock:
+            if done != total and done - last_edit["n"] < 3 and (time.monotonic() - last_edit["t"]) < min_gap:
+                return
+            last_edit["n"] = done
+            last_edit["t"] = time.monotonic()
+            show = (resolved or url or "")[:52]
+            phase = show if show.startswith("⏭") or show.startswith("All cached") or show.startswith("Matching") else show
+            try:
+                await status.edit_text(
+                    f"🔍 {', '.join(keywords)} | {mode_label(params.mode)}\n"
+                    f"📊 {done}/{total} DBs | {'🟢' if online else '🔴'} {phase} ({sms_count} raw sms)\n"
+                    f"⏱️ scanning… | /stop {token}"
+                )
+            except Exception:
+                pass
 
     db = _db()
     try:
         result = await run_search(db, rows, params, cancel_event=cancel, on_progress=on_progress)
     finally:
         db.close()
-        context.application.bot_data.get("active_searches", {}).pop(token, None)
+        active_map = context.application.bot_data.get("active_searches", {})
+        active_map.pop(token, None)
+        by_user = context.application.bot_data.get("user_search_token", {})
+        for uid, tok in list(by_user.items()):
+            if tok == token:
+                by_user.pop(uid, None)
 
-    stopped = cancel.is_set() or result.stopped_early
-    content = format_result_file(
-        result.matches,
-        params,
-        elapsed_sec=result.elapsed_sec,
-        dbs_scanned=result.dbs_scanned,
-        dbs_completed=result.dbs_completed,
-        stopped_early=stopped,
-    )
+    if cancel.is_set():
+        await status.edit_text(f"⏹ Search stopped ({token})")
+        return
+
+    content = format_result_file(result.matches, params)
     size_kb = max(1, len(content.encode("utf-8")) // 1024)
-    import time
 
     slug = "_".join(k.replace("/", "").replace(" ", "")[:16] for k in keywords[:3])
-    suffix = "_partial" if stopped else ""
-    filename = f"sms_{slug}{suffix}_{int(time.time())}.txt"
+    filename = f"sms_{slug}_{int(time.time())}.txt"
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".txt", delete=False) as tmp:
         tmp.write(content)
         tmp_path = tmp.name
@@ -654,15 +663,8 @@ async def _execute_search(msg, context: ContextTypes.DEFAULT_TYPE, flow: dict) -
     finally:
         Path(tmp_path).unlink(missing_ok=True)
 
-    if stopped:
-        await status.edit_text(
-            f"⏹ Stopped — partial export\n"
-            f"📊 {len(result.matches)} matches | DBs {result.dbs_completed}/{result.dbs_scanned}\n"
-            f"📄 File upar ☝️ — ab naya /search chala sakte ho"
-        )
-    else:
-        summary = search_summary(params, len(result.matches), result.elapsed_sec, size_kb)
-        await status.edit_text(summary + "\n📄 File sent above ☝️")
+    summary = search_summary(params, len(result.matches), result.elapsed_sec, size_kb)
+    await status.edit_text(summary + "\n📄 File sent above ☝️")
     await msg.reply_text(search_footer(params, len(result.matches), result.elapsed_sec, size_kb))
 
 

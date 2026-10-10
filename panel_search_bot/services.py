@@ -3,17 +3,11 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from sqlalchemy import or_
-
 from panel_search_bot.config import get_settings
-from panel_search_bot.firebase_urls import (
-    device_id_from_raw_path,
-    extract_firebase_urls,
-    normalize_firebase_url,
-)
-from panel_search_bot.sms_parser import BANK_HINT, is_bank_balance_sms
+from panel_search_bot.firebase_urls import extract_firebase_urls, normalize_firebase_url
 from panel_search_bot.models import BotUser, CachedSms, FirebaseDb
 
 
@@ -111,30 +105,24 @@ def count_personal_dbs(db: Session, telegram_id: int) -> int:
 
 
 def upsert_cached_sms(db: Session, firebase_db_id: int, device_key: str, rows: list[dict]) -> None:
-    if not rows:
-        return
-    settings = get_settings()
-    cap = settings.panel_search_max_sms_per_db
-    if len(rows) > cap:
-        rows = rows[:cap]
+    # Keep cache bounded — huge DBs were freezing search for minutes.
+    if len(rows) > 400:
+        rows = rows[-400:]
     db.query(CachedSms).filter(CachedSms.firebase_db_id == firebase_db_id).delete()
-    now = datetime.utcnow()
-    device_key = device_key[:256]
-    mappings = [
-        {
-            "firebase_db_id": firebase_db_id,
-            "device_key": str(row.get("device_id") or device_id_from_raw_path(str(row.get("raw_path", ""))))[:256],
-            "sender": str(row.get("sender", ""))[:128],
-            "body": str(row.get("body", "")),
-            "message_at": row.get("message_at"),
-            "balance_value": row.get("balance"),
-            "has_pin": bool(row.get("has_pin")),
-            "raw_path": str(row.get("raw_path", ""))[:512],
-            "fetched_at": now,
-        }
-        for row in rows
-    ]
-    db.bulk_insert_mappings(CachedSms, mappings)
+    for row in rows:
+        db.add(
+            CachedSms(
+                firebase_db_id=firebase_db_id,
+                device_key=device_key[:256],
+                sender=str(row.get("sender", ""))[:128],
+                body=str(row.get("body", "")),
+                message_at=row.get("message_at"),
+                balance_value=row.get("balance"),
+                has_pin=bool(row.get("has_pin")),
+                raw_path=str(row.get("raw_path", ""))[:512],
+                fetched_at=datetime.utcnow(),
+            )
+        )
     db.commit()
 
 
@@ -144,7 +132,31 @@ def load_cached_sms(db: Session, firebase_db_ids: list[int]) -> list[CachedSms]:
     return db.query(CachedSms).filter(CachedSms.firebase_db_id.in_(firebase_db_ids)).all()
 
 
-def firebase_ids_with_cached_sms(db: Session, firebase_db_ids: list[int]) -> set[int]:
+def load_cached_sms_for_keywords(
+    db: Session, firebase_db_ids: list[int], keywords: list[str]
+) -> list[CachedSms]:
+    """Narrow cache scan in SQL before Python keyword/balance filters."""
+    if not firebase_db_ids:
+        return []
+    q = db.query(CachedSms).filter(CachedSms.firebase_db_id.in_(firebase_db_ids))
+    clauses = []
+    for kw in keywords:
+        cleaned = kw.strip().lower().lstrip("\\")
+        if not cleaned:
+            continue
+        if "/" in cleaned:
+            for part in cleaned.split("/"):
+                part = part.strip()
+                if part:
+                    clauses.append(CachedSms.body.ilike(f"%{part}%"))
+        else:
+            clauses.append(CachedSms.body.ilike(f"%{cleaned}%"))
+    if clauses:
+        q = q.filter(or_(*clauses))
+    return q.all()
+
+
+def firebase_ids_with_cache(db: Session, firebase_db_ids: list[int]) -> set[int]:
     if not firebase_db_ids:
         return set()
     rows = (
@@ -153,55 +165,7 @@ def firebase_ids_with_cached_sms(db: Session, firebase_db_ids: list[int]) -> set
         .distinct()
         .all()
     )
-    return {row[0] for row in rows}
-
-
-def _cache_query_for_search(
-    db: Session,
-    firebase_db_ids: list[int],
-    *,
-    keywords: list[str],
-    balance_sort: str,
-):
-    query = db.query(CachedSms).filter(CachedSms.firebase_db_id.in_(firebase_db_ids))
-    if wants_bank_filter(keywords):
-        query = query.filter(
-            or_(
-                CachedSms.body.ilike("%avl%"),
-                CachedSms.body.ilike("%bal%"),
-                CachedSms.body.ilike("%bank%"),
-                CachedSms.body.ilike("%a/c%"),
-                CachedSms.body.ilike("%credited%"),
-                CachedSms.body.ilike("%debited%"),
-                CachedSms.body.ilike("%received%"),
-                CachedSms.body.ilike("%sent%"),
-                CachedSms.body.ilike("%upi%"),
-                CachedSms.body.ilike("%neft%"),
-                CachedSms.body.ilike("%imps%"),
-                CachedSms.body.ilike("% dr %"),
-                CachedSms.body.ilike("% cr %"),
-                CachedSms.body.ilike("%hdfc%"),
-                CachedSms.body.ilike("%sbi%"),
-                CachedSms.body.ilike("%icici%"),
-                CachedSms.body.ilike("%axis%"),
-            )
-        )
-        for junk in ("%bit.ly%", "%cutt.ly%", "%dear staffn%", "%cibil a/c%", "%uscsnp%"):
-            query = query.filter(~CachedSms.body.ilike(junk))
-    return query
-
-
-def iter_cached_sms_for_search(
-    db: Session,
-    firebase_db_ids: list[int],
-    *,
-    keywords: list[str],
-    balance_sort: str,
-    days: int | None = None,
-):
-    settings = get_settings()
-    query = _cache_query_for_search(db, firebase_db_ids, keywords=keywords, balance_sort=balance_sort)
-    yield from query.yield_per(max(500, settings.panel_search_cache_yield))
+    return {r[0] for r in rows}
 
 
 def update_firebase_status(db: Session, fb_id: int, online: bool) -> None:
@@ -220,10 +184,6 @@ def match_keywords(text: str, keywords: list[str]) -> bool:
             continue
         if cleaned.startswith("\\"):
             cleaned = cleaned[1:]
-        if cleaned in ("bank", "banks"):
-            if is_bank_balance_sms(text) or BANK_HINT.search(text) or "bank" in lower:
-                continue
-            return False
         if "/" in cleaned:
             parts = [p.strip() for p in cleaned.split("/") if p.strip()]
             if not any(p in lower for p in parts):
@@ -239,13 +199,11 @@ def wants_bank_filter(keywords: list[str]) -> bool:
     return "bank" in blob or "avl" in blob or "bal" in blob
 
 
-def within_days(message_at: datetime | None, days: int | None, *, body: str | None = None) -> bool:
+def within_days(message_at: datetime | None, days: int | None) -> bool:
     if days is None:
         return True
-    from panel_search_bot.sms_parser import effective_message_at
-
-    ts = effective_message_at(message_at, body or "")
-    if ts is None:
-        return False
+    # Panel cache / Firebase rows often have no timestamp — treat as eligible (Astik-style).
+    if message_at is None:
+        return True
     cutoff = datetime.utcnow() - timedelta(days=days)
-    return ts >= cutoff
+    return message_at >= cutoff

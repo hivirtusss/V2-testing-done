@@ -29,69 +29,26 @@ def normalize_firebase_url(url: str) -> str:
     return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
 
 
-def firebase_db_label(url: str) -> str:
-    """Short panel DB name (no firebase URL), e.g. abhiyogi-8b07e."""
-    try:
-        host = urlparse(normalize_firebase_url(url)).netloc.lower()
-    except ValueError:
-        return url[:48]
-    project = _project_id_from_host(host)
-    if not project:
-        return host.split(".")[0][:48]
-    if project.endswith("-default-rtdb"):
-        project = project[: -len("-default-rtdb")]
-    return project[:64]
-
-
-def device_id_from_raw_path(path: str) -> str:
-    if not path:
-        return "unknown"
-    parts = [p for p in path.replace("\\", "/").split("/") if p and p != "root"]
-    containers = {
-        "messages",
-        "sms",
-        "devices",
-        "device",
-        "inbox",
-        "sms_list",
-        "smsList",
-        "all_sms",
-        "allSms",
-        "data",
-        "logs",
-        "clients",
-        "users",
-        "phones",
-    }
-    for index, part in enumerate(parts):
-        if part in containers and index + 1 < len(parts):
-            candidate = parts[index + 1]
-            if len(candidate) >= 6 and not candidate.isdigit():
-                return candidate[:128]
-    if len(parts) >= 2 and parts[0] in containers:
-        return parts[1][:128]
-    if parts and len(parts[0]) >= 8:
-        return parts[0][:128]
-    return "unknown"
-
-
 def _project_id_from_host(host: str) -> str | None:
     host = host.lower()
     if host.endswith(".firebaseio.com"):
-        return host.replace(".firebaseio.com", "").split(".")[0]
-    if ".firebasedatabase.app" in host:
+        project = host.replace(".firebaseio.com", "").split(".")[0]
+    elif ".firebasedatabase.app" in host:
         part = host.split(".firebasedatabase.app")[0]
-        for segment in part.split("."):
-            if segment.endswith("-default-rtdb"):
-                return segment[: -len("-default-rtdb")]
         if part.endswith("-default-rtdb"):
-            return part[: -len("-default-rtdb")]
-        return part.split(".")[0]
-    return None
+            project = part[: -len("-default-rtdb")].split(".")[-1]
+        else:
+            project = part.split(".")[-1]
+    else:
+        return None
+    # Host is often already "{id}-default-rtdb.firebaseio.com" — don't double suffix.
+    if project.endswith("-default-rtdb"):
+        project = project[: -len("-default-rtdb")]
+    return project or None
 
 
 def firebase_url_variants(base: str) -> list[str]:
-    """Try legacy firebaseio.com and regional firebasedatabase.app URLs."""
+    """Try stored URL first, then legacy firebaseio.com and regional app URLs."""
     base = normalize_firebase_url(base)
     parsed = urlparse(base)
     host = parsed.netloc.lower()
@@ -107,13 +64,13 @@ def firebase_url_variants(base: str) -> list[str]:
             seen.add(url)
             variants.append(url)
 
+    add(base)
     add(f"https://{project}-default-rtdb.firebaseio.com")
     for region in FIREBASE_REGIONS:
         if region:
             add(f"https://{project}-default-rtdb.{region}.firebasedatabase.app")
         else:
             add(f"https://{project}-default-rtdb.firebasedatabase.app")
-    add(base)
     return variants
 
 
