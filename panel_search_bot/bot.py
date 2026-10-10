@@ -801,7 +801,7 @@ def main() -> None:
             try:
                 await application.bot.send_message(
                     chat_id=int(chat_id),
-                    text="🟢 Panel Search bot online (VPS)",
+                    text="🟢 Panel Search bot online",
                 )
             except Exception as exc:
                 print(f"Notify chat failed: {exc}")

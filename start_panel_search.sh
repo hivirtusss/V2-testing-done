@@ -33,15 +33,22 @@ if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
   exit 0
 fi
 
-VENV_PY="$ROOT_DIR/.venv/bin/python3"
-if [ ! -x "$VENV_PY" ]; then
-  echo "📦 Creating .venv (Mac/Homebrew safe)..."
-  python3 -m venv "$ROOT_DIR/.venv"
-fi
 REQ="$ROOT_DIR/requirements-panel-search.txt"
 [ -f "$REQ" ] || REQ="$ROOT_DIR/requirements.txt"
-"$ROOT_DIR/.venv/bin/pip" install -r "$REQ" -q
-nohup "$VENV_PY" -m panel_search_bot.run_bot >> "$LOG_FILE" 2>&1 &
+pip3 install -r "$REQ" -q 2>/dev/null || python3 -m pip install -r "$REQ" -q
+
+RUN_PY="python3"
+if [ -x "$ROOT_DIR/.venv/bin/python3" ] && "$ROOT_DIR/.venv/bin/python3" -c "import telegram" 2>/dev/null; then
+  RUN_PY="$ROOT_DIR/.venv/bin/python3"
+fi
+
+if [ -n "${PANEL_SEARCH_BOT_TOKEN:-}" ]; then
+  curl -fsS "https://api.telegram.org/bot${PANEL_SEARCH_BOT_TOKEN}/deleteWebhook?drop_pending_updates=true" >/dev/null 2>&1 || true
+  curl -fsS -X POST "https://api.telegram.org/bot${PANEL_SEARCH_BOT_TOKEN}/close" >/dev/null 2>&1 || true
+  sleep 1
+fi
+
+nohup "$RUN_PY" -m panel_search_bot.run_bot >> "$LOG_FILE" 2>&1 &
 echo $! > "$PID_FILE"
 echo "✅ Panel Search bot started PID $(cat "$PID_FILE")"
 echo "📋 Logs: $LOG_FILE"
