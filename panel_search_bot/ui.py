@@ -23,9 +23,9 @@ def sort_label_long(sort: str) -> str:
 
 def pin_label(pin: str) -> str:
     return {
-        "with": "🔑 PIN: with",
-        "without": "🚫 PIN: without",
-        "both": "📌 PIN: any",
+        "with": "🔑 With PIN only",
+        "without": "🚫 Without PIN only",
+        "both": "🔄 Both (mix)",
     }.get(pin, pin)
 
 
@@ -57,10 +57,10 @@ def confirm_panel_text(flow: dict) -> str:
         f"│ Balance: {sort_label(sort)}\n"
         f"│ Days: {days_label(days)}\n"
         "└────────────────────────────\n\n"
-        f"Matlab: {kw} wali SMS dhoondni hai — "
-        f"{mode_label(mode)} devices pe — {pin_label(pin)} — "
-        f"balance {sort_label(sort)} — {days_label(days)} ki SMS!\n\n"
-        "✅ Are you sure?"
+        f"Matlab: {kw} wali **bank SMS** (credit/debit/avl/sent/received) — "
+        f"spam/OTP/FASTag skip.\n"
+        f"{mode_label(mode)} | {pin_label(pin)} | {sort_label(sort)} | {days_label(days)}\n\n"
+        "✅ Start search?"
     )
 
 

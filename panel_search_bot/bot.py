@@ -34,6 +34,7 @@ from panel_search_bot.services import (
     list_search_urls,
 )
 from panel_search_bot.ui import (
+    confirm_panel_text,
     days_label,
     mode_label,
     pin_label,
@@ -349,12 +350,21 @@ def _days_keyboard() -> InlineKeyboardMarkup:
 def _pin_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
+            [InlineKeyboardButton("🔄 Both (with + without mix)", callback_data="srch:pin:both")],
             [
-                InlineKeyboardButton("🔑 With PIN", callback_data="srch:pin:with"),
-                InlineKeyboardButton("🚫 Without PIN", callback_data="srch:pin:without"),
+                InlineKeyboardButton("🔑 With PIN only", callback_data="srch:pin:with"),
+                InlineKeyboardButton("🚫 Without PIN only", callback_data="srch:pin:without"),
             ],
-            [InlineKeyboardButton("📌 All PIN", callback_data="srch:pin:both")],
             [InlineKeyboardButton("« Back", callback_data="srch:step:days")],
+        ]
+    )
+
+
+def _confirm_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("▶ Start Search", callback_data="srch:run:go")],
+            [InlineKeyboardButton("« Back (PIN)", callback_data="srch:step:pin")],
         ]
     )
 
@@ -448,7 +458,10 @@ async def _wizard_edit_pin(context, flow: dict, *, query=None) -> None:
         f"📌 Keywords: {_keywords_line(flow)}\n"
         f"Mode: {mode_label(flow.get('mode', 'online'))} | Sort: {sort_label(flow.get('balance_sort', 'high'))} | "
         f"{days_label(flow.get('days'))}\n\n"
-        "Select PIN filter:",
+        "UPI PIN filter (device mix):\n"
+        "• Both = with + without PIN dono\n"
+        "• With = sirf PIN wali SMS\n"
+        "• Without = bina PIN wale",
         _pin_keyboard(),
         query=query,
     )
@@ -534,6 +547,9 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     elif kind == "step" and value == "days":
         flow.pop("step", None)
         await _wizard_edit_days(context, flow, query=query)
+    elif kind == "step" and value == "pin":
+        flow.pop("step", None)
+        await _wizard_edit_pin(context, flow, query=query)
     elif kind == "step" and value == "back":
         flow.pop("step", None)
         await _wizard_edit_pin(context, flow, query=query)
@@ -554,14 +570,18 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if flow.get("step") == "custom":
             await query.edit_message_text(_custom_panel_text(flow), reply_markup=_custom_keyboard(flow))
         else:
+            flow["wizard"] = "confirm"
             await query.edit_message_text(
-                f"⚡ Search start ho rahi hai…\n📌 {_keywords_line(flow)}",
-                reply_markup=None,
+                confirm_panel_text(flow),
+                reply_markup=_confirm_keyboard(),
             )
-            await _execute_search(query.message, context, flow)
     elif kind == "run":
         flow.pop("step", None)
-        await query.edit_message_text("⚡ Search start ho rahi hai…")
+        flow.pop("wizard", None)
+        await query.edit_message_text(
+            f"⚡ Search start ho rahi hai…\n📌 {_keywords_line(flow)}",
+            reply_markup=None,
+        )
         await _execute_search(query.message, context, flow)
 
 

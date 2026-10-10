@@ -36,7 +36,19 @@ SPAM_URL = re.compile(r"\b(?:bit\.ly|tinyurl|cutt\.ly|t\.me/|gg\.ly|rb\.gy|short
 SPAM_PHRASE = re.compile(
     r"(?:dear staffn|staffn bank|cibil a/c|bank detail rcvd|st\.?\s*columbus|uscsnp|"
     r"gaming wallet|juegos|click to view|click now|loan approved|personal loan offer|"
-    r"win+\s*rs|lottery|free recharge|bank name cibil|staffn bank name)",
+    r"win+\s*rs|lottery|free recharge|bank name cibil|staffn bank name|"
+    r"kyc pending|update kyc|click here|limited period|pre-?approved loan|"
+    r"credit card offer|apply now|cashback offer|survey|congratulations you won|"
+    r"whatsapp group|telegram channel|job offer|work from home)",
+    re.I,
+)
+OTP_NO_TXN = re.compile(
+    r"\b(?:otp|one[\s-]?time\s+password|verification code)\b",
+    re.I,
+)
+PIN_SETUP_ONLY = re.compile(
+    r"\b(?:pin\s*set|set\s+(?:your\s+)?(?:upi\s+)?pin|pin\s*generated|create\s+upi\s+pin|"
+    r"register\s+upi|upi\s*registration)\b",
     re.I,
 )
 SPAM_SENDER = re.compile(r"(?:uscsnp|ucsn|staffn|columbus|promo|offer|loan|win)", re.I)
@@ -47,8 +59,9 @@ FASTAG_HINT = re.compile(
     re.I,
 )
 REAL_BANK_TXN = re.compile(
-    r"\b(?:credited|debited|deposited|withdrawn|received|sent|paid|transfer|transferred|txn|"
-    r"transaction|upi|neft|imps|rtgs|ecs|nach|emi|autopay|deducted|refund)\b",
+    r"\b(?:credited|debited|deposited|withdrawn|received|sent|send|paid|pay|transfer|transferred|txn|"
+    r"transaction|upi|neft|imps|rtgs|ecs|nach|emi|autopay|deducted|refund|purchase|spent|"
+    r"payment successful|money sent|amt sent)\b",
     re.I,
 )
 DR_CR_AC = re.compile(
@@ -154,8 +167,51 @@ def is_fastag_sms(text: str, sender: str = "") -> bool:
     return bool(FASTAG_HINT.search(f"{sender} {text}"))
 
 
+def is_otp_only_sms(text: str, sender: str = "") -> bool:
+    blob = f"{sender} {text}"
+    if not OTP_NO_TXN.search(blob):
+        return False
+    if REAL_BANK_TXN.search(blob) or REAL_BANK_BAL.search(blob) or DR_CR_AC.search(blob):
+        return False
+    if parse_balance(text) is not None:
+        return False
+    return True
+
+
+def _has_money_movement(text: str, sender: str = "") -> bool:
+    blob = f"{sender} {text}"
+    if parse_balance(text) is not None:
+        return True
+    if REAL_BANK_BAL.search(blob) or DR_CR_AC.search(blob):
+        return True
+    if re.search(
+        r"\b(?:credited|debited|received|sent|send|paid|withdrawn|deposited|refund|purchase|"
+        r"deducted|transfer(?:red)?|neft|imps|rtgs)\b",
+        blob,
+        re.I,
+    ):
+        return True
+    if re.search(r"\bupi\b", blob, re.I) and MONEY_AMOUNT.search(text):
+        return True
+    return False
+
+
+def is_pin_setup_only_sms(text: str, sender: str = "") -> bool:
+    """UPI/PIN setup SMS without credit/debit/balance — not a bank txn SMS."""
+    blob = f"{sender} {text}"
+    if not message_has_pin(text) and not PIN_SETUP_ONLY.search(blob):
+        return False
+    if _has_money_movement(text, sender):
+        return False
+    return True
+
+
 def is_junk_sms(text: str, sender: str = "") -> bool:
-    return is_spam_sms(text, sender) or is_fastag_sms(text, sender)
+    if is_spam_sms(text, sender) or is_fastag_sms(text, sender):
+        return True
+    if is_otp_only_sms(text, sender):
+        return True
+    return False
 
 
 def is_bank_balance_sms(text: str, sender: str = "") -> bool:
@@ -168,7 +224,9 @@ def is_real_bank_sms(text: str, sender: str = "") -> bool:
 
 def is_bank_transaction_sms(text: str, sender: str = "") -> bool:
     """Bank SMS: credit/debit/received/sent/UPI/balance — spam excluded."""
-    if is_spam_sms(text, sender):
+    if is_junk_sms(text, sender):
+        return False
+    if is_pin_setup_only_sms(text, sender):
         return False
     blob = f"{sender} {text}"
     lower = text.lower()

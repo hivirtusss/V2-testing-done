@@ -23,7 +23,13 @@ from panel_search_bot.services import (
     within_days,
 )
 from panel_search_bot.firebase_urls import device_id_from_raw_path, firebase_db_label
-from panel_search_bot.sms_parser import effective_message_at, is_bank_balance_sms, is_junk_sms, parse_balance
+from panel_search_bot.sms_parser import (
+    effective_message_at,
+    is_bank_balance_sms,
+    is_junk_sms,
+    message_has_pin,
+    parse_balance,
+)
 
 
 @dataclass
@@ -87,7 +93,7 @@ def _accumulate_live_sms(url: str, sms_list: list[dict], params: SearchParams, p
             body,
             item.get("message_at"),
             item.get("balance"),
-            bool(item.get("has_pin", False)),
+            bool(item.get("has_pin", False)) or message_has_pin(body),
             params,
         ):
             continue
@@ -161,7 +167,8 @@ def _filter_row(
     if wants_bank_filter(params.keywords):
         if not is_bank_balance_sms(body, sender):
             return False
-    if not _pin_ok(has_pin, params.pin_filter):
+    pin_on_sms = has_pin or message_has_pin(body)
+    if not _pin_ok(pin_on_sms, params.pin_filter):
         return False
     msg_when = effective_message_at(message_at, body)
     if not within_days(msg_when, params.days):
