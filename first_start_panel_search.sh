@@ -36,8 +36,6 @@ if [ ! -f panel_search.db ] && [ ! -f "${PANEL_SEARCH_DATABASE_URL#sqlite:///}" 
   echo "⚠️  panel_search.db nahi mili — empty DB se start (724 Firebase baad mein /fb se)."
 fi
 
-python3 -m pip install -r requirements.txt -q
-
 if [ -x "$ROOT_DIR/stop_panel_search.sh" ]; then
   bash "$ROOT_DIR/stop_panel_search.sh" 2>/dev/null || true
 fi

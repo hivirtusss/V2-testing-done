@@ -11,9 +11,6 @@ git fetch origin "$BRANCH"
 git checkout "$BRANCH"
 git pull origin "$BRANCH"
 
-echo "📦 Dependencies (quick)..."
-python3 -m pip install -r requirements.txt -q
-
 if [ -x "$ROOT_DIR/stop_panel_search.sh" ]; then
   bash "$ROOT_DIR/stop_panel_search.sh" || true
 fi
