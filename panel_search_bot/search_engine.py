@@ -178,6 +178,8 @@ def _apply_live_refresh(
     result: SearchResult,
 ) -> set[int]:
     """Fetch se cache update + kaunse DB abhi online hain."""
+    all_ids = [r.id for r in firebase_rows]
+    cached_before = firebase_ids_with_cache(db, all_ids)
     live_online: set[int] = set()
     for url, (online, sms_list, _resolved) in live.items():
         row = url_to_row.get(url)
@@ -188,8 +190,11 @@ def _apply_live_refresh(
             result.dbs_online += 1
         if has_data:
             upsert_cached_sms(db, row.id, row.url_normalized, sms_list)
-        update_firebase_status(db, row.id, online or has_data)
-        if online or has_data:
+            cached_before.add(row.id)
+        # Empty fetch pe cache mat udao — offline tabhi jab na data na purani cache
+        still_online = has_data or online or row.id in cached_before
+        update_firebase_status(db, row.id, still_online)
+        if still_online:
             live_online.add(row.id)
     return live_online
 
@@ -197,33 +202,40 @@ def _apply_live_refresh(
 def _db_ids_for_mode(
     db: Session,
     firebase_rows: list[FirebaseDb],
+    url_to_row: dict[str, FirebaseDb],
+    live: dict[str, tuple[bool, list[dict], str]],
     *,
     mode: str,
     live_online: set[int],
 ) -> list[int]:
-    """Online = sirf online DBs ki cache; offline = dead/offline; both = sab jahan cache hai."""
+    """Online = is scan ki DBs jahan cache; offline = dead; both = poori cache."""
     all_ids = [r.id for r in firebase_rows]
     if mode == "both":
         return list(firebase_ids_with_cache(db, all_ids))
 
+    if mode == "online":
+        scanned_ids = [url_to_row[u].id for u in live if u in url_to_row]
+        if scanned_ids:
+            return list(firebase_ids_with_cache(db, scanned_ids))
+        if live_online:
+            return list(firebase_ids_with_cache(db, list(live_online)))
+        flagged = [
+            fb_id
+            for fb_id, is_on in db.query(FirebaseDb.id, FirebaseDb.is_online)
+            .filter(FirebaseDb.id.in_(all_ids))
+            .all()
+            if is_on is not False
+        ]
+        return list(firebase_ids_with_cache(db, flagged))
+
     status_rows = (
         db.query(FirebaseDb.id, FirebaseDb.is_online).filter(FirebaseDb.id.in_(all_ids)).all()
     )
-    online_ids: list[int] = []
     offline_ids: list[int] = []
     for fb_id, is_online in status_rows:
-        if is_online is True or fb_id in live_online:
-            online_ids.append(fb_id)
-        elif is_online is False:
+        if is_online is False and fb_id not in live_online:
             offline_ids.append(fb_id)
-
-    if mode == "online":
-        if not online_ids and live_online:
-            online_ids = list(live_online)
-        return online_ids
-
-    # offline — sirf explicitly offline (unknown/null skip unless live ne online kiya)
-    return offline_ids
+    return list(firebase_ids_with_cache(db, offline_ids))
 
 
 def _matches_from_cache(
@@ -275,7 +287,9 @@ def _finalize_search(
         if live:
             live_online = _apply_live_refresh(db, firebase_rows, live, url_to_row, result)
 
-        search_ids = _db_ids_for_mode(db, firebase_rows, mode=params.mode, live_online=live_online)
+        search_ids = _db_ids_for_mode(
+            db, firebase_rows, url_to_row, live, mode=params.mode, live_online=live_online
+        )
         matches = _matches_from_cache(db, search_ids, params)
 
         if params.mode == "both":
