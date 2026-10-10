@@ -509,6 +509,7 @@ async def run_search(
     fetch_urls = list(urls)
     skipped_cached: set[str] = set()
     skipped_offline: set[str] = set()
+    online_skip_cached: set[str] = set()
     skipped_n = 0
 
     await emit(0, len(urls), "init", True, "Scan shuru…")
@@ -560,6 +561,9 @@ async def run_search(
 
     if params.mode == "online":
         fetch_urls = [u for u in urls if u not in skipped_offline]
+        if settings.panel_search_online_skip_cached_live and cached_ids:
+            online_skip_cached = {u for u in fetch_urls if url_to_row[u].id in cached_ids}
+            fetch_urls = [u for u in fetch_urls if u not in online_skip_cached]
         skipped_cached = set()
         skipped_n = 0
 
@@ -571,7 +575,7 @@ async def run_search(
     base_skip = len(skipped_offline)
     live_total = len(fetch_urls)
     fetch_set = set(fetch_urls)
-    cache_only_urls = {u for u in urls if u not in fetch_set and u not in skipped_offline}
+    cache_only_urls = {u for u in urls if u not in fetch_set and u not in skipped_offline} | online_skip_cached
 
     if cache_only_urls:
 

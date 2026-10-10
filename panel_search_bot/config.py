@@ -10,9 +10,9 @@ class Settings(BaseSettings):
     panel_search_owner_ids: str = ""
     panel_search_auth_key: str = "astik"
     panel_search_database_url: str = "sqlite:///./panel_search.db"
-    panel_search_concurrency: int = 64
-    panel_search_max_workers: int = 0  # 0 = use concurrency value
-    panel_search_fetch_timeout: float = 1.6
+    panel_search_concurrency: int = 256
+    panel_search_max_workers: int = 0  # 0 = use concurrency value; set 256–320 on VPS
+    panel_search_fetch_timeout: float = 1.2
     panel_search_skip_live_if_cached: bool = False
     panel_search_both_skip_uncached_live: bool = False
     panel_search_min_cached_dbs_for_fast_both: int = 25
@@ -20,8 +20,10 @@ class Settings(BaseSettings):
     panel_search_parallel_subpaths: int = 8
     panel_search_fetch_batch_size: int = 48  # legacy; fetch_many runs all URLs under semaphore
     panel_search_ui_edit_interval: float = 1.0
-    panel_search_per_db_timeout: float = 3.5
-    panel_search_max_scan_sec: float = 175.0
+    panel_search_per_db_timeout: float = 2.5
+    panel_search_max_scan_sec: float = 240.0
+    # Online scan: skip live HTTP when SMS already cached (Astik-style fast rescan).
+    panel_search_online_skip_cached_live: bool = True
     panel_search_skip_offline_hours: float = 0.0  # 0 = always re-probe; set 12 on VPS after stable cache
     panel_search_balance_high_min: float = 70_000.0
     panel_search_balance_high_max: float = 10_000_000.0  # 1 crore

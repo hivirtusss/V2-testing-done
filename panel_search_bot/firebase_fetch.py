@@ -149,7 +149,7 @@ async def quick_probe_firebase(
 async def fetch_sms_from_firebase(client: httpx.AsyncClient, base_url: str) -> tuple[bool, list[dict], str]:
     settings = get_settings()
     req_timeout = httpx.Timeout(settings.panel_search_fetch_timeout, connect=1.0)
-    wall = min(settings.panel_search_per_db_timeout, 4.0)
+    wall = min(settings.panel_search_per_db_timeout, 3.0)
 
     async def _inner() -> tuple[bool, list[dict], str]:
         status, online, working_url = await quick_probe_firebase(client, base_url)
@@ -159,7 +159,7 @@ async def fetch_sms_from_firebase(client: httpx.AsyncClient, base_url: str) -> t
             return False, [], working_url
 
         collected: list[dict] = []
-        subpaths = FAST_SUBPATHS[: max(1, min(3, settings.panel_search_parallel_subpaths))]
+        subpaths = FAST_SUBPATHS[: max(1, min(len(FAST_SUBPATHS), settings.panel_search_parallel_subpaths))]
 
         results = await asyncio.gather(
             *[_fetch_json(client, _json_url(working_url, sub), req_timeout) for sub in subpaths]
@@ -201,14 +201,15 @@ async def fetch_many(
     deadline: float | None = None,
 ) -> dict[str, tuple[bool, list[dict], str]]:
     settings = get_settings()
-    workers = min(settings.worker_count, 384)
+    workers = min(max(settings.worker_count, 64), 320)
     sem = asyncio.Semaphore(workers)
     results: dict[str, tuple[bool, list[dict], str]] = {}
     total = len(urls)
     done_count = 0
     progress_lock = asyncio.Lock()
-    limits = httpx.Limits(max_connections=min(workers + 32, 512), max_keepalive_connections=workers)
-    timeout = httpx.Timeout(settings.panel_search_fetch_timeout, connect=1.0)
+    conn_cap = min(workers + 64, 1024)
+    limits = httpx.Limits(max_connections=conn_cap, max_keepalive_connections=workers)
+    timeout = httpx.Timeout(settings.panel_search_fetch_timeout, connect=0.8)
     if deadline is None:
         deadline = time.monotonic() + settings.panel_search_max_scan_sec
 
