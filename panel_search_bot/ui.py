@@ -31,7 +31,7 @@ def pin_label(pin: str) -> str:
 
 def days_label(days: int | None) -> str:
     if days is None:
-        return "🌐 ∞ ALL TIME"
+        return "🌐 ∞ All history"
     return f"📅 Last {days} days"
 
 

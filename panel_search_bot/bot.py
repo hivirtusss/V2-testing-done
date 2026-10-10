@@ -266,7 +266,7 @@ async def cmd_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             "keywords": keywords,
             "mode": mode,
             "balance_sort": "high",
-            "days": None,
+            "days": 7,
             "pin_filter": "both",
             "wizard": "sort",
         }
@@ -523,7 +523,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
     flow = context.user_data.setdefault("search_flow", {})
     flow.setdefault("balance_sort", "high")
-    flow.setdefault("days", None)
+    flow.setdefault("days", 7)
     flow.setdefault("pin_filter", "both")
     _, kind, value = query.data.split(":", 2)
 

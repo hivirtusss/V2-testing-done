@@ -29,6 +29,7 @@ from panel_search_bot.sms_parser import (
     is_junk_sms,
     message_has_pin,
     parse_balance,
+    transaction_date_for_filter,
 )
 
 
@@ -170,7 +171,8 @@ def _filter_row(
     pin_on_sms = has_pin or message_has_pin(body)
     if not _pin_ok(pin_on_sms, params.pin_filter):
         return False
-    msg_when = effective_message_at(message_at, body)
+    days_active = params.days is not None
+    msg_when = transaction_date_for_filter(message_at, body, days_filter_active=days_active)
     if not within_days(msg_when, params.days):
         return False
     bal = balance

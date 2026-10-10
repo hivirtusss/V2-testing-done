@@ -83,11 +83,29 @@ KNOWN_BANK_SENDER = re.compile(
 )
 
 BODY_DATE_DMY = re.compile(
-    r"\b(?:on\s+)?(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})(?:\s+\d{1,2}:\d{2})?",
+    r"\b(?:on|dt\.?|dated?|as on)?\s*(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})(?:\s+\d{1,2}:\d{2})?",
     re.I,
 )
 BODY_DATE_YMD = re.compile(r"\b(\d{4})[/-](\d{1,2})[/-](\d{1,2})\b")
 BODY_DATE_YMD_SPACE = re.compile(r"Date:\s*(\d{4})\s+(\d{1,2})/(\d{1,2})", re.I)
+BODY_DATE_DMONY = re.compile(
+    r"\b(\d{1,2})[-\s](Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[-\s](\d{2,4})\b",
+    re.I,
+)
+_MONTH = {
+    "jan": 1,
+    "feb": 2,
+    "mar": 3,
+    "apr": 4,
+    "may": 5,
+    "jun": 6,
+    "jul": 7,
+    "aug": 8,
+    "sep": 9,
+    "oct": 10,
+    "nov": 11,
+    "dec": 12,
+}
 
 TS_FIELDS = (
     "timestamp",
@@ -282,6 +300,16 @@ def parse_date_from_sms_body(text: str) -> datetime | None:
         except ValueError:
             continue
 
+    for match in BODY_DATE_DMONY.finditer(text):
+        day = int(match.group(1))
+        month = _MONTH.get(match.group(2).lower()[:3], 0)
+        year = _normalize_year(int(match.group(3)))
+        if month:
+            try:
+                candidates.append(datetime(year, month, day))
+            except ValueError:
+                continue
+
     if not candidates:
         return None
 
@@ -289,17 +317,31 @@ def parse_date_from_sms_body(text: str) -> datetime | None:
     valid = [dt for dt in candidates if 2015 <= dt.year <= now.year + 1 and dt <= now + timedelta(days=1)]
     if not valid:
         return None
+    # Prefer the txn date closest to today (avoid random old footer dates when multiple present).
     return max(valid)
 
 
 def effective_message_at(message_at: datetime | None, body: str) -> datetime | None:
+    """Display/sort date: SMS body txn date first; never inflate with Firebase sync time."""
     body_dt = parse_date_from_sms_body(body)
-    if message_at is None:
+    if body_dt is not None:
         return body_dt
-    if body_dt is None:
-        return message_at
-    # Body date often correct; cache timestamp kabhi purana/wrong hota hai (7-day filter fix).
-    return max(message_at, body_dt)
+    return message_at
+
+
+def transaction_date_for_filter(
+    message_at: datetime | None,
+    body: str,
+    *,
+    days_filter_active: bool,
+) -> datetime | None:
+    """Day filter: only SMS with a parseable txn date in body (sync time is unreliable)."""
+    body_dt = parse_date_from_sms_body(body)
+    if body_dt is not None:
+        return body_dt
+    if days_filter_active:
+        return None
+    return message_at
 
 
 def parse_timestamp(value) -> datetime | None:
