@@ -671,6 +671,12 @@ async def _execute_search(msg, context: ContextTypes.DEFAULT_TYPE, flow: dict) -
 
     summary = search_summary(params, len(result.matches), result.elapsed_sec, size_kb)
     hint = ""
+    if params.mode == "online" and len(result.matches) < 100:
+        hint = (
+            "\n\nℹ️ **Mode Online** = sirf abhi Firebase se aayi SMS (poori cache nahi). "
+            "Zyada devices ke liye search flow mein **🔄 Both** (mode) select karo — "
+            "🔄 Both PIN filter nahi hai, **📌 PIN: any** alag cheez hai."
+        )
     if not result.matches and params.mode in ("online", "both"):
         hint = (
             "\n\n💡 0 matches: VPS pe purani panel_search.db upload ki? "

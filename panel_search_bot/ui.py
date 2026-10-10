@@ -22,7 +22,11 @@ def sort_label_long(sort: str) -> str:
 
 
 def pin_label(pin: str) -> str:
-    return {"with": "🔑 With PIN", "without": "🚫 Without PIN", "both": "🔄 Both"}.get(pin, pin)
+    return {
+        "with": "🔑 PIN: with",
+        "without": "🚫 PIN: without",
+        "both": "📌 PIN: any",
+    }.get(pin, pin)
 
 
 def days_label(days: int | None) -> str:
