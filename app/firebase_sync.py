@@ -147,9 +147,18 @@ async def register_device_on_firebase(
         except json.JSONDecodeError:
             meta = {}
 
+    sims = meta.get("sims") if isinstance(meta.get("sims"), list) else []
+    sim1 = sims[0].get("number") if len(sims) > 0 and isinstance(sims[0], dict) else None
+    sim2 = sims[1].get("number") if len(sims) > 1 and isinstance(sims[1], dict) else None
+    if sim1 in (None, "N/A", "Unknown"):
+        sim1 = device.phone_number
     payload = {
         "name": device.name,
-        "phone": device.phone_number,
+        "phone": sim1 or device.phone_number,
+        "phone_number": sim1 or device.phone_number,
+        "sim1": sim1,
+        "sim2": sim2 if sim2 not in (None, "N/A", "Unknown") else None,
+        "phone2": sim2 if sim2 not in (None, "N/A", "Unknown") else None,
         "battery": meta.get("battery", "98"),
         "online": True,
         "sim_index": profile.selected_sim_index or 0,

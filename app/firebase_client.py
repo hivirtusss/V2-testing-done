@@ -81,6 +81,131 @@ def _extract_devices(data: dict | list, prefix: str = "") -> list[dict]:
     return found
 
 
+def _clean_sim_value(raw: object) -> str | None:
+    if raw is None:
+        return None
+    if isinstance(raw, dict):
+        for key in ("number", "phone", "phoneNumber", "mobile", "msisdn"):
+            if key in raw:
+                return _clean_sim_value(raw.get(key))
+        return None
+    text = str(raw).strip()
+    if not text or text.lower() in {"unknown", "n/a", "na", "null", "none", "undefined"}:
+        return None
+    return text
+
+
+def build_sim_list_from_record(value: dict, fallback_phone: str | None = None) -> list[dict]:
+    """Parse SIM 1 / SIM 2 numbers from Firebase / APK device JSON."""
+    if not isinstance(value, dict):
+        value = {}
+
+    skip_keys = frozenset({"action", "sendSms", "send_sms", "monitoring"})
+    record = {k: v for k, v in value.items() if k not in skip_keys}
+
+    sims = record.get("sims") or record.get("sim_list") or record.get("simList")
+    if isinstance(sims, list) and sims:
+        parsed: list[dict] = []
+        for index, item in enumerate(sims[:2]):
+            if not isinstance(item, dict):
+                continue
+            number = _clean_sim_value(item.get("number") or item.get("phone") or item.get("phoneNumber"))
+            parsed.append(
+                {
+                    "slot": int(item.get("slot") or index + 1),
+                    "index": int(item.get("index") if item.get("index") is not None else index),
+                    "carrier": str(item.get("carrier") or item.get("operator") or f"SIM {index + 1}"),
+                    "number": number or "N/A",
+                }
+            )
+        if parsed and any(p.get("number") not in (None, "N/A") for p in parsed):
+            while len(parsed) < 2:
+                parsed.append(
+                    {"slot": len(parsed) + 1, "index": len(parsed), "carrier": f"SIM {len(parsed) + 1}", "number": "N/A"}
+                )
+            return parsed[:2]
+
+    sim1 = _clean_sim_value(
+        record.get("sim1")
+        or record.get("sim_1")
+        or record.get("simOne")
+        or record.get("sim1Number")
+        or record.get("sim1_number")
+        or record.get("phone1")
+        or record.get("phone_1")
+        or record.get("mobile1")
+        or record.get("mobile_1")
+        or record.get("line1Number")
+        or record.get("line1")
+        or record.get("phone")
+        or record.get("phone_number")
+        or record.get("phoneNumber")
+        or record.get("mobile")
+        or record.get("number")
+        or record.get("ownNumber")
+        or record.get("fromNumber")
+        or record.get("devicePhone")
+        or record.get("primaryPhone")
+    )
+    sim2 = _clean_sim_value(
+        record.get("sim2")
+        or record.get("sim_2")
+        or record.get("simTwo")
+        or record.get("sim2Number")
+        or record.get("sim2_number")
+        or record.get("phone2")
+        or record.get("phone_2")
+        or record.get("mobile2")
+        or record.get("mobile_2")
+        or record.get("line2Number")
+        or record.get("line2")
+        or record.get("secondNumber")
+        or record.get("secondaryPhone")
+    )
+
+    nested = record.get("sim") or record.get("dualSim") or record.get("simInfo")
+    if isinstance(nested, dict):
+        if not sim1:
+            sim1 = _clean_sim_value(
+                nested.get("sim1")
+                or nested.get("0")
+                or nested.get("slot1")
+                or nested.get("phone1")
+            )
+        if not sim2:
+            sim2 = _clean_sim_value(
+                nested.get("sim2")
+                or nested.get("1")
+                or nested.get("slot2")
+                or nested.get("phone2")
+            )
+
+    if not sim1 and fallback_phone:
+        sim1 = _clean_sim_value(fallback_phone)
+
+    return [
+        {"slot": 1, "index": 0, "carrier": "SIM 1", "number": sim1 or "N/A"},
+        {"slot": 2, "index": 1, "carrier": "SIM 2", "number": sim2 or "N/A"},
+    ]
+
+
+def fetch_merged_device_record(base_url: str, device_id: str) -> dict:
+    """Merge device node(s) from Firebase — SIM fields often live under devices/{id}."""
+    base = normalize_firebase_url(base_url)
+    merged: dict = {}
+    for path in (f"devices/{device_id}", f"device/{device_id}", f"clients/{device_id}"):
+        try:
+            chunk = _fetch_json(f"{base}/{path}.json")
+        except httpx.HTTPError:
+            continue
+        if isinstance(chunk, dict):
+            for key, val in chunk.items():
+                if key in ("action", "sendSms") and key in merged:
+                    continue
+                merged[key] = val
+    return merged
+
+
 def is_device_online(device: dict) -> bool:
     raw = device.get("raw") or {}
     online = raw.get("online")
@@ -107,20 +232,7 @@ def _build_device_record(key: str, value: dict, prefix: str) -> dict:
     )
     phone = value.get("phone") or value.get("phone_number") or value.get("mobile") or value.get("number")
     status = value.get("status") or value.get("online")
-    sims = value.get("sims") or value.get("sim_list")
-    if not sims and phone:
-        sims = [
-            {"slot": 1, "index": 0, "carrier": value.get("carrier1", "SIM 1"), "number": str(phone)},
-        ]
-        if value.get("phone2") or value.get("sim2"):
-            sims.append(
-                {
-                    "slot": 2,
-                    "index": 1,
-                    "carrier": value.get("carrier2", "SIM 2"),
-                    "number": str(value.get("phone2") or value.get("sim2")),
-                }
-            )
+    sims = build_sim_list_from_record(value, str(phone) if phone else None)
 
     return {
         "firebase_key": f"{prefix}{key}".strip("/"),

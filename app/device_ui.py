@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.database import Device, MonitorProfile
+from app.firebase_client import build_sim_list_from_record, fetch_merged_device_record
 
 STARTUP_TEST_SENDER = "BABY"
 STARTUP_TEST_MESSAGE = "Chacha Ji Pani Pila Do"
@@ -62,17 +63,51 @@ def get_device_meta(device: Device) -> dict:
         return {}
 
 
+def format_sim_number(number: str | None) -> str:
+    if not number or str(number).strip().lower() in {"unknown", "n/a", "na", ""}:
+        return "N/A"
+    text = str(number).strip()
+    if text.startswith("+"):
+        return text
+    digits = "".join(ch for ch in text if ch.isdigit())
+    if not digits:
+        return text
+    if len(digits) == 10:
+        return f"+91{digits}"
+    return f"+{digits}"
+
+
 def get_sim_list(device: Device) -> list[dict]:
     meta = get_device_meta(device)
-    sims = meta.get("sims")
-    if sims:
-        return sims
+    raw = meta.get("raw") if isinstance(meta.get("raw"), dict) else {}
+    merged = {**raw, **{k: v for k, v in meta.items() if k not in ("sims", "raw", "battery", "model")}}
 
-    primary = device.phone_number or "Unknown"
-    return [
-        {"slot": 1, "index": 0, "carrier": "SIM 1", "number": primary},
-        {"slot": 2, "index": 1, "carrier": "SIM 2", "number": meta.get("sim2", "N/A")},
-    ]
+    if device.firebase_source_url and device.name:
+        try:
+            live = fetch_merged_device_record(device.firebase_source_url, device.name)
+            if live:
+                merged = {**merged, **live}
+        except Exception:
+            pass
+
+    sims = meta.get("sims")
+    if sims and isinstance(sims, list):
+        has_number = any(
+            str(s.get("number", "")).strip().lower() not in {"unknown", "n/a", "na", ""} for s in sims
+        )
+        if has_number:
+            return [
+                {
+                    **s,
+                    "number": format_sim_number(str(s.get("number", ""))),
+                }
+                for s in sims[:2]
+            ]
+
+    built = build_sim_list_from_record(merged, device.phone_number)
+    for sim in built:
+        sim["number"] = format_sim_number(sim.get("number"))
+    return built
 
 
 def get_battery(device: Device) -> str:
@@ -93,9 +128,7 @@ def format_device_set_card(device: Device, selected_sim: int = 0) -> str:
     active = sims[selected_sim] if sims else {"slot": 1, "index": 0, "carrier": "SIM 1", "number": "Unknown"}
     device_short = short_device_id(device.name)
 
-    sim_lines = "\n".join(
-        f"SIM {sim['slot']}: {sim['carrier']} ({sim['number']})" for sim in sims
-    )
+    sim_lines = "\n".join(f"SIM {sim['slot']}: {sim['number']}" for sim in sims)
 
     return (
         "✅ <b>SUCCESS</b>\n\n"
@@ -113,9 +146,16 @@ def format_device_set_card(device: Device, selected_sim: int = 0) -> str:
 
 def device_set_keyboard(device: Device) -> InlineKeyboardMarkup:
     sims = get_sim_list(device)
+    def _btn_label(sim: dict) -> str:
+        num = sim.get("number") or "N/A"
+        if num in ("N/A", "Unknown"):
+            return f"📶 SIM {sim['slot']}: {num}"
+        short = num if len(num) <= 14 else f"{num[:6]}…{num[-4:]}"
+        return f"📶 SIM {sim['slot']}: {short}"
+
     sim_buttons = [
         InlineKeyboardButton(
-            f"📶 SIM {sim['slot']}: {sim['carrier']} ({sim['number'][:6]}...)",
+            _btn_label(sim),
             callback_data=f"sim:{device.id}:{sim['index']}",
         )
         for sim in sims[:2]

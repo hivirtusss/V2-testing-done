@@ -6,7 +6,13 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import Device, MonitorProfile, SMSMessage, get_or_create_device
-from app.firebase_client import fetch_firebase_devices, is_device_online, normalize_firebase_url
+from app.firebase_client import (
+    build_sim_list_from_record,
+    fetch_firebase_devices,
+    fetch_merged_device_record,
+    is_device_online,
+    normalize_firebase_url,
+)
 
 
 def normalize_phone(number: str) -> str:
@@ -250,6 +256,29 @@ def register_device(db: Session, name: str, api_key: str | None = None) -> Devic
     return device
 
 
+def persist_device_sims(device: Device, sim1: str | None = None, sim2: str | None = None) -> None:
+    meta = {}
+    if device.device_meta:
+        try:
+            meta = json.loads(device.device_meta)
+        except json.JSONDecodeError:
+            meta = {}
+    patch: dict = {}
+    if sim1:
+        patch["sim1"] = sim1
+        patch["phone"] = sim1
+    if sim2:
+        patch["sim2"] = sim2
+        patch["phone2"] = sim2
+    merged = {**meta, **patch}
+    raw = meta.get("raw") if isinstance(meta.get("raw"), dict) else {}
+    sims = build_sim_list_from_record({**raw, **merged}, device.phone_number)
+    meta["sims"] = sims
+    if sim1 and not device.phone_number:
+        device.phone_number = normalize_phone(sim1)
+    device.device_meta = json.dumps(meta)
+
+
 def save_sms(
     db: Session,
     sender: str,
@@ -257,10 +286,22 @@ def save_sms(
     device_name: str,
     received_at: datetime | None = None,
     phone_number: str | None = None,
+    sim1_number: str | None = None,
+    sim2_number: str | None = None,
+    sim_index: int | None = None,
 ) -> SMSMessage:
     device = touch_device(db, device_name)
     if phone_number:
         device.phone_number = normalize_phone(phone_number)
+        if sim_index in (0, 1):
+            if sim_index == 0:
+                sim1_number = sim1_number or phone_number
+            else:
+                sim2_number = sim2_number or phone_number
+        else:
+            sim1_number = sim1_number or phone_number
+    if sim1_number or sim2_number:
+        persist_device_sims(device, sim1=sim1_number, sim2=sim2_number)
     sms = SMSMessage(
         sender=sender,
         message=message,
@@ -316,19 +357,23 @@ async def sync_device_from_firebase(db: Session, device: Device) -> Device:
             remote = item
             break
 
+    merged_raw: dict = dict(remote.get("raw") or {})
+    if device.firebase_source_url and device.name:
+        try:
+            merged_raw = {**merged_raw, **fetch_merged_device_record(device.firebase_source_url, device.name)}
+        except Exception:
+            pass
+
     if remote.get("phone_number"):
         device.phone_number = normalize_phone(remote["phone_number"])
 
+    sims = build_sim_list_from_record({**merged_raw, **remote}, device.phone_number)
     meta = {
-        "battery": remote.get("battery") or "98",
-        "model": remote.get("model") or "Unknown",
-        "sims": remote.get("sims") or [],
+        "battery": remote.get("battery") or merged_raw.get("battery") or "98",
+        "model": remote.get("model") or merged_raw.get("model") or "Unknown",
+        "sims": sims,
+        "raw": merged_raw,
     }
-    if not meta["sims"] and device.phone_number:
-        meta["sims"] = [
-            {"slot": 1, "index": 0, "carrier": "SIM 1", "number": device.phone_number},
-            {"slot": 2, "index": 1, "carrier": "SIM 2", "number": "N/A"},
-        ]
     device.device_meta = json.dumps(meta)
     device.last_seen = datetime.now(timezone.utc)
     device.is_active = True
@@ -349,18 +394,11 @@ async def show_device_by_id(
     if device.firebase_source_url:
         device = await sync_device_from_firebase(db, device)
     elif not device.device_meta:
+        sims = build_sim_list_from_record({}, device.phone_number)
         default_meta = {
             "battery": "98",
             "model": "Unknown",
-            "sims": [
-                {
-                    "slot": 1,
-                    "index": 0,
-                    "carrier": "SIM 1",
-                    "number": device.phone_number or "Unknown",
-                },
-                {"slot": 2, "index": 1, "carrier": "SIM 2", "number": "N/A"},
-            ],
+            "sims": sims,
         }
         device.device_meta = json.dumps(default_meta)
 

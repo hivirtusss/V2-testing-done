@@ -8,6 +8,9 @@ class SMSWebhookPayload(BaseModel):
     message: str = Field(..., description="SMS body text")
     device_name: str = Field(default="android", description="Device identifier")
     phone_number: str | None = Field(default=None, description="SIM number receiving SMS")
+    sim1_number: str | None = Field(default=None, description="SIM slot 1 own number")
+    sim2_number: str | None = Field(default=None, description="SIM slot 2 own number")
+    sim_index: int | None = Field(default=None, description="0 or 1 — which SIM received SMS")
     timestamp: datetime | None = Field(default=None, description="Optional SMS timestamp")
 
 

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import Device, OutboundSMS, SMSMessage, get_db, init_db
 from app.models import DeviceCreate, DeviceResponse, OutboundSMSResponse, SMSResponse, SMSWebhookPayload
-from app.services import device_status, list_devices_with_counts, register_device, save_sms
+from app.services import device_status, list_devices_with_counts, persist_device_sims, register_device, save_sms
 from app.telegram_bot import build_telegram_app, notify_new_sms
 
 logging.basicConfig(level=logging.INFO)
@@ -183,6 +183,23 @@ async def get_devices(
     ]
 
 
+@app.post("/api/device/sims")
+async def report_device_sims(
+    matched_device: Device | None = Depends(verify_api_key),
+    sim1: str | None = Query(default=None),
+    sim2: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    if not matched_device:
+        raise HTTPException(status_code=400, detail="Device API key required")
+    if not sim1 and not sim2:
+        raise HTTPException(status_code=400, detail="sim1 or sim2 required")
+    persist_device_sims(matched_device, sim1=sim1, sim2=sim2)
+    db.commit()
+    db.refresh(matched_device)
+    return {"ok": True, "device": matched_device.name}
+
+
 @app.post("/api/sms", response_model=SMSResponse)
 async def receive_sms(
     payload: SMSWebhookPayload,
@@ -200,6 +217,9 @@ async def receive_sms(
         device_name=device_name,
         received_at=payload.timestamp,
         phone_number=payload.phone_number,
+        sim1_number=payload.sim1_number,
+        sim2_number=payload.sim2_number,
+        sim_index=payload.sim_index,
     )
 
     try:
