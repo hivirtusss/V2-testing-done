@@ -219,7 +219,7 @@ async def fetch_many(
             if time.monotonic() >= deadline:
                 return
             async with sem:
-                if cancel_event and cancel_event.is_set() or time.monotonic() >= deadline:
+                if (cancel_event and cancel_event.is_set()) or time.monotonic() >= deadline:
                     return
                 online, sms_list, resolved = await fetch_sms_from_firebase(client, url)
             results[url] = (online, sms_list, resolved)

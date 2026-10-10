@@ -145,14 +145,16 @@ def _finalize_search(
     try:
         if params.mode in ("online", "both") and urls:
             for url, (online, sms_list, _resolved) in live.items():
-                if online:
-                    result.dbs_online += 1
                 row = url_to_row.get(url)
                 if not row:
                     continue
-                if online and sms_list:
+                has_data = bool(sms_list)
+                if online and has_data:
+                    result.dbs_online += 1
+                if has_data:
                     upsert_cached_sms(db, row.id, row.url_normalized, sms_list)
-                update_firebase_status(db, row.id, online and bool(sms_list))
+                # dead / empty / wrong URL → offline (next scan skip)
+                update_firebase_status(db, row.id, has_data)
                 for item in sms_list:
                     if _filter_row(
                         item.get("sender", ""),
@@ -290,12 +292,13 @@ async def run_search(
 
     # Cached DBs hold most SMS; skipping live is OK for both/offline (cache pass runs below).
     # For online-only + day filter, still skip live on cache — dates are often missing in cache anyway.
-    if settings.panel_search_skip_live_if_cached:
-        cached_ids = await asyncio.to_thread(_cached_ids)
-        if cached_ids:
-            fetch_urls = [u for u in urls if url_to_row[u].id not in cached_ids]
-            skipped_cached = {u for u in urls if u not in fetch_urls}
-            skipped_n = len(skipped_cached)
+    cached_ids = await asyncio.to_thread(_cached_ids)
+    has_cache = len(cached_ids) >= settings.panel_search_min_cached_dbs_for_fast_both
+
+    if settings.panel_search_skip_live_if_cached and cached_ids:
+        fetch_urls = [u for u in fetch_urls if url_to_row[u].id not in cached_ids]
+        skipped_cached = {u for u in urls if u in skipped_cached or url_to_row[u].id in cached_ids}
+        skipped_n = len({u for u in urls if url_to_row[u].id in cached_ids})
 
     base_skip = len(skipped_offline)
     live_total = len(fetch_urls)
@@ -328,9 +331,10 @@ async def run_search(
                 base_skip + skipped_n + done, len(urls), url, online, sms_count, resolved
             )
 
-    if params.mode == "both" and settings.panel_search_both_skip_uncached_live:
-        fetch_urls = []
-        skipped_n = len(urls)
+    # "Both" with big cache: live sirf uncached; warna poora live (VPS pe 0-match bug fix).
+    if params.mode == "both" and settings.panel_search_both_skip_uncached_live and has_cache:
+        fetch_urls = [u for u in urls if url_to_row[u].id not in cached_ids and u not in skipped_offline]
+        skipped_n = len({u for u in urls if url_to_row[u].id in cached_ids})
 
     live: dict[str, tuple[bool, list[dict], str]] = {}
     if fetch_urls:

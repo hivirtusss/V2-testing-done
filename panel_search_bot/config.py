@@ -14,7 +14,8 @@ class Settings(BaseSettings):
     panel_search_max_workers: int = 0  # 0 = use concurrency value
     panel_search_fetch_timeout: float = 1.6
     panel_search_skip_live_if_cached: bool = False
-    panel_search_both_skip_uncached_live: bool = True
+    panel_search_both_skip_uncached_live: bool = False
+    panel_search_min_cached_dbs_for_fast_both: int = 25
     panel_search_variant_limit: int = 2
     panel_search_parallel_subpaths: int = 8
     panel_search_fetch_batch_size: int = 48  # legacy; fetch_many runs all URLs under semaphore
