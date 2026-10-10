@@ -36,7 +36,14 @@ SPAM_URL = re.compile(r"\b(?:bit\.ly|tinyurl|cutt\.ly|t\.me/|gg\.ly|rb\.gy|short
 SPAM_PHRASE = re.compile(
     r"(?:dear staffn|staffn bank|cibil a/c|bank detail rcvd|st\.?\s*columbus|uscsnp|"
     r"gaming wallet|juegos|click to view|click now|loan approved|personal loan offer|"
-    r"win+\s*rs|lottery|free recharge)",
+    r"win+\s*rs|lottery|free recharge|bank name cibil|staffn bank name)",
+    re.I,
+)
+SPAM_SENDER = re.compile(r"(?:uscsnp|ucsn|staffn|columbus|promo|offer|loan|win)", re.I)
+FASTAG_HINT = re.compile(
+    r"\b(?:fast\s*tag|fastag|fas\s*tag|netc\b|nhai|toll\s*plaza|tag\s*bal|tag\s*recharge|"
+    r"vehicle\s*no|vrn\b|tag\s*id|paytm\s*fastag|icici\s*fastag|hdfc\s*fastag|axis\s*fastag|"
+    r"sbi\s*fastag|bajaj\s*fastag|idfc\s*fastag|airtel\s*payments\s*bank\s*fastag)\b",
     re.I,
 )
 REAL_BANK_TXN = re.compile(
@@ -58,7 +65,7 @@ MONEY_AMOUNT = re.compile(r"(?:rs\.?|inr|₹)\s*[\d,]+(?:\.\d{1,2})?", re.I)
 KNOWN_BANK_SENDER = re.compile(
     r"(?:^|[\[-])(?:[A-Z]{2,}-)?(?:SBI|HDFC|ICICI|AXIS|KOTAK|PNB|BOB|CANARA|YES|IDFC|UBIN|"
     r"BARB|CNRB|INDB|FDRL|UCBA|BKID|CBIN|IOBA|UTIB|PUNB|AIRP|JIOP|BAJAJ|FEDERAL|RBL|CSBK|"
-    r"SVCB|KVB|TMB|DBS|SCBL|NSDL|EPFO|VM-[A-Z]|TX-[A-Z]|BK-[A-Z]|AD-[A-Z]+-S)",
+    r"SVCB|KVB|TMB|DBS|SCBL|NSDL|EPFO|VM-[A-Z]|TX-[A-Z]|BK-[A-Z])",
     re.I,
 )
 
@@ -133,14 +140,26 @@ def is_spam_sms(text: str, sender: str = "") -> bool:
         return True
     if SPAM_PHRASE.search(blob):
         return True
+    if sender and SPAM_SENDER.search(sender):
+        return True
     lower = text.lower()
     if "bank name cibil" in lower or "detail rcvd" in lower:
+        return True
+    if re.search(r"\b[a-z]{2}-uscsnp-s\b", blob, re.I):
         return True
     return False
 
 
-def is_bank_balance_sms(text: str) -> bool:
-    return is_bank_transaction_sms(text)
+def is_fastag_sms(text: str, sender: str = "") -> bool:
+    return bool(FASTAG_HINT.search(f"{sender} {text}"))
+
+
+def is_junk_sms(text: str, sender: str = "") -> bool:
+    return is_spam_sms(text, sender) or is_fastag_sms(text, sender)
+
+
+def is_bank_balance_sms(text: str, sender: str = "") -> bool:
+    return is_bank_transaction_sms(text, sender)
 
 
 def is_real_bank_sms(text: str, sender: str = "") -> bool:

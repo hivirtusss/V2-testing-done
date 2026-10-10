@@ -21,7 +21,7 @@ from panel_search_bot.services import (
     wants_bank_filter,
     within_days,
 )
-from panel_search_bot.sms_parser import is_bank_balance_sms
+from panel_search_bot.sms_parser import is_bank_balance_sms, is_junk_sms
 
 
 @dataclass
@@ -93,14 +93,14 @@ def _filter_row(
     has_pin: bool,
     params: SearchParams,
 ) -> bool:
+    if is_junk_sms(body, sender):
+        return False
     blob = f"{sender} {body}"
     if not match_keywords(blob, params.keywords):
         return False
     if wants_bank_filter(params.keywords):
-        if not is_bank_balance_sms(body) and balance is None:
-            lower = body.lower()
-            if not any(x in lower for x in ("credited", "debited", "avl", "bal", "a/c", "bank")):
-                return False
+        if not is_bank_balance_sms(body, sender):
+            return False
     if not _pin_ok(has_pin, params.pin_filter):
         return False
     if not within_days(message_at, params.days):
