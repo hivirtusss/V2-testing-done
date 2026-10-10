@@ -353,7 +353,7 @@ def _pin_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton("🔑 With PIN", callback_data="srch:pin:with"),
                 InlineKeyboardButton("🚫 Without PIN", callback_data="srch:pin:without"),
             ],
-            [InlineKeyboardButton("🔄 Both", callback_data="srch:pin:both")],
+            [InlineKeyboardButton("📌 All PIN", callback_data="srch:pin:both")],
             [InlineKeyboardButton("« Back", callback_data="srch:step:days")],
         ]
     )
@@ -671,12 +671,6 @@ async def _execute_search(msg, context: ContextTypes.DEFAULT_TYPE, flow: dict) -
 
     summary = search_summary(params, len(result.matches), result.elapsed_sec, size_kb)
     hint = ""
-    if params.mode == "online" and len(result.matches) < 100:
-        hint = (
-            "\n\nℹ️ **Mode Online** = sirf abhi Firebase se aayi SMS (poori cache nahi). "
-            "Zyada devices ke liye search flow mein **🔄 Both** (mode) select karo — "
-            "🔄 Both PIN filter nahi hai, **📌 PIN: any** alag cheez hai."
-        )
     if not result.matches and params.mode in ("online", "both"):
         hint = (
             "\n\n💡 0 matches: VPS pe purani panel_search.db upload ki? "

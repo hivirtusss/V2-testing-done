@@ -11,14 +11,18 @@ from panel_search_bot.ui import pin_label
 
 def _astik_header_line(params: SearchParams) -> str:
     kw = " & ".join(k.upper().replace(",", " ") for k in params.keywords)
-    mode = "ONLINE DEVICES ONLY" if params.mode == "online" else params.mode.upper()
-    pin = pin_label(params.pin_filter).replace("🔑 ", "").replace("🚫 ", "").replace("🔄 ", "")
-    if params.pin_filter == "both":
-        pin = "ALL"
-    elif params.pin_filter == "with":
-        pin = "WITH PIN"
-    else:
-        pin = "WITHOUT PIN"
+    mode = (
+        "ONLINE DEVICES ONLY"
+        if params.mode == "online"
+        else "OFFLINE CACHE ONLY"
+        if params.mode == "offline"
+        else "ONLINE + OFFLINE"
+    )
+    pin = {
+        "both": "WITH + WITHOUT PIN",
+        "with": "WITH PIN ONLY",
+        "without": "WITHOUT PIN ONLY",
+    }.get(params.pin_filter, params.pin_filter.upper())
     sort = "BAL HIGH->LOW" if params.balance_sort == "high" else (
         "BAL LOW->HIGH" if params.balance_sort == "low" else "DATE ORDER"
     )

