@@ -605,6 +605,7 @@ async def _execute_search(msg, context: ContextTypes.DEFAULT_TYPE, flow: dict) -
     status = await msg.reply_text(
         f"{search_start_line(params)}\n{pool_line}\n"
         f"📊 0/{len(rows)} DBs scanning…\n"
+        f"✅ 0 devices · 0 SMS (filter match)\n"
         f"⏱️ /stop {token}"
     )
 
@@ -612,7 +613,7 @@ async def _execute_search(msg, context: ContextTypes.DEFAULT_TYPE, flow: dict) -
     edit_lock = asyncio.Lock()
     last_edit = {"n": 0, "t": 0.0}
 
-    async def on_progress(done, total, url, online, sms_count, resolved):
+    async def on_progress(done, total, url, online, match_sms, device_count, resolved):
         if cancel.is_set():
             return
         now = time.monotonic()
@@ -625,12 +626,24 @@ async def _execute_search(msg, context: ContextTypes.DEFAULT_TYPE, flow: dict) -
             last_edit["n"] = done
             last_edit["t"] = time.monotonic()
             show = (resolved or url or "")[:52]
-            phase = show if show.startswith("⏭") or show.startswith("All cached") or show.startswith("Matching") else show
+            if show.startswith("⏭") or show.startswith("All cached") or show.startswith("Matching") or show in (
+                "init",
+                "Scan shuru…",
+                "done",
+                "Done",
+                "matching",
+                "Cache matching…",
+            ):
+                phase = show if len(show) > 4 else "scanning…"
+            else:
+                phase = f"{'🟢' if online else '🔴'} {show}"
+            scanning = "Done" if done == total and show == "Done" else "scanning…"
             try:
                 await status.edit_text(
                     f"🔍 {', '.join(keywords)} | {mode_label(params.mode)}\n"
-                    f"📊 {done}/{total} DBs | {'🟢' if online else '🔴'} {phase} ({sms_count} raw sms)\n"
-                    f"⏱️ scanning… | /stop {token}"
+                    f"📊 {done}/{total} DBs | {phase}\n"
+                    f"✅ {device_count} devices · {match_sms} SMS (filter match)\n"
+                    f"⏱️ {scanning} | /stop {token}"
                 )
             except Exception:
                 pass

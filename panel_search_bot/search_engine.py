@@ -56,6 +56,62 @@ class SearchResult:
     elapsed_sec: float = 0.0
 
 
+@dataclass
+class MatchProgress:
+    """Live filter-match counts shown during scan (deduped like final export)."""
+
+    seen: set[tuple] = field(default_factory=set)
+    sms: int = 0
+    devices: set[str] = field(default_factory=set)
+
+    def add(self, m: SearchMatch) -> None:
+        key = (m.firebase_url, m.device_id, m.body[:200], m.message_at)
+        if key in self.seen:
+            return
+        self.seen.add(key)
+        self.sms += 1
+        if m.device_id and m.device_id != "unknown":
+            self.devices.add(m.device_id)
+
+    @property
+    def device_count(self) -> int:
+        return len(self.devices)
+
+
+def _accumulate_live_sms(url: str, sms_list: list[dict], params: SearchParams, prog: MatchProgress) -> None:
+    for item in sms_list:
+        sender = str(item.get("sender", ""))
+        body = str(item.get("body", ""))
+        if not _filter_row(
+            sender,
+            body,
+            item.get("message_at"),
+            item.get("balance"),
+            bool(item.get("has_pin", False)),
+            params,
+        ):
+            continue
+        prog.add(match_from_live_item(url, item))
+
+
+def _accumulate_cache_db_ids(
+    db: Session,
+    firebase_db_ids: list[int],
+    params: SearchParams,
+    prog: MatchProgress,
+) -> None:
+    if not firebase_db_ids:
+        return
+    fb_url: dict[int, str] = {
+        r.id: r.url_normalized
+        for r in db.query(FirebaseDb).filter(FirebaseDb.id.in_(firebase_db_ids)).all()
+    }
+    for row in load_cached_sms_for_keywords(db, firebase_db_ids, params.keywords):
+        url = fb_url.get(row.firebase_db_id, "unknown")
+        if _filter_row(row.sender, row.body, row.message_at, row.balance_value, row.has_pin, params):
+            prog.add(match_from_cache_row(url, row))
+
+
 def _pin_ok(has_pin: bool, pin_filter: str) -> bool:
     if pin_filter == "both":
         return True
@@ -305,6 +361,22 @@ def _finalize_search(
         db.close()
 
 
+def _sync_count_url_cache(
+    url: str,
+    url_to_row: dict[str, FirebaseDb],
+    params: SearchParams,
+    prog: MatchProgress,
+) -> None:
+    row = url_to_row.get(url)
+    if not row:
+        return
+    session = SessionLocal()
+    try:
+        _accumulate_cache_db_ids(session, [row.id], params, prog)
+    finally:
+        session.close()
+
+
 async def run_search(
     db: Session,
     firebase_rows: list[FirebaseDb],
@@ -317,12 +389,31 @@ async def run_search(
     started = time.time()
     url_to_row = {row.url_normalized: row for row in firebase_rows}
     urls = list(url_to_row.keys())
+    match_prog = MatchProgress()
+
+    async def emit(done: int, total: int, url: str, online: bool, note: str) -> None:
+        if on_progress:
+            await on_progress(
+                done,
+                total,
+                url,
+                online,
+                match_prog.sms,
+                match_prog.device_count,
+                note,
+            )
 
     if not urls:
         return SearchResult()
 
     if params.mode not in ("online", "both"):
-        return await asyncio.to_thread(_finalize_search, firebase_rows, params, {}, set())
+        await emit(0, len(urls), "matching", True, "Cache matching…")
+        result = await asyncio.to_thread(_finalize_search, firebase_rows, params, {}, set())
+        result.elapsed_sec = time.time() - started
+        for m in result.matches:
+            match_prog.add(m)
+        await emit(len(urls), len(urls), "done", True, "Done")
+        return result
 
     settings = get_settings()
     fetch_urls = list(urls)
@@ -330,8 +421,7 @@ async def run_search(
     skipped_offline: set[str] = set()
     skipped_n = 0
 
-    if on_progress:
-        await on_progress(0, len(urls), "init", True, 0, "Scan shuru…")
+    await emit(0, len(urls), "init", True, "Scan shuru…")
 
     def _cached_ids() -> set[int]:
         session = SessionLocal()
@@ -369,37 +459,6 @@ async def run_search(
         fetch_urls = [u for u in fetch_urls if u not in skipped_cached]
         skipped_n = len(skipped_cached)
 
-    base_skip = len(skipped_offline)
-    live_total = len(fetch_urls)
-    if on_progress and base_skip:
-        await on_progress(
-            base_skip,
-            len(urls),
-            "skip-offline",
-            True,
-            0,
-            f"⏭ {base_skip} dead/offline skip (pehle scan)",
-        )
-
-    if on_progress:
-        if skipped_n and live_total:
-            await on_progress(
-                skipped_n,
-                len(urls),
-                "live-fetch",
-                True,
-                0,
-                f"⏭ {skipped_n} cached skip · live fetch {live_total} DBs…",
-            )
-        elif skipped_n and not live_total:
-            await on_progress(skipped_n, len(urls), "cache-only", True, 0, "All cached — matching…")
-
-    async def progress(done, _total, url, online, sms_count, resolved):
-        if on_progress:
-            await on_progress(
-                base_skip + skipped_n + done, len(urls), url, online, sms_count, resolved
-            )
-
     # "Both" with big cache: live sirf uncached; warna poora live (VPS pe 0-match bug fix).
     if (
         params.mode == "both"
@@ -418,7 +477,52 @@ async def run_search(
         uncached = [u for u in urls if url_to_row[u].id not in cached_ids]
         fetch_urls = uncached if uncached else list(urls)
         skipped_offline = set()
-        base_skip = 0
+
+    base_skip = len(skipped_offline)
+    live_total = len(fetch_urls)
+    fetch_set = set(fetch_urls)
+    cache_only_urls = {u for u in urls if u not in fetch_set and u not in skipped_offline}
+
+    if cache_only_urls:
+
+        def _count_cache_only() -> None:
+            ids = [url_to_row[u].id for u in cache_only_urls if u in url_to_row]
+            session = SessionLocal()
+            try:
+                _accumulate_cache_db_ids(session, ids, params, match_prog)
+            finally:
+                session.close()
+
+        await asyncio.to_thread(_count_cache_only)
+
+    skipped_n = len(cache_only_urls)
+
+    if base_skip:
+        await emit(
+            base_skip,
+            len(urls),
+            "skip-offline",
+            True,
+            f"⏭ {base_skip} dead/offline skip (pehle scan)",
+        )
+
+    if skipped_n and live_total:
+        await emit(
+            base_skip + skipped_n,
+            len(urls),
+            "live-fetch",
+            True,
+            f"⏭ {skipped_n} cached skip · live fetch {live_total} DBs…",
+        )
+    elif skipped_n and not live_total:
+        await emit(base_skip + skipped_n, len(urls), "cache-only", True, "All cached — matching…")
+
+    async def progress(done, _total, url, online, _sms_count, resolved, sms_list=None):
+        if sms_list:
+            _accumulate_live_sms(url, sms_list, params, match_prog)
+        elif url in url_to_row:
+            await asyncio.to_thread(_sync_count_url_cache, url, url_to_row, params, match_prog)
+        await emit(base_skip + skipped_n + done, len(urls), url, online, resolved)
 
     live: dict[str, tuple[bool, list[dict], str]] = {}
     if fetch_urls:
@@ -434,9 +538,45 @@ async def run_search(
     if cancel_event and cancel_event.is_set():
         return SearchResult(elapsed_sec=time.time() - started)
 
-    if on_progress:
-        await on_progress(len(urls), len(urls), "finalize", True, 0, "Matching & saving…")
+    await emit(len(urls), len(urls), "finalize", True, "Matching & saving…")
 
-    result = await asyncio.to_thread(_finalize_search, firebase_rows, params, live, skipped_cached)
+    def _finalize_with_progress() -> SearchResult:
+        session = SessionLocal()
+        try:
+            url_to_row_local = {row.url_normalized: row for row in firebase_rows}
+            all_ids = [r.id for r in firebase_rows]
+            live_online: set[int] = set()
+            if live:
+                dummy = SearchResult(dbs_scanned=len(urls))
+                live_online = _apply_live_refresh(session, firebase_rows, live, url_to_row_local, dummy)
+            search_ids = _db_ids_for_mode(
+                session,
+                firebase_rows,
+                url_to_row_local,
+                live,
+                mode=params.mode,
+                live_online=live_online,
+            )
+            scanned_ids = {url_to_row_local[u].id for u in live if u in url_to_row_local}
+            cache_only_ids = {url_to_row_local[u].id for u in cache_only_urls if u in url_to_row_local}
+            remaining = [
+                fb_id
+                for fb_id in search_ids
+                if fb_id not in scanned_ids and fb_id not in cache_only_ids
+            ]
+            if remaining:
+                _accumulate_cache_db_ids(session, remaining, params, match_prog)
+        finally:
+            session.close()
+        return _finalize_search(firebase_rows, params, live, skipped_cached)
+
+    result = await asyncio.to_thread(_finalize_with_progress)
     result.elapsed_sec = time.time() - started
+    # Align live counter with deduped export (Both mode dedupes in finalize).
+    match_prog.seen.clear()
+    match_prog.sms = 0
+    match_prog.devices.clear()
+    for m in result.matches:
+        match_prog.add(m)
+    await emit(len(urls), len(urls), "done", True, "Done")
     return result

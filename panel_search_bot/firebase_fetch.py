@@ -229,7 +229,9 @@ async def fetch_many(
                 done_count += 1
                 current = done_count
             if on_progress:
-                asyncio.create_task(on_progress(current, total, url, online, len(sms_list), resolved))
+                asyncio.create_task(
+                    on_progress(current, total, url, online, len(sms_list), resolved, sms_list)
+                )
 
         await asyncio.gather(*(one(url) for url in urls))
 
