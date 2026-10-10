@@ -168,6 +168,22 @@ def firebase_ids_with_cache(db: Session, firebase_db_ids: list[int]) -> set[int]
     return {r[0] for r in rows}
 
 
+def firebase_ids_recently_offline(db: Session, firebase_db_ids: list[int], hours: float = 12) -> set[int]:
+    if not firebase_db_ids:
+        return set()
+    cutoff = datetime.utcnow() - timedelta(hours=hours)
+    rows = (
+        db.query(FirebaseDb.id)
+        .filter(
+            FirebaseDb.id.in_(firebase_db_ids),
+            FirebaseDb.is_online == False,  # noqa: E712
+            FirebaseDb.last_checked_at >= cutoff,
+        )
+        .all()
+    )
+    return {r[0] for r in rows}
+
+
 def update_firebase_status(db: Session, fb_id: int, online: bool) -> None:
     row = db.query(FirebaseDb).filter(FirebaseDb.id == fb_id).first()
     if row:

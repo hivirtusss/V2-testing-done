@@ -12,6 +12,7 @@ from panel_search_bot.firebase_fetch import fetch_many
 from panel_search_bot.models import CachedSms, FirebaseDb
 from panel_search_bot.config import get_settings
 from panel_search_bot.services import (
+    firebase_ids_recently_offline,
     firebase_ids_with_cache,
     load_cached_sms,
     load_cached_sms_for_keywords,
@@ -151,7 +152,7 @@ def _finalize_search(
                     continue
                 if online and sms_list:
                     upsert_cached_sms(db, row.id, row.url_normalized, sms_list)
-                update_firebase_status(db, row.id, online)
+                update_firebase_status(db, row.id, online and bool(sms_list))
                 for item in sms_list:
                     if _filter_row(
                         item.get("sender", ""),
@@ -260,7 +261,11 @@ async def run_search(
     settings = get_settings()
     fetch_urls = list(urls)
     skipped_cached: set[str] = set()
+    skipped_offline: set[str] = set()
     skipped_n = 0
+
+    if on_progress:
+        await on_progress(0, len(urls), "init", True, 0, "Scan shuru…")
 
     def _cached_ids() -> set[int]:
         session = SessionLocal()
@@ -268,6 +273,20 @@ async def run_search(
             return firebase_ids_with_cache(session, [row.id for row in firebase_rows])
         finally:
             session.close()
+
+    def _offline_ids() -> set[int]:
+        session = SessionLocal()
+        try:
+            return firebase_ids_recently_offline(
+                session, [row.id for row in firebase_rows], settings.panel_search_skip_offline_hours
+            )
+        finally:
+            session.close()
+
+    offline_ids = await asyncio.to_thread(_offline_ids)
+    if offline_ids:
+        skipped_offline = {u for u in urls if url_to_row[u].id in offline_ids}
+        fetch_urls = [u for u in fetch_urls if u not in skipped_offline]
 
     # Cached DBs hold most SMS; skipping live is OK for both/offline (cache pass runs below).
     # For online-only + day filter, still skip live on cache — dates are often missing in cache anyway.
@@ -278,7 +297,18 @@ async def run_search(
             skipped_cached = {u for u in urls if u not in fetch_urls}
             skipped_n = len(skipped_cached)
 
+    base_skip = len(skipped_offline)
     live_total = len(fetch_urls)
+    if on_progress and base_skip:
+        await on_progress(
+            base_skip,
+            len(urls),
+            "skip-offline",
+            True,
+            0,
+            f"⏭ {base_skip} dead/offline skip (pehle scan)",
+        )
+
     if on_progress:
         if skipped_n and live_total:
             await on_progress(
@@ -294,7 +324,9 @@ async def run_search(
 
     async def progress(done, _total, url, online, sms_count, resolved):
         if on_progress:
-            await on_progress(skipped_n + done, len(urls), url, online, sms_count, resolved)
+            await on_progress(
+                base_skip + skipped_n + done, len(urls), url, online, sms_count, resolved
+            )
 
     if params.mode == "both" and settings.panel_search_both_skip_uncached_live:
         fetch_urls = []
@@ -304,7 +336,12 @@ async def run_search(
     if fetch_urls:
         if cancel_event and cancel_event.is_set():
             return SearchResult()
-        live = await fetch_many(fetch_urls, on_progress=progress, cancel_event=cancel_event)
+        import time as _time
+
+        deadline = _time.monotonic() + settings.panel_search_max_scan_sec
+        live = await fetch_many(
+            fetch_urls, on_progress=progress, cancel_event=cancel_event, deadline=deadline
+        )
 
     if cancel_event and cancel_event.is_set():
         return SearchResult(elapsed_sec=time.time() - started)
