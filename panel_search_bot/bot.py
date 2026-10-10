@@ -664,7 +664,14 @@ async def _execute_search(msg, context: ContextTypes.DEFAULT_TYPE, flow: dict) -
         Path(tmp_path).unlink(missing_ok=True)
 
     summary = search_summary(params, len(result.matches), result.elapsed_sec, size_kb)
-    await status.edit_text(summary + "\n📄 File sent above ☝️")
+    hint = ""
+    if not result.matches and params.mode in ("online", "both"):
+        hint = (
+            "\n\n💡 0 matches: VPS pe purani panel_search.db upload ki? "
+            "(scp panel_search.db → /opt/panel-search-bot/) phir restart. "
+            "Nayi 724 list pe pehli scan cache khali — Both + Last 7 days try karo."
+        )
+    await status.edit_text(summary + "\n📄 File sent above ☝️" + hint)
     await msg.reply_text(search_footer(params, len(result.matches), result.elapsed_sec, size_kb))
 
 
