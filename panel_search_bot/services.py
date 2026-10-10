@@ -202,8 +202,11 @@ def wants_bank_filter(keywords: list[str]) -> bool:
 def within_days(message_at: datetime | None, days: int | None) -> bool:
     if days is None:
         return True
-    # Panel cache / Firebase rows often have no timestamp — treat as eligible (Astik-style).
     if message_at is None:
-        return True
-    cutoff = datetime.utcnow() - timedelta(days=days)
+        return False
+    now = datetime.utcnow()
+    if message_at > now + timedelta(days=1):
+        return False
+    # Calendar-day window (SMS often have date only, no time).
+    cutoff = (now - timedelta(days=days)).replace(hour=0, minute=0, second=0, microsecond=0)
     return message_at >= cutoff

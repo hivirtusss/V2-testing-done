@@ -21,7 +21,7 @@ from panel_search_bot.services import (
     wants_bank_filter,
     within_days,
 )
-from panel_search_bot.sms_parser import is_bank_balance_sms, is_junk_sms
+from panel_search_bot.sms_parser import effective_message_at, is_bank_balance_sms, is_junk_sms
 
 
 @dataclass
@@ -103,7 +103,8 @@ def _filter_row(
             return False
     if not _pin_ok(has_pin, params.pin_filter):
         return False
-    if not within_days(message_at, params.days):
+    msg_when = effective_message_at(message_at, body)
+    if not within_days(msg_when, params.days):
         return False
     if not _balance_in_range(balance, params.balance_sort):
         return False
@@ -165,7 +166,9 @@ def _finalize_search(
                                 firebase_url=url,
                                 sender=item.get("sender", ""),
                                 body=item.get("body", ""),
-                                message_at=item.get("message_at"),
+                                message_at=effective_message_at(
+                                    item.get("message_at"), item.get("body", "")
+                                ),
                                 balance=item.get("balance"),
                                 has_pin=item.get("has_pin", False),
                                 source="live",
@@ -185,7 +188,7 @@ def _finalize_search(
                                 firebase_url=url,
                                 sender=row.sender,
                                 body=row.body,
-                                message_at=row.message_at,
+                                message_at=effective_message_at(row.message_at, row.body),
                                 balance=row.balance_value,
                                 has_pin=row.has_pin,
                                 source="cache",
@@ -210,7 +213,7 @@ def _finalize_search(
                             firebase_url=url,
                             sender=row.sender,
                             body=row.body,
-                            message_at=row.message_at,
+                            message_at=effective_message_at(row.message_at, row.body),
                             balance=row.balance_value,
                             has_pin=row.has_pin,
                             source="cache",
