@@ -162,7 +162,22 @@ def message_has_pin(text: str) -> bool:
 
 
 def device_has_upi_pin(messages: list) -> bool:
-    return any(getattr(m, "has_pin", False) or message_has_pin(getattr(m, "body", "")) for m in messages)
+    """Device-level: koi bhi SMS / metadata se UPI PIN set dikhe."""
+    for m in messages:
+        if getattr(m, "device_has_pin", False):
+            return True
+        if getattr(m, "has_pin", False) or message_has_pin(getattr(m, "body", "")):
+            return True
+    return False
+
+
+def device_has_upi_pin_from_items(items: list[dict]) -> bool:
+    for it in items:
+        if it.get("device_has_pin") is True:
+            return True
+        if bool(it.get("has_pin")) or message_has_pin(str(it.get("body", ""))):
+            return True
+    return False
 
 
 def is_spam_sms(text: str, sender: str = "") -> bool:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -24,10 +25,11 @@ from panel_search_bot.services import (
 )
 from panel_search_bot.firebase_urls import device_id_from_raw_path, firebase_db_label
 from panel_search_bot.sms_parser import (
+    device_has_upi_pin,
+    device_has_upi_pin_from_items,
     effective_message_at,
     is_bank_balance_sms,
     is_junk_sms,
-    message_has_pin,
     parse_balance,
     transaction_date_for_filter,
 )
@@ -87,8 +89,67 @@ class MatchProgress:
         return len(self.devices)
 
 
-def _accumulate_live_sms(url: str, sms_list: list[dict], params: SearchParams, prog: MatchProgress) -> None:
+def _device_id_from_item(item: dict) -> str:
+    return str(
+        item.get("device_id") or device_id_from_raw_path(str(item.get("raw_path", "")))
+    )
+
+
+def _device_id_from_cache_row(row) -> str:
+    device = device_id_from_raw_path(row.raw_path or "")
+    if device == "unknown" and row.device_key and not row.device_key.startswith("http"):
+        device = row.device_key[:128]
+    return device
+
+
+def build_device_pin_map_live(url: str, sms_list: list[dict]) -> dict[tuple[str, str], bool]:
+    by_dev: dict[str, list[dict]] = defaultdict(list)
     for item in sms_list:
+        by_dev[_device_id_from_item(item)].append(item)
+    return {
+        (url, dev): device_has_upi_pin_from_items(items) for dev, items in by_dev.items()
+    }
+
+
+def build_device_pin_map_cache(db: Session, firebase_db_ids: list[int], fb_url: dict[int, str]) -> dict[tuple[str, str], bool]:
+    if not firebase_db_ids:
+        return {}
+    by_key: dict[tuple[str, str], list] = defaultdict(list)
+    for row in db.query(CachedSms).filter(CachedSms.firebase_db_id.in_(firebase_db_ids)):
+        url = fb_url.get(row.firebase_db_id, "unknown")
+        dev = _device_id_from_cache_row(row)
+        by_key[(url, dev)].append(row)
+    return {key: device_has_upi_pin(rows) for key, rows in by_key.items()}
+
+
+def _device_pin_allows(
+    url: str,
+    device_id: str,
+    params: SearchParams,
+    pin_map: dict[tuple[str, str], bool],
+) -> bool:
+    if params.pin_filter == "both":
+        return True
+    has_pin = pin_map.get((url, device_id))
+    if has_pin is None:
+        return True
+    if params.pin_filter == "with":
+        return has_pin
+    return not has_pin
+
+
+def _accumulate_live_sms(
+    url: str,
+    sms_list: list[dict],
+    params: SearchParams,
+    prog: MatchProgress,
+    pin_map: dict[tuple[str, str], bool],
+) -> None:
+    pin_map.update(build_device_pin_map_live(url, sms_list))
+    for item in sms_list:
+        dev = _device_id_from_item(item)
+        if not _device_pin_allows(url, dev, params, pin_map):
+            continue
         sender = str(item.get("sender", ""))
         body = str(item.get("body", ""))
         if not _filter_row(
@@ -96,7 +157,6 @@ def _accumulate_live_sms(url: str, sms_list: list[dict], params: SearchParams, p
             body,
             item.get("message_at"),
             item.get("balance"),
-            bool(item.get("has_pin", False)) or message_has_pin(body),
             params,
         ):
             continue
@@ -108,6 +168,7 @@ def _accumulate_cache_db_ids(
     firebase_db_ids: list[int],
     params: SearchParams,
     prog: MatchProgress,
+    pin_map: dict[tuple[str, str], bool] | None = None,
 ) -> None:
     if not firebase_db_ids:
         return
@@ -115,18 +176,17 @@ def _accumulate_cache_db_ids(
         r.id: r.url_normalized
         for r in db.query(FirebaseDb).filter(FirebaseDb.id.in_(firebase_db_ids)).all()
     }
+    if pin_map is None:
+        pin_map = {}
+    if params.pin_filter != "both" and not pin_map:
+        pin_map.update(build_device_pin_map_cache(db, firebase_db_ids, fb_url))
     for row in load_cached_sms_for_keywords(db, firebase_db_ids, params.keywords):
         url = fb_url.get(row.firebase_db_id, "unknown")
-        if _filter_row(row.sender, row.body, row.message_at, row.balance_value, row.has_pin, params):
+        dev = _device_id_from_cache_row(row)
+        if not _device_pin_allows(url, dev, params, pin_map):
+            continue
+        if _filter_row(row.sender, row.body, row.message_at, row.balance_value, params):
             prog.add(match_from_cache_row(url, row))
-
-
-def _pin_ok(has_pin: bool, pin_filter: str) -> bool:
-    if pin_filter == "both":
-        return True
-    if pin_filter == "with":
-        return has_pin
-    return not has_pin
 
 
 def _sort_matches(matches: list[SearchMatch], balance_sort: str) -> list[SearchMatch]:
@@ -163,7 +223,6 @@ def _filter_row(
     body: str,
     message_at: datetime | None,
     balance: float | None,
-    has_pin: bool,
     params: SearchParams,
 ) -> bool:
     if is_junk_sms(body, sender):
@@ -174,9 +233,6 @@ def _filter_row(
     if wants_bank_filter(params.keywords):
         if not is_bank_balance_sms(body, sender):
             return False
-    pin_on_sms = has_pin or message_has_pin(body)
-    if not _pin_ok(pin_on_sms, params.pin_filter):
-        return False
     days_active = params.days is not None
     msg_when = transaction_date_for_filter(message_at, body, days_filter_active=days_active)
     if not within_days(msg_when, params.days):
@@ -339,9 +395,13 @@ def _matches_from_cache(
         r.id: r.url_normalized
         for r in db.query(FirebaseDb).filter(FirebaseDb.id.in_(firebase_db_ids)).all()
     }
+    pin_map = build_device_pin_map_cache(db, firebase_db_ids, fb_url)
     for row in load_cached_sms_for_keywords(db, firebase_db_ids, params.keywords):
         url = fb_url.get(row.firebase_db_id, "unknown")
-        if _filter_row(row.sender, row.body, row.message_at, row.balance_value, row.has_pin, params):
+        dev = _device_id_from_cache_row(row)
+        if not _device_pin_allows(url, dev, params, pin_map):
+            continue
+        if _filter_row(row.sender, row.body, row.message_at, row.balance_value, params):
             matches.append(match_from_cache_row(url, row))
     return matches
 
@@ -409,6 +469,7 @@ def _build_result_from_progress(
     live: dict[str, tuple[bool, list[dict], str]],
     cache_only_urls: set[str],
     match_prog: MatchProgress,
+    device_pin_map: dict[tuple[str, str], bool] | None = None,
 ) -> SearchResult:
     """Fast path: incremental matches during scan + small cache top-up (no full DB rescan)."""
     db = SessionLocal()
@@ -437,7 +498,7 @@ def _build_result_from_progress(
             if fb_id not in cache_only_ids and (fb_id not in scanned_ids or fb_id in empty_live_ids)
         }
         if remaining:
-            _accumulate_cache_db_ids(db, list(remaining), params, match_prog)
+            _accumulate_cache_db_ids(db, list(remaining), params, match_prog, device_pin_map or {})
 
         matches = list(match_prog.items)
         if params.mode == "both":
@@ -480,6 +541,7 @@ async def run_search(
     url_to_row = {row.url_normalized: row for row in firebase_rows}
     urls = list(dict.fromkeys(url_to_row.keys()))
     match_prog = MatchProgress()
+    device_pin_map: dict[tuple[str, str], bool] = {}
 
     async def emit(done: int, total: int, url: str, online: bool, note: str) -> None:
         if on_progress:
@@ -582,7 +644,7 @@ async def run_search(
             ids = [url_to_row[u].id for u in cache_only_urls if u in url_to_row]
             session = SessionLocal()
             try:
-                _accumulate_cache_db_ids(session, ids, params, match_prog)
+                _accumulate_cache_db_ids(session, ids, params, match_prog, device_pin_map)
             finally:
                 session.close()
 
@@ -612,7 +674,7 @@ async def run_search(
 
     async def progress(done, _total, url, online, _sms_count, resolved, sms_list=None):
         if sms_list:
-            _accumulate_live_sms(url, sms_list, params, match_prog)
+            _accumulate_live_sms(url, sms_list, params, match_prog, device_pin_map)
         await emit(base_skip + skipped_n + done, len(urls), url, online, resolved)
 
     live: dict[str, tuple[bool, list[dict], str]] = {}
@@ -638,6 +700,7 @@ async def run_search(
         live,
         cache_only_urls,
         match_prog,
+        device_pin_map,
     )
     result.elapsed_sec = time.time() - started
     asyncio.create_task(

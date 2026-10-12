@@ -364,7 +364,7 @@ def _days_keyboard() -> InlineKeyboardMarkup:
 def _pin_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
-            [InlineKeyboardButton("🔄 Both (with + without mix)", callback_data="srch:pin:both")],
+            [InlineKeyboardButton("🔄 Both devices (PIN + no PIN)", callback_data="srch:pin:both")],
             [
                 InlineKeyboardButton("🔑 With PIN only", callback_data="srch:pin:with"),
                 InlineKeyboardButton("🚫 Without PIN only", callback_data="srch:pin:without"),
@@ -474,10 +474,10 @@ async def _wizard_edit_pin(context, flow: dict, *, query=None) -> None:
         flow,
         f"📌 Keywords: {_keywords_line(flow)}\n"
         f"Mode: {mode_label(flow.get('mode', 'online'))} | {days_label(flow.get('days'))}\n\n"
-        "UPI PIN filter (device mix):\n"
-        "• Both = with + without PIN dono\n"
-        "• With = sirf PIN wali SMS\n"
-        "• Without = bina PIN wale",
+        "UPI PIN filter (device level — SMS nahi):\n"
+        "• Both = PIN wale + bina PIN devices mix\n"
+        "• With = sirf jin devices pe UPI PIN set hai\n"
+        "• Without = sirf bina PIN devices",
         _pin_keyboard(),
         query=query,
     )

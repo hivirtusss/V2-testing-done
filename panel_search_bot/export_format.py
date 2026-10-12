@@ -71,11 +71,6 @@ def format_astik_result_file(
             continue
         if pin_mode == "without" and device_has_upi_pin(msgs_sorted):
             continue
-
-        if pin_mode == "with":
-            msgs_sorted = [m for m in msgs_sorted if m.has_pin or message_has_pin(m.body)]
-        elif pin_mode == "without":
-            msgs_sorted = [m for m in msgs_sorted if not m.has_pin and not message_has_pin(m.body)]
         if not msgs_sorted:
             continue
 
