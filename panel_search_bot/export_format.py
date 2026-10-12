@@ -5,7 +5,7 @@ from datetime import datetime
 
 from panel_search_bot.firebase_urls import device_id_from_raw_path, firebase_db_label
 from panel_search_bot.search_engine import SearchMatch, SearchParams
-from panel_search_bot.sms_parser import device_has_upi_pin, message_has_pin
+from panel_search_bot.sms_parser import device_has_upi_pin
 from panel_search_bot.ui import pin_label
 
 

@@ -247,8 +247,23 @@ def is_junk_sms(text: str, sender: str = "") -> bool:
     return False
 
 
+def is_avl_balance_sms(text: str, sender: str = "") -> bool:
+    """Avl/bal style SMS — body me 'bank' word zaroori nahi."""
+    if is_junk_sms(text, sender):
+        return False
+    if parse_balance(text) is None:
+        return False
+    lower = text.lower()
+    blob = f"{sender} {text}"
+    if REAL_BANK_BAL.search(text) or "avl" in lower or ("available" in lower and "bal" in lower):
+        return True
+    if KNOWN_BANK_SENDER.search(sender) or BANK_HINT.search(blob):
+        return True
+    return False
+
+
 def is_bank_balance_sms(text: str, sender: str = "") -> bool:
-    return is_bank_transaction_sms(text, sender)
+    return is_bank_transaction_sms(text, sender) or is_avl_balance_sms(text, sender)
 
 
 def is_real_bank_sms(text: str, sender: str = "") -> bool:

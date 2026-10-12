@@ -228,7 +228,7 @@ def _filter_row(
     if is_junk_sms(body, sender):
         return False
     blob = f"{sender} {body}"
-    if not match_keywords(blob, params.keywords):
+    if not match_keywords(body, params.keywords, sender=sender):
         return False
     if wants_bank_filter(params.keywords):
         if not is_bank_balance_sms(body, sender):

@@ -198,6 +198,11 @@ async def fetch_sms_from_firebase(client: httpx.AsyncClient, base_url: str) -> t
                     break
 
         if not collected:
+            root_full = await _fetch_json(client, _json_url(working_url, "", shallow=False), req_timeout)
+            if root_full is not None:
+                _collect_from_data(root_full, "root", collected)
+
+        if not collected:
             return online, [], working_url
 
         unique = _dedupe_sms(collected)

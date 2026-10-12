@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from panel_search_bot.config import get_settings
 from panel_search_bot.firebase_urls import extract_firebase_urls, normalize_firebase_url
+from panel_search_bot.sms_parser import BANK_HINT, KNOWN_BANK_SENDER
 from panel_search_bot.models import BotUser, CachedSms, FirebaseDb
 
 
@@ -139,6 +140,16 @@ def load_cached_sms_for_keywords(
         cleaned = kw.strip().lower().lstrip("\\")
         if not cleaned:
             continue
+        if cleaned == "bank":
+            clauses.append(
+                or_(
+                    CachedSms.body.ilike("%bank%"),
+                    CachedSms.sender.ilike("%bank%"),
+                    CachedSms.body.ilike("%avl%"),
+                    CachedSms.body.ilike("%bal%"),
+                )
+            )
+            continue
         if "/" in cleaned:
             for part in cleaned.split("/"):
                 part = part.strip()
@@ -187,14 +198,19 @@ def update_firebase_status(db: Session, fb_id: int, online: bool) -> None:
         db.commit()
 
 
-def match_keywords(text: str, keywords: list[str]) -> bool:
+def match_keywords(text: str, keywords: list[str], *, sender: str = "") -> bool:
     lower = text.lower()
+    blob = f"{sender} {text}".lower()
     for kw in keywords:
         cleaned = kw.strip().lower()
         if not cleaned:
             continue
         if cleaned.startswith("\\"):
             cleaned = cleaned[1:]
+        if cleaned == "bank":
+            if "bank" in lower or BANK_HINT.search(blob) or KNOWN_BANK_SENDER.search(sender):
+                continue
+            return False
         if "/" in cleaned:
             parts = [p.strip() for p in cleaned.split("/") if p.strip()]
             if not any(p in lower for p in parts):
@@ -212,7 +228,7 @@ def wants_bank_filter(keywords: list[str]) -> bool:
 
 def within_days(message_at: datetime | None, days: int | None) -> bool:
     if message_at is None:
-        return days is None
+        return True
     now = datetime.utcnow()
     if message_at > now + timedelta(days=1):
         return False
