@@ -27,12 +27,12 @@ class Settings(BaseSettings):
     panel_search_per_db_timeout: float = 2.5
     panel_search_max_scan_sec: float = 240.0
     # Online scan: skip live HTTP when SMS already cached (Astik-style fast rescan).
-    panel_search_online_skip_cached_live: bool = True
+    panel_search_online_skip_cached_live: bool = False
     panel_search_skip_offline_hours: float = 0.0  # 0 = always re-probe; set 12 on VPS after stable cache
     panel_search_balance_high_min: float = 70_000.0
     panel_search_balance_high_max: float = 10_000_000.0  # 1 crore
     panel_search_balance_low_min: float = 3_000.0
-    panel_search_balance_low_max: float = 50_000.0
+    panel_search_balance_low_max: float = 70_000.0
     # 0 = unlimited; else caps "All Time" searches (avoids 2021-era SMS dumps).
     panel_search_alltime_max_days: int = 0
     panel_search_leak_file: str = ""

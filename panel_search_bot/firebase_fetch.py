@@ -137,11 +137,11 @@ async def quick_probe_firebase(
                 continue
             if _shallow_has_data(msg):
                 return "ok", True, variant
-            return "empty", True, variant
+            return "ok", True, variant
         if _shallow_has_data(root):
             return "ok", True, variant
-        # Online but no devices/messages at root — skip heavy fetch
-        return "empty", False, variant
+        # Shallow empty — DB reachable; deep fetch (messages/sms) still needed
+        return "ok", True, variant
 
     return "dead", False, base_url
 
@@ -155,8 +155,6 @@ async def fetch_sms_from_firebase(client: httpx.AsyncClient, base_url: str) -> t
         status, online, working_url = await quick_probe_firebase(client, base_url)
         if status == "dead":
             return False, [], base_url
-        if status == "empty":
-            return False, [], working_url
 
         collected: list[dict] = []
         subpaths = FAST_SUBPATHS[: max(1, min(len(FAST_SUBPATHS), settings.panel_search_parallel_subpaths))]

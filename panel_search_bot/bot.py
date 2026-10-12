@@ -336,9 +336,8 @@ def _sort_keyboard() -> InlineKeyboardMarkup:
         [
             [
                 InlineKeyboardButton("💰 High→Low 70K-1Cr", callback_data="srch:sort:high"),
-                InlineKeyboardButton("💰 Low→High 3K-50K", callback_data="srch:sort:low"),
+                InlineKeyboardButton("💰 Low→High 3K-70K", callback_data="srch:sort:low"),
             ],
-            [InlineKeyboardButton("⏭ Skip (date order)", callback_data="srch:sort:skip")],
             [InlineKeyboardButton("« Back", callback_data="srch:step:pin")],
         ]
     )
@@ -449,7 +448,7 @@ async def _wizard_edit_sort(context, flow: dict, *, query=None) -> None:
         f"{pin_label(flow.get('pin_filter', 'both'))}\n\n"
         "Balance sort:\n"
         "• High→Low = 70K se 1Cr+\n"
-        "• Low→High = 3K se 50K",
+        "• Low→High = 3K se 70K",
         _sort_keyboard(),
         query=query,
     )
@@ -498,7 +497,6 @@ def _custom_keyboard(flow: dict) -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(mark("high", sort), callback_data="srch:sort:high"),
                 InlineKeyboardButton(mark("low", sort), callback_data="srch:sort:low"),
-                InlineKeyboardButton(mark("skip", sort), callback_data="srch:sort:skip"),
             ],
             [
                 InlineKeyboardButton("1d", callback_data="srch:days:1"),

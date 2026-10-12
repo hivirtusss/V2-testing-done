@@ -560,11 +560,10 @@ async def run_search(
         skipped_n = len({u for u in urls if url_to_row[u].id in cached_ids})
 
     if params.mode == "online":
+        # Online = hamesha live HTTP (VPS pe skip-cached → 724 DB / 1s / 0 match bug)
         fetch_urls = [u for u in urls if u not in skipped_offline]
-        if settings.panel_search_online_skip_cached_live and cached_ids:
-            online_skip_cached = {u for u in fetch_urls if url_to_row[u].id in cached_ids}
-            fetch_urls = [u for u in fetch_urls if u not in online_skip_cached]
         skipped_cached = set()
+        online_skip_cached = set()
         skipped_n = 0
 
     if not fetch_urls and params.mode in ("online", "both"):
