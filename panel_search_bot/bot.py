@@ -684,11 +684,14 @@ async def _execute_search(msg, context: ContextTypes.DEFAULT_TYPE, flow: dict) -
             else:
                 phase = f"{'🟢' if online else '🔴'} {show}"
             scanning = "Done" if done == total and show == "Done" else "scanning…"
+            wait_hint = ""
+            if done < total and match_sms == 0 and done >= 3:
+                wait_hint = "\n⏳ Fetch chal raha — pehle match thodi der me (1290 DB = 2–5 min)"
             try:
                 await status.edit_text(
                     f"🔍 {', '.join(keywords)} | {mode_label(params.mode)}\n"
                     f"📊 {done}/{total} DBs | {phase}\n"
-                    f"✅ {device_count} devices · {match_sms} SMS (filter match)\n"
+                    f"✅ {device_count} devices · {match_sms} SMS (filter match){wait_hint}\n"
                     f"⏱️ {scanning} | /stop {token}"
                 )
             except Exception:

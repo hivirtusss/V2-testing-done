@@ -106,7 +106,7 @@ def _tag_device_pin_flags(sms_list: list[dict]) -> None:
             it["device_has_pin"] = flagged
 
 
-def _dedupe_sms(collected: list[dict], cap: int = 1500) -> list[dict]:
+def _dedupe_sms(collected: list[dict], cap: int = 3500) -> list[dict]:
     seen: set[str] = set()
     unique: list[dict] = []
     for row in collected:
@@ -166,7 +166,7 @@ async def quick_probe_firebase(
 async def fetch_sms_from_firebase(client: httpx.AsyncClient, base_url: str) -> tuple[bool, list[dict], str]:
     settings = get_settings()
     req_timeout = httpx.Timeout(settings.panel_search_fetch_timeout, connect=1.0)
-    wall = min(settings.panel_search_per_db_timeout, 3.0)
+    wall = settings.panel_search_per_db_timeout
 
     async def _inner() -> tuple[bool, list[dict], str]:
         status, online, working_url = await quick_probe_firebase(client, base_url)

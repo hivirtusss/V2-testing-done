@@ -102,8 +102,8 @@ def count_personal_dbs(db: Session, telegram_id: int) -> int:
 
 def upsert_cached_sms(db: Session, firebase_db_id: int, device_key: str, rows: list[dict]) -> None:
     # Keep cache bounded — huge DBs were freezing search for minutes.
-    if len(rows) > 400:
-        rows = rows[-400:]
+    if len(rows) > 1200:
+        rows = rows[-1200:]
     db.query(CachedSms).filter(CachedSms.firebase_db_id == firebase_db_id).delete()
     for row in rows:
         db.add(
