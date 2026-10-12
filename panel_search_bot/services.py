@@ -198,6 +198,71 @@ def update_firebase_status(db: Session, fb_id: int, online: bool) -> None:
         db.commit()
 
 
+BANK_PANEL_PRESET_PARTS = frozenset({"avl/bal", "avl", "bal", "bank", "debit", "credit"})
+
+
+def is_bank_panel_preset(keywords: list[str]) -> bool:
+    """avl/bal + bank + debit + credit — OR match (sab ek SMS me AND nahi)."""
+    parts: set[str] = set()
+    for raw in keywords:
+        for piece in raw.lower().split(","):
+            piece = piece.strip()
+            if not piece:
+                continue
+            if "/" in piece:
+                for p in piece.split("/"):
+                    if p.strip():
+                        parts.add(p.strip())
+            else:
+                parts.add(piece)
+    return "bank" in parts and "debit" in parts and "credit" in parts and (
+        "avl" in parts or "bal" in parts or "avl/bal" in " ".join(keywords).lower()
+    )
+
+
+def match_bank_panel_preset(text: str, sender: str) -> bool:
+    from panel_search_bot.sms_parser import (
+        DR_CR_AC,
+        REAL_BANK_BAL,
+        REAL_BANK_TXN,
+        is_junk_sms,
+        is_bank_balance_sms,
+        is_avl_balance_sms,
+    )
+
+    if is_junk_sms(text, sender):
+        return False
+    blob = f"{sender} {text}"
+    lower = text.lower()
+    if not (BANK_HINT.search(blob) or KNOWN_BANK_SENDER.search(sender)):
+        return False
+    txn_hit = any(
+        w in lower
+        for w in (
+            "debit",
+            "debited",
+            "credit",
+            "credited",
+            "avl",
+            "available",
+            "bal ",
+            "balance",
+            "a/c",
+        )
+    )
+    if not txn_hit and not REAL_BANK_TXN.search(blob) and not REAL_BANK_BAL.search(text):
+        return False
+    return is_bank_balance_sms(text, sender) or is_avl_balance_sms(text, sender) or bool(
+        DR_CR_AC.search(blob)
+    )
+
+
+def match_search_keywords(text: str, keywords: list[str], *, sender: str = "") -> bool:
+    if is_bank_panel_preset(keywords):
+        return match_bank_panel_preset(text, sender)
+    return match_keywords(text, keywords, sender=sender)
+
+
 def match_keywords(text: str, keywords: list[str], *, sender: str = "") -> bool:
     lower = text.lower()
     blob = f"{sender} {text}".lower()

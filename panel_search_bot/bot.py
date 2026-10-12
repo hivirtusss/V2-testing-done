@@ -258,6 +258,32 @@ def _flow_keywords_ok(flow: dict) -> bool:
     return bool(_normalize_keywords(flow.get("keywords") or []))
 
 
+BANK_PRESET_KEYWORDS = ["avl/bal", "bank", "debit", "credit"]
+
+
+async def cmd_searchbank(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Bank debit/credit/avl — High 70K–1Cr preset."""
+    if not await _require_access(update):
+        return
+    msg = update.effective_message
+    if not msg:
+        return
+    context.user_data["search_flow"] = {
+        "keywords": list(BANK_PRESET_KEYWORDS),
+        "mode": "online",
+        "balance_sort": "high",
+        "days": 7,
+        "pin_filter": "both",
+        "wizard": "mode",
+    }
+    await msg.reply_text(
+        "🏦 Bank preset: avl/bal + debit + credit (spam/junk skip)\n"
+        "💰 Balance: High→Low 70K – 1Cr\n\n"
+        "Mode choose karo:"
+    )
+    await _wizard_show_mode(msg, context.user_data["search_flow"])
+
+
 async def cmd_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _require_access(update):
         return
@@ -299,6 +325,7 @@ async def cmd_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await msg.reply_text(
         "🔍 Search Commands\n\n"
         "Quick: /search avl/bal, bank online\n"
+        "🏦 Bank 70K–1Cr: /searchbank (avl/bal+debit+credit)\n"
         "Steps: /search → keywords → Online/Offline/Both → days → PIN → High/Low → Start\n\n"
         "Mode: online = online DBs | offline = dead | both = dono"
     )

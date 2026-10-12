@@ -17,7 +17,7 @@ from panel_search_bot.services import (
     firebase_ids_with_cache,
     load_cached_sms,
     load_cached_sms_for_keywords,
-    match_keywords,
+    match_search_keywords,
     update_firebase_status,
     upsert_cached_sms,
     wants_bank_filter,
@@ -228,7 +228,7 @@ def _filter_row(
     if is_junk_sms(body, sender):
         return False
     blob = f"{sender} {body}"
-    if not match_keywords(body, params.keywords, sender=sender):
+    if not match_search_keywords(body, params.keywords, sender=sender):
         return False
     if wants_bank_filter(params.keywords):
         if not is_bank_balance_sms(body, sender):
