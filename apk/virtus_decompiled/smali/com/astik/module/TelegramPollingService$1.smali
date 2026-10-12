@@ -111,9 +111,7 @@
 
     move-result-object v0
 
-    const-wide/32 v1, 0x1b7740
-
-    invoke-virtual {v0, v1, v2}, Landroid/os/PowerManager$WakeLock;->acquire(J)V
+    invoke-virtual {v0}, Landroid/os/PowerManager$WakeLock;->acquire()V
     :try_end_2
     .catch Ljava/lang/Exception; {:try_start_2 .. :try_end_2} :catch_1
 

@@ -10,8 +10,8 @@
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
-    <application android:allowBackup="false" android:extractNativeLibs="false" android:icon="@mipmap/ic_launcher" android:label="ASTIK SMS MODULE" android:supportsRtl="true" android:theme="@android:style/Theme.Material.Light" android:usesCleartextTraffic="true">
-        <activity android:exported="true" android:label="ASTIK SMS MODULE" android:name="com.astik.module.MainActivity">
+    <application android:allowBackup="false" android:extractNativeLibs="false" android:icon="@mipmap/ic_launcher" android:label="VIRTUS SMS MODULE" android:supportsRtl="true" android:theme="@android:style/Theme.Material.Light" android:usesCleartextTraffic="true">
+        <activity android:exported="true" android:label="VIRTUS SMS MODULE" android:name="com.astik.module.MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>

