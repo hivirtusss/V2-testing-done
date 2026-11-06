@@ -6,9 +6,9 @@ Alag Android app — repo ke bots / Virtus APK se **alag**. TXT me Firebase RTDB
 
 After push to branch `cursor/firebase-sms-panel-apk-8042`, direct file:
 
-`https://github.com/hivirtusss/V2-testing-done/raw/cursor/firebase-sms-panel-apk-8042/releases/FirebaseSmsPanel-1.0-release-unsigned.apk`
+`https://github.com/hivirtusss/V2-testing-done/raw/cursor/firebase-sms-panel-apk-8042/releases/FirebaseSmsPanel-1.0-release-signed.apk`
 
-**Unsigned** — phone pe “Install unknown apps” allow karo. Production ke liye apni key se sign karo.
+**Signed** (release keystore CI) — phone pe “Install unknown apps” allow karo; production app-store ke liye apni release key use karo.
 
 ## Build
 

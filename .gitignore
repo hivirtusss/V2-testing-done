@@ -1,1 +1,4 @@
 android-sdk/
+keystore.ci.secrets.txt
+keystore.properties
+**/signing/*.keystore
