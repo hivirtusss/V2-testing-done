@@ -26,7 +26,8 @@ private val BANK_HINT =
     )
 private val TXN_HINT =
     Pattern.compile(
-        "\\b(?:credited|debited|credit|debit|avl|available|a/c|ac\\s*bal|balance|sent|received|paid|upi)\\b",
+        "\\b(?:credited|debited|credit|debit|avl|available|a/c|ac\\s*bal|balance|sent|received|paid|pay|upi|" +
+            "imps|neft|rtgs|transfer|transferred|withdrawn|withdrawal|deposited|txn|transaction|ref\\s*no|utr)\\b",
         Pattern.CASE_INSENSITIVE,
     )
 private val SPAM_PHRASE =
@@ -189,6 +190,8 @@ fun passesInboxMode(body: String, sender: String, cfg: FilterConfig): Boolean {
         InboxMode.BANK_FILTERED -> {
             if (!isBankLikeSms(body, sender)) return false
             val bal = mainBalanceForSort(body)
+            // Bahut bank SMS me amount regex miss ho jata hai — phir bhi credit/debit/received wale dikhane hain
+            if (bal == null) return true
             return balanceInRangeForSort(bal, cfg)
         }
         InboxMode.BANK_ALL -> return isBankLikeSms(body, sender)

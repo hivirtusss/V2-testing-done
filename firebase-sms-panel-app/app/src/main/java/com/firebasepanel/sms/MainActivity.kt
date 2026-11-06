@@ -890,6 +890,7 @@ private fun VirtusWhiteDeviceListCard(
                 Spacer(Modifier.height(4.dp))
                 VirtusDetailRowLight("UPI Pin", row.upiPinDisplay)
                 VirtusDetailRowLight("Device Id", row.deviceId)
+                VirtusDetailRowLight("Firebase", row.firebaseUrl)
                 VirtusDetailRowLight("Battery", if (row.batteryPercent != null) "${row.batteryPercent}%" else "N/A")
                 VirtusDetailRowLight("Bank SMS", bankSmsLine)
                 VirtusDetailRowLight(
@@ -1088,6 +1089,7 @@ private fun DeviceDetailSheet(
         ) {
             Column(Modifier.padding(14.dp)) {
                 VirtusDetailLine("Device Name", d.modelDisplay)
+                VirtusDetailLine("Firebase URL", d.firebaseUrl)
                 VirtusDetailLine(
                     "Balance (fetch)",
                     if (d.maxBalanceDisplay > 0) "₹ ${formatInr(d.maxBalanceDisplay)}" else "—",

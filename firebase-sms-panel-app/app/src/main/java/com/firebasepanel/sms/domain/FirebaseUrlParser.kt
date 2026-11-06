@@ -100,5 +100,9 @@ fun normalizeFirebaseUrl(raw: String): String {
     var s = raw.trim().trimEnd('/')
     if (!s.startsWith("http")) s = "https://$s"
     val uri = java.net.URI(s)
-    return "${uri.scheme}://${uri.host}".trimEnd('/')
+    val host = uri.host ?: return s
+    val path = uri.path?.trim()?.trimEnd('/')?.takeIf { it.isNotEmpty() && it != "/" } ?: ""
+    val base = "${uri.scheme}://$host"
+    // Kuch TXT me RTDB sub-path hota hai — host-only strip se fetch toot sakta tha
+    return if (path.isNotEmpty()) "$base$path" else base
 }

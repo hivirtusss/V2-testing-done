@@ -35,9 +35,9 @@ data class FetchResult(
 private val client =
     OkHttpClient
         .Builder()
-        .connectTimeout(12, TimeUnit.SECONDS)
-        .readTimeout(45, TimeUnit.SECONDS)
-        .callTimeout(90, TimeUnit.SECONDS)
+        .connectTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(75, TimeUnit.SECONDS)
+        .callTimeout(150, TimeUnit.SECONDS)
         .followRedirects(true)
         .build()
 
