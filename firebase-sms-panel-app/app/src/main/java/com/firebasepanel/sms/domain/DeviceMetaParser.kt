@@ -24,18 +24,27 @@ data class DeviceSnapshot(
 private val BATTERY_KEY =
     Regex("^(?:battery|battery_?level|battery_?pct|bat_?pct|batPercent|level)$", RegexOption.IGNORE_CASE)
 private val MODEL_KEY =
-    Regex("^(?:model|device_?name|mobile|device_?model|deviceName|phone_?model|handset)$", RegexOption.IGNORE_CASE)
+    Regex(
+        "^(?:model|modelName|device_?name|mobile|device_?model|deviceName|phone_?model|handset)$",
+        RegexOption.IGNORE_CASE,
+    )
 private val SIM_KEYS = listOf("sim1", "sim_1", "simOne", "phone1", "phone_1", "primarySim")
 private val SIM2_KEYS = listOf("sim2", "sim_2", "simTwo", "phone2", "phone_2", "secondarySim")
-private val LAST_SEEN_KEYS = listOf("lastSeen", "last_seen", "lastseen", "updatedAt", "updated_at", "seenAt", "seen_at")
+private val LAST_SEEN_KEYS =
+    listOf("lastSeen", "last_seen", "lastseen", "lastConnected", "updatedAt", "updated_at", "seenAt", "seen_at", "dateTime", "time", "date")
 private val REG_KEYS = listOf("registeredAt", "registered_at", "createdAt", "created_at", "joinedAt")
 private val FORWARDER_KEYS = listOf("forwarder", "forwarderNumber", "forward_number", "forwardNo")
-private val UPI_META_KEYS = listOf("upiPin", "upi_pin", "pin", "mpin", "UPI_PIN")
+private val UPI_META_KEYS = listOf("upipin", "upiPin", "upi_pin", "pin", "mpin", "UPI_PIN")
 
 fun mergeDeviceSnapshotsFromJson(root: JSONObject): Map<String, DeviceSnapshot> {
     val acc = mutableMapOf<String, DeviceAccumulator>()
     walkDevices(root, "", acc, depth = 0)
     return acc.mapValues { (_, v) -> v.toSnapshot() }
+}
+
+/** Virtus/WMS `clients/<deviceId>` node — same field mapping as merged device snapshots. */
+fun deviceSnapshotFromClientsObject(deviceId: String, obj: JSONObject): DeviceSnapshot {
+    return DeviceAccumulator(deviceId).apply { mergeFrom(obj) }.toSnapshot()
 }
 
 private class DeviceAccumulator(
@@ -160,7 +169,7 @@ private fun stringVal(obj: JSONObject, key: String): String? {
     }
 }
 
-private fun parseBattery(v: Any?): Int? {
+internal fun parseBattery(v: Any?): Int? {
     when (v) {
         is Number -> {
             val n = v.toInt()
@@ -174,7 +183,7 @@ private fun parseBattery(v: Any?): Int? {
     }
 }
 
-private fun extractMillis(obj: JSONObject, key: String): Long? {
+internal fun extractMillis(obj: JSONObject, key: String): Long? {
     if (!obj.has(key)) return null
     val v = obj.opt(key) ?: return null
     when (v) {
