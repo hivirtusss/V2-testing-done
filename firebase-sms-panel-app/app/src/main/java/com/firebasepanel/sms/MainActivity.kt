@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -269,16 +270,31 @@ class MainActivity : ComponentActivity() {
                         onDismissRequest = { vm.clearSelection() },
                         sheetState = sheetState,
                         containerColor = VirtusColors.panelYellow,
+                        modifier = Modifier.fillMaxHeight(0.92f),
                     ) {
-                        DeviceDetailSheet(d, onDismiss = { vm.clearSelection() }) {
-                            Column(
-                                modifier =
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .heightIn(max = 420.dp)
-                                        .verticalScroll(rememberScrollState()),
-                            ) {
-                                d.messages.forEach { m -> VirtusYellowMsgCard(m) }
+                        val visible = d.messages.filter { it.messageKey !in d.hiddenMessageKeys }
+                        Column(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(bottom = 24.dp),
+                        ) {
+                            DeviceDetailSheet(d, onDismiss = { vm.clearSelection() })
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "Messages (${visible.size})",
+                                color = Color(0xFF1A237E),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            visible.forEach { m ->
+                                VirtusYellowMsgCard(
+                                    msg = m,
+                                    onDelete = { vm.hideMessageFromDetail(m.messageKey) },
+                                )
                             }
                         }
                     }
@@ -561,47 +577,15 @@ private fun FilterDashboard(
         ) {
             VirtusFilterPill(
                 selected =
-                    cfg.balanceTier == BalanceTier.HIGH_1L_20L &&
+                    cfg.balanceTier == BalanceTier.LOW_2K_50K &&
                         cfg.sortMode == SortMode.HIGH_TO_LOW,
-                label = "High 1L-20L",
+                label = "2K–50K ↓ max",
                 emoji = "⬇",
                 lightTheme = false,
                 onClick = {
                     vm.updateConfig {
                         it.copy(
-                            balanceTier = BalanceTier.HIGH_1L_20L,
-                            sortMode = SortMode.HIGH_TO_LOW,
-                        )
-                    }
-                },
-            )
-            VirtusFilterPill(
-                selected =
-                    cfg.balanceTier == BalanceTier.BOOM_20L_90L &&
-                        cfg.sortMode == SortMode.HIGH_TO_LOW,
-                label = "Boom 20L-1Cr",
-                emoji = "💥",
-                lightTheme = false,
-                onClick = {
-                    vm.updateConfig {
-                        it.copy(
-                            balanceTier = BalanceTier.BOOM_20L_90L,
-                            sortMode = SortMode.HIGH_TO_LOW,
-                        )
-                    }
-                },
-            )
-            VirtusFilterPill(
-                selected =
-                    cfg.balanceTier == BalanceTier.MEDIUM_5K_1L &&
-                        cfg.sortMode == SortMode.HIGH_TO_LOW,
-                label = "Medium 5K",
-                emoji = "💛",
-                lightTheme = false,
-                onClick = {
-                    vm.updateConfig {
-                        it.copy(
-                            balanceTier = BalanceTier.MEDIUM_5K_1L,
+                            balanceTier = BalanceTier.LOW_2K_50K,
                             sortMode = SortMode.HIGH_TO_LOW,
                         )
                     }
@@ -611,7 +595,7 @@ private fun FilterDashboard(
                 selected =
                     cfg.balanceTier == BalanceTier.LOW_2K_50K &&
                         cfg.sortMode == SortMode.LOW_TO_HIGH,
-                label = "Low → High",
+                label = "2K–50K ↑ min",
                 emoji = "⬆",
                 lightTheme = false,
                 onClick = {
@@ -619,6 +603,22 @@ private fun FilterDashboard(
                         it.copy(
                             balanceTier = BalanceTier.LOW_2K_50K,
                             sortMode = SortMode.LOW_TO_HIGH,
+                        )
+                    }
+                },
+            )
+            VirtusFilterPill(
+                selected =
+                    cfg.balanceTier == BalanceTier.HIGH_50K_90L &&
+                        cfg.sortMode == SortMode.HIGH_TO_LOW,
+                label = "50K–90L ↓ max",
+                emoji = "🏦",
+                lightTheme = false,
+                onClick = {
+                    vm.updateConfig {
+                        it.copy(
+                            balanceTier = BalanceTier.HIGH_50K_90L,
+                            sortMode = SortMode.HIGH_TO_LOW,
                         )
                     }
                 },
@@ -740,10 +740,12 @@ private fun ActiveStrip(cfg: FilterConfig) {
     val parts = mutableListOf<String>()
     parts.add(
         when (cfg.balanceTier) {
-            BalanceTier.HIGH_1L_20L -> "High 1L-20L"
-            BalanceTier.BOOM_20L_90L -> "Boom 20L-1Cr"
-            BalanceTier.MEDIUM_5K_1L -> "Medium 5K"
-            BalanceTier.LOW_2K_50K -> "Low→High"
+            BalanceTier.LOW_2K_50K ->
+                if (cfg.sortMode == SortMode.HIGH_TO_LOW) "2K–50K↓" else "2K–50K↑"
+            BalanceTier.HIGH_50K_90L -> "50K–90L↓"
+            BalanceTier.MEDIUM_5K_1L -> "Med5K"
+            BalanceTier.HIGH_1L_20L -> "1L–20L"
+            BalanceTier.BOOM_20L_90L -> "20L+"
         },
     )
     parts.add(
@@ -902,7 +904,7 @@ private fun VirtusWhiteDeviceListCard(
                     modifier = Modifier.padding(vertical = 6.dp),
                 )
                 Text(
-                    "Status:${if (row.online) "Online" else "Offline"}",
+                    "Status: ${if (row.online) "Online" else "Offline"}",
                     color = if (row.online) VirtusColors.green else VirtusColors.red,
                     fontWeight = FontWeight.Bold,
                     fontSize = 13.sp,
@@ -910,7 +912,7 @@ private fun VirtusWhiteDeviceListCard(
                 if (row.fromClientsOnly) {
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "Bank filter ne SMS hide kiye — Full inbox / tier badlo",
+                        "Is balance band me SMS match nahi — 2K–50K / 50K–90L pill badlo",
                         color = VirtusColors.orange.copy(alpha = 0.95f),
                         fontSize = 10.sp,
                     )
@@ -1033,7 +1035,6 @@ private fun VirtusDetailRowLight(
 private fun DeviceDetailSheet(
     d: DeviceDetail,
     onDismiss: () -> Unit,
-    messagesContent: @Composable () -> Unit,
 ) {
     Column(
         Modifier
@@ -1107,12 +1108,9 @@ private fun DeviceDetailSheet(
                 )
                 VirtusDetailLine("Forwarder Number", d.forwarderDisplay ?: "N/A")
                 VirtusDetailLine("UPI PIN", d.upiPinDisplay)
-                HorizontalDivider(Modifier.padding(vertical = 8.dp), color = Color(0xFFE0E0E0))
-                Text("Messages (${d.messages.size})", color = VirtusColors.labelBlue, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                messagesContent()
             }
         }
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(8.dp))
     }
 }
 
@@ -1142,27 +1140,30 @@ private fun VirtusDetailLine(
 
 /** White message card on yellow sheet (reference Virtus MSG style). */
 @Composable
-private fun VirtusYellowMsgCard(msg: SmsRow) {
+private fun VirtusYellowMsgCard(
+    msg: SmsRow,
+    onDelete: () -> Unit,
+) {
     Card(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(vertical = 5.dp),
+                .padding(horizontal = 16.dp, vertical = 5.dp),
         shape = RoundedCornerShape(10.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
     ) {
         Box(Modifier.padding(12.dp)) {
-            Icon(
-                Icons.Filled.Delete,
-                contentDescription = null,
-                tint = Color(0xFF212121),
+            IconButton(
+                onClick = onDelete,
                 modifier =
                     Modifier
                         .align(Alignment.TopEnd)
-                        .size(20.dp),
-            )
-            Column(modifier = Modifier.padding(end = 22.dp)) {
+                        .size(32.dp),
+            ) {
+                Icon(Icons.Filled.Delete, contentDescription = "Remove", tint = Color(0xFF212121), modifier = Modifier.size(20.dp))
+            }
+            Column(modifier = Modifier.padding(end = 28.dp)) {
                 Text(
                     "MSG: ${msg.body}",
                     color = VirtusColors.msgGreen,

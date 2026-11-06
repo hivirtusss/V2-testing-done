@@ -19,6 +19,8 @@ data class RawSms(
     val body: String,
     val messageAtMillis: Long?,
     val rawPath: String,
+    /** Stable within one fetch for UI delete / dedupe */
+    val messageKey: String,
 )
 
 data class FetchResult(
@@ -333,7 +335,9 @@ private fun walkJson(node: Any?, path: String, out: MutableList<RawSms>, depth: 
                             .ifEmpty { node.optString("address") }
                             .ifEmpty { node.optString("phone") }
                     val ts = extractMillis(node)
-                    out.add(RawSms(sender.ifBlank { "(no sender)" }, body, ts, path))
+                    val snd = sender.ifBlank { "(no sender)" }
+                    val key = "${path}¤${snd.hashCode()}¤${body.hashCode()}¤${ts ?: 0L}"
+                    out.add(RawSms(snd, body, ts, path, key))
                 }
             }
             for (k in keys) {

@@ -34,6 +34,7 @@ import java.util.LinkedHashSet
 
 /** Filtered SMS lines on device card (Virtus-style inline MSG). */
 data class DeviceSmsPreview(
+    val messageKey: String,
     val sender: String,
     val body: String,
     val messageAtMillis: Long?,
@@ -83,9 +84,12 @@ data class DeviceDetail(
     /** Max bank balance from filtered SMS (same as list badge). */
     val maxBalanceDisplay: Double,
     val messages: List<SmsRow>,
+    /** UI-only: user hid messages via delete (this session) */
+    val hiddenMessageKeys: Set<String> = emptySet(),
 )
 
 data class SmsRow(
+    val messageKey: String,
     val sender: String,
     val body: String,
     val balance: Double?,
@@ -114,7 +118,7 @@ data class UiState(
             connection = ConnectionFilter.ONLINE,
             days = null,
             inboxMode = InboxMode.BANK_FILTERED,
-            balanceTier = BalanceTier.HIGH_1L_20L,
+            balanceTier = BalanceTier.LOW_2K_50K,
             sortByBattery = false,
         ),
 )
@@ -229,8 +233,8 @@ class PanelViewModel(application: Application) : AndroidViewModel(application) {
         val totalSms = lastResults.sumOf { it.sms.size }
         val hint =
             if (totalSms > 0 && devices.isEmpty() && q.isEmpty()) {
-                "Firebase se $totalSms SMS aaye, lekin is tier/PIN/connection me kuch match nahi — " +
-                    "dusra band (Medium / Low→High) try karo, PIN \"No PIN\" ya connection Offline, SMS age All."
+                "Firebase se $totalSms SMS aaye, lekin is band/PIN/Online me match nahi — " +
+                    "2K→50K ↑/↓ ya 50K→90L band, PIN reset, Offline try karo, SMS age All."
             } else {
                 null
             }
@@ -243,6 +247,13 @@ class PanelViewModel(application: Application) : AndroidViewModel(application) {
         val cfg = _state.value.config
         val detail = buildDeviceDetail(lastResults, row, cfg)
         _state.update { it.copy(selected = detail) }
+    }
+
+    fun hideMessageFromDetail(messageKey: String) {
+        val cur = _state.value.selected ?: return
+        _state.update {
+            it.copy(selected = cur.copy(hiddenMessageKeys = cur.hiddenMessageKeys + messageKey))
+        }
     }
 
     /** Share current device list as plain text (Drive, Telegram, etc.). */
@@ -295,16 +306,24 @@ private fun resolveDeviceOnline(
     lastMessageMillis: Long?,
 ): Boolean {
     val explicit = snap?.clientOnline
-    if (explicit != null) return explicit
-    val ref =
-        listOfNotNull(
-            snap?.lastSeenMillis?.takeIf { it > 0L },
-            lastMessageMillis?.takeIf { it > 0L },
-        ).maxOrNull()
-    if (ref != null) {
-        return System.currentTimeMillis() - ref <= ONLINE_INFER_GRACE_MS
+    val inferred =
+        run {
+            val ref =
+                listOfNotNull(
+                    snap?.lastSeenMillis?.takeIf { it > 0L },
+                    lastMessageMillis?.takeIf { it > 0L },
+                ).maxOrNull()
+            if (ref != null) {
+                System.currentTimeMillis() - ref <= ONLINE_INFER_GRACE_MS
+            } else {
+                fr.online
+            }
+        }
+    return when (explicit) {
+        true -> true
+        false -> false
+        null -> inferred
     }
-    return fr.online
 }
 
 private fun deviceIdFromPath(path: String): String {
@@ -439,6 +458,7 @@ private fun buildDeviceList(
                         .map { s ->
                             val b = s.body.trim()
                             DeviceSmsPreview(
+                                messageKey = s.messageKey,
                                 sender = s.sender.ifBlank { "(unknown)" },
                                 body =
                                     when {
@@ -491,8 +511,16 @@ private fun buildDeviceList(
             }
         bankSort ->
             when (cfg.sortMode) {
-                SortMode.HIGH_TO_LOW -> rows.sortedByDescending { it.maxBalance }
-                SortMode.LOW_TO_HIGH -> rows.sortedBy { it.maxBalance }
+                SortMode.HIGH_TO_LOW ->
+                    rows.sortedWith(
+                        compareByDescending<DeviceRow> { it.maxBalance }
+                            .thenByDescending { it.lastActivityMillis },
+                    )
+                SortMode.LOW_TO_HIGH ->
+                    rows.sortedWith(
+                        compareBy<DeviceRow> { it.maxBalance }
+                            .thenByDescending { it.lastActivityMillis },
+                    )
             }
         else -> rows.sortedByDescending { it.lastActivityMillis }
     }
@@ -504,10 +532,11 @@ private fun buildDeviceDetail(results: List<FetchResult>, row: DeviceRow, cfg: F
     val snap = fr.devices[row.deviceId]
     val devicePin = deviceHasPinResolved(msgs, snap)
     val filtered = filterSmsList(msgs, cfg)
-    val basis = filtered.ifEmpty { msgs.sortedByDescending { it.messageAtMillis ?: 0L }.take(500) }
+    val basis = filtered
     val smsRows =
         basis.map { s ->
             SmsRow(
+                messageKey = s.messageKey,
                 sender = s.sender.ifBlank { "(unknown sender)" },
                 body = s.body,
                 balance = mainBalanceForSort(s.body),
@@ -520,8 +549,16 @@ private fun buildDeviceDetail(results: List<FetchResult>, row: DeviceRow, cfg: F
         when {
             cfg.inboxMode == InboxMode.BANK_FILTERED || cfg.inboxMode == InboxMode.BANK_ALL ->
                 when (cfg.sortMode) {
-                    SortMode.HIGH_TO_LOW -> smsRows.sortedByDescending { it.balance ?: 0.0 }
-                    SortMode.LOW_TO_HIGH -> smsRows.sortedBy { it.balance ?: Double.MAX_VALUE }
+                    SortMode.HIGH_TO_LOW ->
+                        smsRows.sortedWith(
+                            compareByDescending<SmsRow> { it.balance ?: 0.0 }
+                                .thenByDescending { it.messageAtMillis ?: 0L },
+                        )
+                    SortMode.LOW_TO_HIGH ->
+                        smsRows.sortedWith(
+                            compareBy<SmsRow> { it.balance ?: Double.MAX_VALUE }
+                                .thenByDescending { it.messageAtMillis ?: 0L },
+                        )
                 }
             else -> smsRows.sortedByDescending { it.messageAtMillis ?: 0L }
         }
