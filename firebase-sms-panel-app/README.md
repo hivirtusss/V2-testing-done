@@ -42,7 +42,7 @@ Optional (unsigned, agar repo me rakha ho):
 3. **Start Fetch** → dubara pull (URLs load hone ke baad).
 4. **Export TXT** → filtered device list share (Telegram/Drive).
 5. **Search Here** → device id / model / SIM / Firebase URL / sender / SMS text se filter.
-6. **Yellow + white UI** — list jaisa reference: har device card par **index, mobile name, UPI PIN (Firebase meta ya SMS se), device id, battery %, last date, Online/Offline**. **Live SMS** = white cards, **MSG:** green text.
+6. **Yellow + white UI** — list jaisa reference: har device card par **index, mobile name, UPI PIN (Firebase meta ya SMS se), device id, battery %, last date, Online/Offline**; right column **green thumbs-up, blue info (details sheet), red trash** (approve/delete abhi sirf UI). **Live SMS** = white cards, **MSG:** green text, **dono jagah trash icon** (reference jaisa).
 7. **Sort list by** (Bank modes): **₹ Balance** (pehle jaisa High→Low / Low→High band ke andar) ya **Battery %** (High→Low = zyada % upar, Low→High = kam % upar). Balance band sirf bank rules pe; battery sort un devices par jo pass ho rahe hain.
 8. **Virtus-style dashboard** — cards: DEVICES, ONLINE, BALANCE, BANK SMS, PANELS; **Live SMS** = filtered devices ke recent messages.
 9. **Inbox mode (pills)**  
@@ -54,7 +54,7 @@ Optional (unsigned, agar repo me rakha ho):
 11. **Connection** — Online / Offline / Both.  
 12. **SMS age** — `1d` … `30d` ya **All (old+new)** — timestamp na ho to bhi message dikhega (purane logs).
 13. **Live refresh** — **Fetch Live** = har **45s** par URLs dubara fetch (job ON).
-14. Device row tap → **Device Details** sheet: SIM, battery, forwarder, UPI PIN, neeche filtered SMS (MSG green).
+14. **Device Details** → card ke **blue Info (i)** se open: SIM, battery, forwarder, UPI PIN, neeche filtered SMS (MSG green). Version **1.0.3**.
 
 ## Data
 
