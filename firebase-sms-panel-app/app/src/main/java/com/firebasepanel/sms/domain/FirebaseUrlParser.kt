@@ -59,9 +59,20 @@ fun extractFirebasePanels(text: String): List<FirebasePanel> {
             currentUrl = u
         }
         if (keyLine.matcher(line).find()) {
-            val parts = line.split(":", limit = 2)
-            val v = parts.getOrNull(1)?.trim().orEmpty()
-            if (v.isNotEmpty()) currentKey = v
+            val v =
+                line.substringAfter(":", "")
+                    .substringAfter("KEY:", "")
+                    .substringAfter("Auth Key", "")
+                    .trim()
+            if (v.isNotEmpty()) currentKey = v.removePrefix(":").trim()
+        }
+        val looseKey =
+            Pattern.compile(
+                "^(?:secret|database\\s*secret|firebase\\s*secret|db\\s*secret|token)\\s*[:=]\\s*(\\S+)",
+                Pattern.CASE_INSENSITIVE,
+            )
+        looseKey.matcher(line).let { m ->
+            if (m.find()) m.group(1)?.trim()?.takeIf { it.isNotEmpty() }?.let { currentKey = it }
         }
         // Plain URL line (no "Firebase URL" label) — common in simple lists
         if (currentUrl == null && um.reset(line).find() && !keyLine.matcher(line).find()) {

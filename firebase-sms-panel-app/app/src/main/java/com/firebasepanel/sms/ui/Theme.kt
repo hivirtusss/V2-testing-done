@@ -21,6 +21,7 @@ private val OnMuted = Color(0xFF9CA3AF)
 
 object VirtusColors {
     val bg = Bg
+    val cyan = Color(0xFF00C8FF)
     /** Bright panel background (yellow Virtus reference) */
     val panelYellow = Color(0xFFFFD400)
     val card = Surface2

