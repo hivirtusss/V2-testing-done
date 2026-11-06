@@ -126,6 +126,8 @@ data class FilterConfig(
     val connection: ConnectionFilter,
     val days: Int?, // null = all time (purani SMS bhi)
     val inboxMode: InboxMode = InboxMode.BANK_FILTERED,
+    /** Bank modes: sort device list by battery % instead of parsed balance */
+    val sortByBattery: Boolean = false,
     val lowMin: Double = 2_000.0,
     val lowMax: Double = 50_000.0,
     val highMin: Double = 50_000.0,

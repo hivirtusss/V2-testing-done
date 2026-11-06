@@ -21,7 +21,12 @@ private val OnMuted = Color(0xFF9CA3AF)
 
 object VirtusColors {
     val bg = Bg
+    /** Bright panel background (yellow Virtus reference) */
+    val panelYellow = Color(0xFFFFD400)
     val card = Surface2
+    val smsCardWhite = Color(0xFFF8F8F8)
+    val msgGreen = Color(0xFF2E7D32)
+    val labelBlue = Color(0xFF1565C0)
     val orange = Orange
     val yellow = Yellow
     val green = Green

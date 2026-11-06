@@ -22,6 +22,8 @@ data class FetchResult(
     val url: String,
     val online: Boolean,
     val sms: List<RawSms>,
+    /** Parsed per-device info from Firebase JSON (model, battery, SIMs, etc.) */
+    val devices: Map<String, DeviceSnapshot> = emptyMap(),
     val error: String? = null,
 )
 
@@ -38,6 +40,31 @@ private val MESSAGE_KEYS = setOf("message", "body", "text", "content", "sms")
 private val TS_KEYS = listOf("timestamp", "time", "date", "createdAt", "message_at", "receivedAt")
 private const val SMS_CAP = 8000
 
+private data class ParsedPayload(
+    val sms: List<RawSms>,
+    val devices: Map<String, DeviceSnapshot>,
+)
+
+private fun parsePayload(json: JSONObject, pathPrefix: String): ParsedPayload {
+    val out = mutableListOf<RawSms>()
+    walkJson(json, pathPrefix, out, depth = 0)
+    val devMap = mergeDeviceSnapshotsFromJson(json)
+    return ParsedPayload(out, devMap)
+}
+
+private fun betterPayload(
+    current: ParsedPayload?,
+    candidate: ParsedPayload,
+): ParsedPayload {
+    if (current == null) return candidate
+    return when {
+        candidate.sms.size > current.sms.size -> candidate
+        candidate.sms.size < current.sms.size -> current
+        candidate.devices.size > current.devices.size -> candidate
+        else -> current
+    }
+}
+
 suspend fun fetchSmsFromFirebase(baseUrl: String): FetchResult =
     withContext(Dispatchers.IO) {
         val base = normalizeFirebaseUrl(baseUrl)
@@ -49,34 +76,32 @@ suspend fun fetchSmsFromFirebase(baseUrl: String): FetchResult =
             )
         var online = false
         var lastErr: String? = null
-        var bestList: MutableList<RawSms>? = null
+        var best: ParsedPayload? = null
         for (path in tryPaths) {
             try {
                 val json = httpGetJson(path) ?: continue
                 online = true
-                val out = mutableListOf<RawSms>()
-                walkJson(json, "", out, depth = 0)
-                if (out.isNotEmpty()) {
-                    if (bestList == null || out.size > bestList.size) {
-                        bestList = out
-                    }
+                val payload = parsePayload(json, "")
+                if (payload.sms.isNotEmpty()) {
+                    best = betterPayload(best, payload)
                 }
             } catch (e: Exception) {
                 lastErr = e.message
             }
         }
-        if (bestList != null && bestList.isNotEmpty()) {
-            return@withContext FetchResult(base, true, trimCap(bestList), null)
+        if (best != null && best!!.sms.isNotEmpty()) {
+            val cap = trimCap(best!!.sms.toMutableList())
+            return@withContext FetchResult(base, true, cap, best!!.devices, null)
         }
         // deep root when shallow / empty children
         try {
             val rootFull = httpGetJson("$base.json")
             if (rootFull != null) {
                 online = true
-                val out = mutableListOf<RawSms>()
-                walkJson(rootFull, "root", out, depth = 0)
-                if (out.isNotEmpty()) {
-                    return@withContext FetchResult(base, true, trimCap(out), null)
+                val payload = parsePayload(rootFull, "root")
+                if (payload.sms.isNotEmpty()) {
+                    val cap = trimCap(payload.sms.toMutableList())
+                    return@withContext FetchResult(base, true, cap, payload.devices, null)
                 }
             }
         } catch (e: Exception) {
@@ -86,16 +111,16 @@ suspend fun fetchSmsFromFirebase(baseUrl: String): FetchResult =
             val shallow = httpGetJson("$base.json?shallow=true")
             if (shallow != null) {
                 online = true
-                val out = mutableListOf<RawSms>()
-                walkJson(shallow, "", out, depth = 0)
-                if (out.isNotEmpty()) {
-                    return@withContext FetchResult(base, true, trimCap(out), null)
+                val payload = parsePayload(shallow, "")
+                if (payload.sms.isNotEmpty()) {
+                    val cap = trimCap(payload.sms.toMutableList())
+                    return@withContext FetchResult(base, true, cap, payload.devices, null)
                 }
             }
         } catch (e: Exception) {
             lastErr = e.message
         }
-        FetchResult(base, online, emptyList(), lastErr)
+        FetchResult(base, online, emptyList(), emptyMap(), lastErr)
     }
 
 private fun trimCap(list: MutableList<RawSms>): List<RawSms> {
