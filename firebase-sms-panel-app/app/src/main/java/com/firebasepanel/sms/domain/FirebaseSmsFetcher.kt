@@ -28,13 +28,15 @@ data class FetchResult(
 private val client =
     OkHttpClient
         .Builder()
-        .connectTimeout(8, TimeUnit.SECONDS)
-        .readTimeout(12, TimeUnit.SECONDS)
+        .connectTimeout(12, TimeUnit.SECONDS)
+        .readTimeout(45, TimeUnit.SECONDS)
+        .callTimeout(90, TimeUnit.SECONDS)
         .followRedirects(true)
         .build()
 
 private val MESSAGE_KEYS = setOf("message", "body", "text", "content", "sms")
 private val TS_KEYS = listOf("timestamp", "time", "date", "createdAt", "message_at", "receivedAt")
+private const val SMS_CAP = 8000
 
 suspend fun fetchSmsFromFirebase(baseUrl: String): FetchResult =
     withContext(Dispatchers.IO) {
@@ -47,6 +49,7 @@ suspend fun fetchSmsFromFirebase(baseUrl: String): FetchResult =
             )
         var online = false
         var lastErr: String? = null
+        var bestList: MutableList<RawSms>? = null
         for (path in tryPaths) {
             try {
                 val json = httpGetJson(path) ?: continue
@@ -54,13 +57,31 @@ suspend fun fetchSmsFromFirebase(baseUrl: String): FetchResult =
                 val out = mutableListOf<RawSms>()
                 walkJson(json, "", out, depth = 0)
                 if (out.isNotEmpty()) {
-                    return@withContext FetchResult(base, true, out, null)
+                    if (bestList == null || out.size > bestList.size) {
+                        bestList = out
+                    }
                 }
             } catch (e: Exception) {
                 lastErr = e.message
             }
         }
-        // shallow probe
+        if (bestList != null && bestList.isNotEmpty()) {
+            return@withContext FetchResult(base, true, trimCap(bestList), null)
+        }
+        // deep root when shallow / empty children
+        try {
+            val rootFull = httpGetJson("$base.json")
+            if (rootFull != null) {
+                online = true
+                val out = mutableListOf<RawSms>()
+                walkJson(rootFull, "root", out, depth = 0)
+                if (out.isNotEmpty()) {
+                    return@withContext FetchResult(base, true, trimCap(out), null)
+                }
+            }
+        } catch (e: Exception) {
+            lastErr = e.message
+        }
         try {
             val shallow = httpGetJson("$base.json?shallow=true")
             if (shallow != null) {
@@ -68,7 +89,7 @@ suspend fun fetchSmsFromFirebase(baseUrl: String): FetchResult =
                 val out = mutableListOf<RawSms>()
                 walkJson(shallow, "", out, depth = 0)
                 if (out.isNotEmpty()) {
-                    return@withContext FetchResult(base, true, out, null)
+                    return@withContext FetchResult(base, true, trimCap(out), null)
                 }
             }
         } catch (e: Exception) {
@@ -76,6 +97,11 @@ suspend fun fetchSmsFromFirebase(baseUrl: String): FetchResult =
         }
         FetchResult(base, online, emptyList(), lastErr)
     }
+
+private fun trimCap(list: MutableList<RawSms>): List<RawSms> {
+    if (list.size <= SMS_CAP) return list
+    return list.takeLast(SMS_CAP)
+}
 
 suspend fun fetchManyParallel(urls: List<String>, concurrency: Int = 8): List<FetchResult> =
     coroutineScope {
@@ -117,14 +143,14 @@ private fun walkJson(node: Any?, path: String, out: MutableList<RawSms>, depth: 
                         .ifEmpty { node.optString("text") }
                         .ifEmpty { node.optString("content") }
                         .ifEmpty { node.optString("sms") })
-                if (body.length >= 4) {
+                if (body.length >= 2) {
                     val sender =
                         node.optString("sender")
                             .ifEmpty { node.optString("from") }
                             .ifEmpty { node.optString("address") }
                             .ifEmpty { node.optString("phone") }
                     val ts = extractMillis(node)
-                    out.add(RawSms(sender, body, ts, path))
+                    out.add(RawSms(sender.ifBlank { "(no sender)" }, body, ts, path))
                 }
             }
             for (k in keys) {

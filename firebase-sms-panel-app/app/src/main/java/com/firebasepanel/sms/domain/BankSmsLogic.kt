@@ -20,7 +20,8 @@ private val AVL_PATTERNS = listOf(
 
 private val BANK_HINT =
     Pattern.compile(
-        "\\b(?:bank|sbi|hdfc|icici|axis|kotak|pnb|bob|idfc|yes|canara|union|paytm|phonepe|gpay|credit|debit)\\b",
+        "\\b(?:bank|sbi|hdfc|icici|axis|kotak|pnb|bob|idfc|yes|canara|union|indusind|federal|rbl|dcb|tap|uco|iob|" +
+            "paytm|phonepe|gpay|google\\s*pay|bharatpe|cred|razorpay|airtel|jio\\s*payments|nbad|wallets)\\b",
         Pattern.CASE_INSENSITIVE,
     )
 private val TXN_HINT =
@@ -58,14 +59,41 @@ fun parseAmount(s: String): Double? {
 
 fun messageHasPinText(body: String): Boolean = PIN_PATTERN.matcher(body).find()
 
-fun isJunkSms(body: String, sender: String): Boolean {
+private val OTP_HINT =
+    Pattern.compile(
+        "\\b(?:otp|o\\.?t\\.?p\\.?|one[-\\s]?time\\s+password|verification\\s+code|is your|use otp)\\b",
+        Pattern.CASE_INSENSITIVE,
+    )
+private val TELCO_SENDER =
+    Pattern.compile(
+        "^(?:JIO|JIOTP|V[IT]-|AIRTEL|BSNL|IDEA|VODAFONE|MTNL|DOT|DM-|\\+?91)", Pattern.CASE_INSENSITIVE,
+    )
+
+/** Hard spam — hamesha hatao. Baaki SMS (OTP, bank, offers) user dekh sakta. */
+fun isHardSpamOnly(body: String, sender: String): Boolean {
     val blob = "$sender $body"
     if (SPAM_PHRASE.matcher(blob).find()) return true
+    if (Pattern.compile("(?:bit\\.ly|tinyurl|t\\.me/|cutt\\.ly)", Pattern.CASE_INSENSITIVE).matcher(blob).find()) {
+        return true
+    }
     return false
 }
 
+fun isOtpOrServiceSms(body: String, sender: String): Boolean {
+    if (isHardSpamOnly(body, sender)) return false
+    val b = body.trim()
+    if (b.length < 4) return false
+    if (OTP_HINT.matcher(b).find()) return true
+    if (TELCO_SENDER.matcher(sender.trim()).find()) return true
+    val low = b.lowercase()
+    if ("jio" in low && (OTP_HINT.matcher(b).find() || Regex("\\b\\d{4,8}\\b").containsMatchIn(b))) return true
+    return false
+}
+
+fun isJunkSms(body: String, sender: String): Boolean = isHardSpamOnly(body, sender)
+
 fun isBankLikeSms(body: String, sender: String): Boolean {
-    if (isJunkSms(body, sender)) return false
+    if (isHardSpamOnly(body, sender)) return false
     val blob = "$sender $body"
     val hasMoney = parseAmount(body) != null
     val bank = BANK_HINT.matcher(blob).find()
@@ -81,11 +109,23 @@ enum class PinFilter { WITH, WITHOUT, BOTH }
 
 enum class ConnectionFilter { ONLINE, OFFLINE, BOTH }
 
+enum class InboxMode {
+    /** Bank SMS + balance band (High/Low sort) */
+    BANK_FILTERED,
+    /** Saari bank/txn SMS — amount band mat lagao */
+    BANK_ALL,
+    /** OTP / Jio / telco / net banking OTP — sender ID dikhega */
+    OTP_AND_ALERTS,
+    /** Jo device Firebase pe hai — spam short-links hata ke sab (purani + nayi) */
+    FULL_INBOX,
+}
+
 data class FilterConfig(
     val sortMode: SortMode,
     val pinFilter: PinFilter,
     val connection: ConnectionFilter,
-    val days: Int?, // null = all time
+    val days: Int?, // null = all time (purani SMS bhi)
+    val inboxMode: InboxMode = InboxMode.BANK_FILTERED,
     val lowMin: Double = 2_000.0,
     val lowMax: Double = 50_000.0,
     val highMin: Double = 50_000.0,
@@ -105,9 +145,22 @@ fun daysCutoff(days: Int?): Calendar? {
     return Calendar.getInstance(Locale.US).apply { add(Calendar.DAY_OF_YEAR, -days) }
 }
 
-fun messageWithinDays(messageAtMillis: Long?, body: String, days: Int?): Boolean {
+fun messageWithinDays(messageAtMillis: Long?, @Suppress("UNUSED_PARAMETER") body: String, days: Int?): Boolean {
     if (days == null) return true
     val cutoff = daysCutoff(days) ?: return true
-    val t = messageAtMillis ?: return true
-    return t >= cutoff.timeInMillis
+    if (messageAtMillis == null) return true
+    return messageAtMillis >= cutoff.timeInMillis
+}
+
+fun passesInboxMode(body: String, sender: String, cfg: FilterConfig): Boolean {
+    when (cfg.inboxMode) {
+        InboxMode.BANK_FILTERED -> {
+            if (!isBankLikeSms(body, sender)) return false
+            val bal = mainBalanceForSort(body)
+            return balanceInRangeForSort(bal, cfg)
+        }
+        InboxMode.BANK_ALL -> return isBankLikeSms(body, sender)
+        InboxMode.OTP_AND_ALERTS -> return isOtpOrServiceSms(body, sender)
+        InboxMode.FULL_INBOX -> return !isHardSpamOnly(body, sender)
+    }
 }

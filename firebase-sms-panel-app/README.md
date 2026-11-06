@@ -1,23 +1,34 @@
 # Firebase SMS Panel (standalone APK)
 
-Alag Android app — repo ke bots / Virtus APK se **alag**. TXT me Firebase RTDB URLs daalo → parallel fetch → bank SMS filter → device list (tap = detail).
+Alag Android app — repo ke bots / Virtus APK se **alag**. TXT me Firebase RTDB URLs → HTTPS parallel fetch → device list. Har SMS par **sender ID** clearly.
 
 ## Build
 
-1. Android Studio (latest) install karo.
-2. **Open** → folder `firebase-sms-panel-app` select karo.
-3. Gradle sync → **Run** on device/emulator.
-
-Pehli baar Android Studio `gradlew` generate kar sakta hai.
+1. Android Studio (latest) → **Open** → `firebase-sms-panel-app`
+2. Gradle sync → Run / Build APK  
+   (Pehli sync pe Gradle wrapper scripts ban sakte hain.)
 
 ## Use
 
-1. App khol ke **TXT se Firebase URLs** dabao — `.txt` pick karo (har line / mix URLs).
-2. Chips: **High→Low (50K–90L)** / **Low→High (2K–50K)** · **With / Without / Both PIN (device)** · **Online / Offline / Both** · **days / All**.
-3. Device row tap → Firebase URL + device id + filtered SMS.
+1. **TXT — Firebase URLs** → `.txt` pick (URLs newline / mixed text dono).
+2. **Inbox mode (chips)**  
+   - **All bank** — saari bank-like SMS (amount band **nahi** — High/Low sort by amount).  
+   - **Bank + band** — amount sirf **High→Low 50K–90L** ya **Low→High 2K–50K** ke andar.  
+   - **OTP / Jio** — OTP / telco / Jio style alerts (sender ID dikhega).  
+   - **Full inbox** — short-link spam hata ke **jo Firebase pe sync ho** (purani + nayi).  
+3. **PIN filter** — sirf **Bank** modes par (device par koi PIN-pattern SMS ho to “PIN device”).
+4. **Connection** — Online / Offline / Both.  
+5. **SMS age** — `1d` … `30d` ya **All (old+new)** — timestamp na ho to bhi message dikhega (purane logs).
+6. **Live refresh** — switch ON = har **45s** par URLs dubara fetch (background job).
+7. Top **refresh** icon — turant dubara pull.
+8. Device row tap → bottom sheet: **Firebase URL, device id, sender, body**.
+
+## Data
+
+- Har fetch me zyada SMS lane ke liye deep JSON walk + timeout badhaya; cap ~**8000** SMS/DB (OOM se bachne ke liye).
+- **Live** = app ko dubara sync karna; SMS tab dikhenge jab phone/WMS Firebase ko update kare.
 
 ## Notes
 
-- Filters **bank-like** SMS pe (spam/loan promo skip). Amount SMS se parse (avl/balance/credited…).
-- **PIN** = device par koi bhi SMS me UPI PIN pattern mila to “with PIN device”.
-- Internet permission required; Firebase public read hona chahiye.
+- Firebase RTDB **public read** hona chahiye warna kuch nahi aayega.
+- OTP mode spam short-links hata hai; baaki telco sender IDs match karne ki koshish.
