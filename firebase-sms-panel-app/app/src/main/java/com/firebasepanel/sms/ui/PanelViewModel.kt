@@ -35,6 +35,13 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.util.LinkedHashSet
 
+/** Filtered SMS lines on device card (Virtus-style inline MSG). */
+data class DeviceSmsPreview(
+    val sender: String,
+    val body: String,
+    val messageAtMillis: Long?,
+)
+
 data class DeviceRow(
     val firebaseUrl: String,
     val deviceId: String,
@@ -57,6 +64,8 @@ data class DeviceRow(
     val previewSender: String,
     /** Recent SMS body snippet for list card (green Virtus-style line). */
     val previewBody: String,
+    /** Up to N recent **filtered** SMS on card (same rules as Live strip / sheet). */
+    val previewMessages: List<DeviceSmsPreview> = emptyList(),
     /** Loaded from `clients/` only — bank filters hid all SMS but device still listed. */
     val fromClientsOnly: Boolean,
 )
@@ -456,6 +465,27 @@ private fun buildDeviceList(
                     rawBody.length > 160 -> rawBody.take(157) + "…"
                     else -> rawBody
                 }
+            val previewMessages =
+                if (fromClientsOnly) {
+                    emptyList()
+                } else {
+                    filtered
+                        .sortedByDescending { it.messageAtMillis ?: 0L }
+                        .take(6)
+                        .map { s ->
+                            val b = s.body.trim()
+                            DeviceSmsPreview(
+                                sender = s.sender.ifBlank { "(unknown)" },
+                                body =
+                                    when {
+                                        b.isEmpty() -> "—"
+                                        b.length > 200 -> b.take(197) + "…"
+                                        else -> b
+                                    },
+                                messageAtMillis = s.messageAtMillis,
+                            )
+                        }
+                }
             val upiPin = resolveUpiPin(msgs, snap)
             val model =
                 snap?.model?.takeIf { it.isNotBlank() }
@@ -482,6 +512,7 @@ private fun buildDeviceList(
                     lastActivityMillis = lastAct,
                     previewSender = preview,
                     previewBody = if (fromClientsOnly) "" else previewBody,
+                    previewMessages = previewMessages,
                     fromClientsOnly = fromClientsOnly,
                 ),
             )

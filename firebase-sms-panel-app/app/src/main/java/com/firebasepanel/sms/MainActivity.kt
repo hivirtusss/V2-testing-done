@@ -1047,6 +1047,48 @@ private fun VirtusWhiteDeviceListCard(
                         color = VirtusColors.orange.copy(alpha = 0.95f),
                         fontSize = 10.sp,
                     )
+                } else if (row.previewMessages.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "MSG (filters ke hisaab se)",
+                        color = VirtusColors.labelBlue,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    row.previewMessages.forEach { m ->
+                        Column(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(VirtusColors.smsCardWhite)
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                        ) {
+                            Text(
+                                "MSG: ${m.body}",
+                                color = VirtusColors.msgGreen,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 4,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                buildString {
+                                    append("Sender: ${m.sender}")
+                                    if (m.messageAtMillis != null && m.messageAtMillis!! > 0L) {
+                                        append(" · ${formatTsLong(m.messageAtMillis!!)}")
+                                    }
+                                },
+                                color = Color(0xFF616161),
+                                fontSize = 9.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
                 }
             }
             Column(
