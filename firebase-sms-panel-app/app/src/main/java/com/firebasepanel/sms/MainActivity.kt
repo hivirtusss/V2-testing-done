@@ -40,9 +40,9 @@ import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Smartphone
-import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -65,6 +65,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -281,17 +282,17 @@ class MainActivity : ComponentActivity() {
                     ModalBottomSheet(
                         onDismissRequest = { vm.clearSelection() },
                         sheetState = sheetState,
-                        containerColor = VirtusColors.card,
+                        containerColor = VirtusColors.panelYellow,
                     ) {
                         DeviceDetailSheet(d, onDismiss = { vm.clearSelection() }) {
                             Column(
                                 modifier =
                                     Modifier
                                         .fillMaxWidth()
-                                        .heightIn(max = 400.dp)
+                                        .heightIn(max = 420.dp)
                                         .verticalScroll(rememberScrollState()),
                             ) {
-                                d.messages.forEach { m -> SmsCardYellow(m) }
+                                d.messages.forEach { m -> VirtusYellowMsgCard(m) }
                             }
                         }
                     }
@@ -952,73 +953,117 @@ private fun DeviceCardYellow(
     onOpenDetail: () -> Unit,
     onInfoClick: () -> Unit,
 ) {
+    val borderColor =
+        if (row.online) VirtusColors.green.copy(alpha = 0.75f) else VirtusColors.onMuted.copy(alpha = 0.35f)
     Card(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .padding(vertical = 6.dp)
-                .clickable(onClick = onOpenDetail),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = VirtusColors.smsCardWhite),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                .clickable(onClick = onOpenDetail)
+                .border(1.dp, borderColor, RoundedCornerShape(14.dp)),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = VirtusColors.card),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
         Row(
             Modifier.padding(12.dp),
-            verticalAlignment = Alignment.Top,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(36.dp)) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    "$index",
-                    color = VirtusColors.labelBlue,
+                    "#$index",
+                    color = VirtusColors.green,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
+                    fontSize = 15.sp,
                 )
-                Icon(
-                    Icons.Filled.Smartphone,
-                    contentDescription = null,
-                    tint = VirtusColors.labelBlue,
-                    modifier = Modifier.size(28.dp),
-                )
+                Spacer(Modifier.height(6.dp))
+                Box(
+                    modifier =
+                        Modifier
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(
+                                        Color(0xFF5C6BC0),
+                                        Color(0xFF7E57C2),
+                                    ),
+                                ),
+                            ),
+                ) {
+                    Icon(
+                        Icons.Filled.Smartphone,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.align(Alignment.Center).size(26.dp),
+                    )
+                    if (row.online) {
+                        Box(
+                            Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(3.dp)
+                                .size(9.dp)
+                                .clip(CircleShape)
+                                .background(VirtusColors.green),
+                        )
+                    }
+                }
             }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                DetailLine("Mobile", row.modelDisplay)
-                Text(
-                    "Status: ${if (row.online) "Online" else "Offline"}",
-                    color = if (row.online) Color(0xFF2E7D32) else Color(0xFFC62828),
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 13.sp,
-                    modifier = Modifier.padding(vertical = 2.dp),
-                )
-                Text(
-                    "₹ ${formatInr(row.maxBalance)} · ${row.smsCount} SMS",
-                    color = Color(0xFF424242),
-                    fontSize = 11.sp,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-                Text(
-                    "Tap → battery, SIM, PIN, messages",
-                    color = VirtusColors.labelBlue,
-                    fontSize = 10.sp,
-                    modifier = Modifier.padding(top = 6.dp),
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        row.deviceId,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    VirtusBalanceChip(amountText = formatInr(row.maxBalance))
+                }
+                if (row.previewBody.isNotBlank()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "MSG: ${row.previewBody}",
+                        color = VirtusColors.msgGreen,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        lineHeight = 16.sp,
+                    )
+                }
             }
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-                modifier = Modifier.padding(start = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+                modifier = Modifier.padding(start = 4.dp),
             ) {
+                IconButton(onClick = onInfoClick, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        Icons.Filled.Info,
+                        contentDescription = "Details",
+                        tint = VirtusColors.yellow,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
                 IconButton(
-                    onClick = { /* Approve — panel-only UI */ },
-                    modifier = Modifier.size(40.dp),
+                    onClick = { /* favourite — UI only */ },
+                    modifier = Modifier.size(36.dp),
                 ) {
-                    Icon(Icons.Filled.ThumbUp, contentDescription = "Approve", tint = Color(0xFF2E7D32), modifier = Modifier.size(22.dp))
-                }
-                IconButton(onClick = onInfoClick, modifier = Modifier.size(40.dp)) {
-                    Icon(Icons.Filled.Info, contentDescription = "Details", tint = VirtusColors.labelBlue, modifier = Modifier.size(22.dp))
-                }
-                IconButton(onClick = { /* Delete — not wired */ }, modifier = Modifier.size(40.dp)) {
-                    Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Color(0xFFD32F2F), modifier = Modifier.size(22.dp))
+                    Icon(
+                        Icons.Outlined.StarBorder,
+                        contentDescription = null,
+                        tint = VirtusColors.yellow.copy(alpha = 0.85f),
+                        modifier = Modifier.size(22.dp),
+                    )
                 }
             }
         }
@@ -1026,25 +1071,20 @@ private fun DeviceCardYellow(
 }
 
 @Composable
-private fun DetailLine(
-    label: String,
-    value: String,
-) {
-    Row(Modifier.padding(vertical = 2.dp)) {
+private fun VirtusBalanceChip(amountText: String) {
+    Box(
+        modifier =
+            Modifier
+                .clip(RoundedCornerShape(10.dp))
+                .background(VirtusColors.yellow.copy(alpha = 0.95f))
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+    ) {
         Text(
-            "$label:",
-            color = Color(0xFF1565C0),
+            "₹$amountText",
+            color = Color(0xFF1A1A1A),
             fontWeight = FontWeight.Bold,
             fontSize = 13.sp,
-        )
-        Spacer(Modifier.width(6.dp))
-        Text(
-            value,
-            color = Color(0xFF212121),
-            fontSize = 13.sp,
-            modifier = Modifier.weight(1f),
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis,
+            maxLines = 1,
         )
     }
 }
@@ -1107,66 +1147,17 @@ private fun LiveSmsCardYellow(row: LiveSmsRow) {
 }
 
 @Composable
-private fun SmsCardYellow(msg: SmsRow) {
-    Card(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(vertical = 5.dp),
-        shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = VirtusColors.smsCardWhite),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
-    ) {
-        Box(Modifier.padding(12.dp)) {
-            Icon(
-                Icons.Filled.Delete,
-                contentDescription = null,
-                tint = Color(0xFF212121),
-                modifier =
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .size(20.dp),
-            )
-            Icon(
-                Icons.Outlined.DeleteOutline,
-                contentDescription = null,
-                tint = Color(0xFF616161),
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(top = 40.dp)
-                        .size(18.dp),
-            )
-            Column(modifier = Modifier.padding(end = 22.dp, bottom = 4.dp)) {
-                Text(
-                    "MSG: ${msg.body}",
-                    color = VirtusColors.msgGreen,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                )
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "Sender: ${msg.sender}",
-                    color = Color(0xFF424242),
-                    fontSize = 11.sp,
-                )
-                Text(
-                    "Received: ${formatTsLong(msg.messageAtMillis ?: 0L)}",
-                    color = Color(0xFF616161),
-                    fontSize = 11.sp,
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun DeviceDetailSheet(
     d: DeviceDetail,
     onDismiss: () -> Unit,
     messagesContent: @Composable () -> Unit,
 ) {
-    Column(Modifier.padding(16.dp).fillMaxWidth()) {
+    Column(
+        Modifier
+            .padding(16.dp)
+            .fillMaxWidth()
+            .background(VirtusColors.panelYellow),
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             androidx.compose.material3.IconButton(
                 onClick = onDismiss,
@@ -1182,7 +1173,7 @@ private fun DeviceDetailSheet(
             Spacer(Modifier.width(6.dp))
             Text(
                 "Device Details",
-                color = Color(0xFF1565C0),
+                color = Color(0xFF1A237E),
                 fontWeight = FontWeight.Bold,
                 fontSize = 18.sp,
             )
@@ -1214,26 +1205,99 @@ private fun DeviceDetailSheet(
             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
         ) {
             Column(Modifier.padding(14.dp)) {
-                DetailLine("Device Name", d.modelDisplay)
-                DetailLine("Battery", if (d.batteryPercent != null) "${d.batteryPercent}%" else "—")
-                DetailLine("SIM 1", d.sim1Display ?: "N/A")
-                DetailLine("SIM 2", d.sim2Display ?: "N/A")
-                DetailLine(
+                VirtusDetailLine("Device Name", d.modelDisplay)
+                VirtusDetailLine(
+                    "Balance (fetch)",
+                    if (d.maxBalanceDisplay > 0) "₹ ${formatInr(d.maxBalanceDisplay)}" else "—",
+                )
+                VirtusDetailLine("Battery", if (d.batteryPercent != null) "${d.batteryPercent}%" else "—")
+                VirtusDetailLine("SIM 1", d.sim1Display ?: "N/A")
+                VirtusDetailLine("SIM 2", d.sim2Display ?: "N/A")
+                VirtusDetailLine(
                     "Registered At",
                     if (d.registeredAtMillis != null && d.registeredAtMillis!! > 0L) formatTsLong(d.registeredAtMillis!!) else "N/A",
                 )
-                DetailLine(
+                VirtusDetailLine(
                     "Last Seen",
                     if (d.lastSeenMillis != null && d.lastSeenMillis!! > 0L) formatTsLong(d.lastSeenMillis!!) else "N/A",
                 )
-                DetailLine("Forwarder Number", d.forwarderDisplay ?: "N/A")
-                DetailLine("UPI PIN", d.upiPinDisplay)
-                HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                VirtusDetailLine("Forwarder Number", d.forwarderDisplay ?: "N/A")
+                VirtusDetailLine("UPI PIN", d.upiPinDisplay)
+                HorizontalDivider(Modifier.padding(vertical = 8.dp), color = Color(0xFFE0E0E0))
                 Text("Messages (${d.messages.size})", color = VirtusColors.labelBlue, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 messagesContent()
             }
         }
         Spacer(Modifier.height(16.dp))
+    }
+}
+
+@Composable
+private fun VirtusDetailLine(
+    label: String,
+    value: String,
+) {
+    Row(Modifier.padding(vertical = 2.dp)) {
+        Text(
+            "$label:",
+            color = Color(0xFF1565C0),
+            fontWeight = FontWeight.Bold,
+            fontSize = 14.sp,
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            value,
+            color = Color(0xFF212121),
+            fontSize = 14.sp,
+            modifier = Modifier.weight(1f),
+            maxLines = 4,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/** White message card on yellow sheet (reference Virtus MSG style). */
+@Composable
+private fun VirtusYellowMsgCard(msg: SmsRow) {
+    Card(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 5.dp),
+        shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+    ) {
+        Box(Modifier.padding(12.dp)) {
+            Icon(
+                Icons.Filled.Delete,
+                contentDescription = null,
+                tint = Color(0xFF212121),
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .size(20.dp),
+            )
+            Column(modifier = Modifier.padding(end = 22.dp)) {
+                Text(
+                    "MSG: ${msg.body}",
+                    color = VirtusColors.msgGreen,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Sender: ${msg.sender}",
+                    color = Color(0xFF424242),
+                    fontSize = 11.sp,
+                )
+                Text(
+                    "Received: ${formatTsLong(msg.messageAtMillis ?: 0L)}",
+                    color = Color(0xFF616161),
+                    fontSize = 11.sp,
+                )
+            }
+        }
     }
 }
 

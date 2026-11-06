@@ -51,6 +51,8 @@ data class DeviceRow(
     val smsCount: Int,
     val lastActivityMillis: Long,
     val previewSender: String,
+    /** Recent SMS body snippet for list card (green Virtus-style line). */
+    val previewBody: String,
 )
 
 data class DeviceDetail(
@@ -66,6 +68,8 @@ data class DeviceDetail(
     val lastSeenMillis: Long?,
     val registeredAtMillis: Long?,
     val forwarderDisplay: String?,
+    /** Max bank balance from filtered SMS (same as list badge). */
+    val maxBalanceDisplay: Double,
     val messages: List<SmsRow>,
 )
 
@@ -366,7 +370,15 @@ private fun buildDeviceList(
             val maxBal = balances.maxOrNull() ?: 0.0
             val times = filtered.mapNotNull { it.messageAtMillis }
             val lastAct = times.maxOrNull() ?: 0L
-            val preview = filtered.maxByOrNull { it.messageAtMillis ?: 0L }?.sender?.ifBlank { "(sender)" } ?: ""
+            val previewSms = filtered.maxByOrNull { it.messageAtMillis ?: 0L }
+            val preview = previewSms?.sender?.ifBlank { "(sender)" } ?: ""
+            val rawBody = previewSms?.body?.trim().orEmpty()
+            val previewBody =
+                when {
+                    rawBody.isEmpty() -> ""
+                    rawBody.length > 160 -> rawBody.take(157) + "…"
+                    else -> rawBody
+                }
             val upiPin = resolveUpiPin(msgs, snap)
             val model =
                 snap?.model?.takeIf { it.isNotBlank() }
@@ -391,6 +403,7 @@ private fun buildDeviceList(
                     smsCount = filtered.size,
                     lastActivityMillis = lastAct,
                     previewSender = preview,
+                    previewBody = previewBody,
                 ),
             )
         }
@@ -490,6 +503,7 @@ private fun buildDeviceDetail(results: List<FetchResult>, row: DeviceRow, cfg: F
         lastSeenMillis = row.lastSeenMillis,
         registeredAtMillis = row.registeredAtMillis,
         forwarderDisplay = row.forwarderDisplay,
+        maxBalanceDisplay = row.maxBalance,
         messages = ordered,
     )
 }
