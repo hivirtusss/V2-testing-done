@@ -165,7 +165,19 @@ class PanelViewModel(application: Application) : AndroidViewModel(application) {
                     _state.update { it.copy(error = "TXT me koi Firebase URL nahi mila") }
                     return@launch
                 }
-                fetchAndCompute(urls)
+                storedUrls = urls
+                lastResults = emptyList()
+                _state.update {
+                    it.copy(
+                        progress = "Ready: ${urls.size} URLs — filters set karke Start Fetch / Fetch Live",
+                        devices = emptyList(),
+                        liveFeedSms = emptyList(),
+                        selected = null,
+                        lastFetchEpochMs = 0L,
+                        error = null,
+                    )
+                }
+                applyFilters()
             } catch (e: Exception) {
                 _state.update { it.copy(error = e.message ?: "read fail") }
             }
@@ -180,14 +192,21 @@ class PanelViewModel(application: Application) : AndroidViewModel(application) {
     private suspend fun fetchAndCompute(urls: List<String>) {
         storedUrls = urls
         _state.update {
-            it.copy(fetching = true, progress = "0/${urls.size}", devices = emptyList(), selected = null, error = null)
+            it.copy(
+                fetching = true,
+                progress = "Fetching ${urls.size} Firebase URLs…",
+                devices = emptyList(),
+                liveFeedSms = emptyList(),
+                selected = null,
+                error = null,
+            )
         }
         val results = fetchManyParallel(urls, concurrency = 12)
         lastResults = results
         _state.update {
             it.copy(
                 fetching = false,
-                progress = "Done ${results.count { r -> r.online }} online / ${results.size} total",
+                progress = "Done ${results.count { r -> r.online }} online / ${results.size} URLs",
                 lastFetchEpochMs = System.currentTimeMillis(),
             )
         }
