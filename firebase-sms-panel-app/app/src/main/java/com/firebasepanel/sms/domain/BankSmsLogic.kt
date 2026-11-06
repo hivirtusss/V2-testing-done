@@ -17,11 +17,16 @@ private val AVL_PATTERNS = listOf(
         "(?:a/c|ac)\\s*(?:bal\\.?|balance)\\s*[:.]?\\s*(?:Rs\\.?|INR|₹)?\\s*([\\d,]+(?:\\.\\d{1,2})?)",
         Pattern.CASE_INSENSITIVE,
     ),
+    /** IOB-style: `AcBal:46754.60` / `CLRBal:` — digits kabhi ₹ ke bina hote hain */
+    Pattern.compile(
+        "(?:acbal|clr\\.?bal|clr bal|avl\\.?bal)\\s*[:.]?\\s*(?:Rs\\.?|INR|₹)?\\s*([\\d,]+(?:\\.\\d{1,2})?)",
+        Pattern.CASE_INSENSITIVE,
+    ),
 )
 
 private val BANK_HINT =
     Pattern.compile(
-        "\\b(?:bank|sbi|hdfc|icici|axis|kotak|pnb|bob|idfc|yes|canara|union|indusind|federal|rbl|dcb|tap|uco|iob|" +
+        "\\b(?:bank|sbi|hdfc|icici|axis|kotak|pnb|bob|idfc|yes|canara|union|indusind|federal|rbl|dcb|tap|uco|iob|iobch|" +
             "paytm|phonepe|gpay|google\\s*pay|bharatpe|cred|razorpay|airtel|jio\\s*payments|nbad|wallets)\\b",
         Pattern.CASE_INSENSITIVE,
     )
@@ -58,6 +63,9 @@ fun parseAmount(s: String): Double? {
     }
     return best
 }
+
+/** Same as parseAmount — har SMS / device line me sabse bada meaningful ₹ number (Avl/AcBal/txn). */
+fun sortAmountFromSmsBody(body: String): Double? = parseAmount(body)
 
 fun messageHasPinText(body: String): Boolean = PIN_PATTERN.matcher(body).find()
 
