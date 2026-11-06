@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.firebasepanel.sms.domain.ConnectionFilter
 import com.firebasepanel.sms.domain.DeviceSnapshot
 import com.firebasepanel.sms.domain.FetchResult
+import com.firebasepanel.sms.domain.BalanceTier
 import com.firebasepanel.sms.domain.FilterConfig
 import com.firebasepanel.sms.domain.InboxMode
 import com.firebasepanel.sms.domain.PinFilter
@@ -106,7 +107,8 @@ data class UiState(
             pinFilter = PinFilter.BOTH,
             connection = ConnectionFilter.ONLINE,
             days = null,
-            inboxMode = InboxMode.BANK_ALL,
+            inboxMode = InboxMode.BANK_FILTERED,
+            balanceTier = BalanceTier.HIGH_1L_20L,
             sortByBattery = false,
         ),
 )

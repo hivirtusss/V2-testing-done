@@ -109,6 +109,31 @@ enum class PinFilter { WITH, WITHOUT, BOTH }
 
 enum class ConnectionFilter { ONLINE, OFFLINE, BOTH }
 
+/** Preset balance band (bank filtered mode) — matches Virtus panel pill labels */
+enum class BalanceTier {
+    /** 2K – 50K — Low → High style band */
+    LOW_2K_50K,
+    /** ~5K – 1L “medium” */
+    MEDIUM_5K_1L,
+    /** 1 Lakh – 20 Lakh */
+    HIGH_1L_20L,
+    /** 20 Lakh – 90 Lakh (screenshot “Boom 20L–1Cr”; cap 90L app rule) */
+    BOOM_20L_90L,
+}
+
+fun tierRange(tier: BalanceTier): ClosedFloatingPointRange<Double> =
+    when (tier) {
+        BalanceTier.LOW_2K_50K -> 2_000.0..50_000.0
+        BalanceTier.MEDIUM_5K_1L -> 5_000.0..100_000.0
+        BalanceTier.HIGH_1L_20L -> 100_000.0..2_000_000.0
+        BalanceTier.BOOM_20L_90L -> 2_000_000.0..9_000_000.0
+    }
+
+fun amountInTier(amount: Double?, tier: BalanceTier): Boolean {
+    if (amount == null) return false
+    return amount in tierRange(tier)
+}
+
 enum class InboxMode {
     /** Bank SMS + balance band (High/Low sort) */
     BANK_FILTERED,
@@ -126,16 +151,21 @@ data class FilterConfig(
     val connection: ConnectionFilter,
     val days: Int?, // null = all time (purani SMS bhi)
     val inboxMode: InboxMode = InboxMode.BANK_FILTERED,
+    /** Bank filtered: which preset band (High 1L–20L, Boom, …) */
+    val balanceTier: BalanceTier = BalanceTier.HIGH_1L_20L,
     /** Bank modes: sort device list by battery % instead of parsed balance */
     val sortByBattery: Boolean = false,
     val lowMin: Double = 2_000.0,
     val lowMax: Double = 50_000.0,
     val highMin: Double = 50_000.0,
-    val highMax: Double = 9_000_000.0, // 90 lakh
+    val highMax: Double = 9_000_000.0, // 90 lakh — legacy; BANK_FILTERED uses balanceTier
 )
 
 fun balanceInRangeForSort(amount: Double?, config: FilterConfig): Boolean {
     if (amount == null) return false
+    if (config.inboxMode == InboxMode.BANK_FILTERED) {
+        return amountInTier(amount, config.balanceTier)
+    }
     return when (config.sortMode) {
         SortMode.LOW_TO_HIGH -> amount in config.lowMin..config.lowMax
         SortMode.HIGH_TO_LOW -> amount in config.highMin..config.highMax

@@ -5,6 +5,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -52,6 +54,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -63,11 +66,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.firebasepanel.sms.domain.BalanceTier
 import com.firebasepanel.sms.domain.ConnectionFilter
 import com.firebasepanel.sms.domain.FilterConfig
 import com.firebasepanel.sms.domain.InboxMode
@@ -79,6 +85,7 @@ import com.firebasepanel.sms.ui.FirebasePanelTheme
 import com.firebasepanel.sms.ui.LiveSmsRow
 import com.firebasepanel.sms.ui.PanelViewModel
 import com.firebasepanel.sms.ui.SmsRow
+import com.firebasepanel.sms.R
 import com.firebasepanel.sms.ui.VirtusColors
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
@@ -107,7 +114,7 @@ class MainActivity : ComponentActivity() {
                     modifier =
                         Modifier
                             .fillMaxSize()
-                            .background(VirtusColors.panelYellow),
+                            .background(VirtusColors.bg),
                 ) {
                     LazyColumn(
                         modifier =
@@ -132,9 +139,21 @@ class MainActivity : ComponentActivity() {
                             Spacer(Modifier.height(12.dp))
                             DashboardMetrics(state = state)
                             Spacer(Modifier.height(12.dp))
-                            SearchBar(
+                            SearchBarWithConnection(
                                 query = state.searchQuery,
                                 onQueryChange = { vm.setSearchQuery(it) },
+                                connection = state.config.connection,
+                                onConnectionToggle = {
+                                    vm.updateConfig { c ->
+                                        val next =
+                                            when (c.connection) {
+                                                ConnectionFilter.ONLINE -> ConnectionFilter.OFFLINE
+                                                ConnectionFilter.OFFLINE -> ConnectionFilter.BOTH
+                                                ConnectionFilter.BOTH -> ConnectionFilter.ONLINE
+                                            }
+                                        c.copy(connection = next)
+                                    }
+                                },
                             )
                             Spacer(Modifier.height(10.dp))
                             FilterDashboard(vm = vm, cfg = state.config)
@@ -163,7 +182,7 @@ class MainActivity : ComponentActivity() {
                                     Spacer(Modifier.width(10.dp))
                                     Text(
                                         state.progress.ifEmpty { "Fetching…" },
-                                        color = Color(0xFF4A4A4A),
+                                        color = VirtusColors.yellow,
                                         fontSize = 13.sp,
                                     )
                                 }
@@ -183,7 +202,7 @@ class MainActivity : ComponentActivity() {
                             item {
                                 Text(
                                     "Last sync: ${formatTsLong(state.lastFetchEpochMs)}",
-                                    color = Color(0xFF5C5C5C),
+                                    color = VirtusColors.onMuted,
                                     fontSize = 11.sp,
                                     modifier = Modifier.padding(top = 4.dp),
                                 )
@@ -193,7 +212,7 @@ class MainActivity : ComponentActivity() {
                             Spacer(Modifier.height(8.dp))
                             Text(
                                 "TXT upload → Fetch Live",
-                                color = Color(0xFF5C4030),
+                                color = VirtusColors.yellow.copy(alpha = 0.85f),
                                 fontSize = 11.sp,
                                 modifier = Modifier.fillMaxWidth(),
                                 textAlign = TextAlign.Center,
@@ -205,7 +224,7 @@ class MainActivity : ComponentActivity() {
                             ) {
                                 Text(
                                     "Live SMS",
-                                    color = Color(0xFF1B5E20),
+                                    color = VirtusColors.green,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 14.sp,
                                 )
@@ -222,7 +241,7 @@ class MainActivity : ComponentActivity() {
                             item {
                                 Text(
                                     "Fetch ke baad yahan recent SMS dikhenge",
-                                    color = Color(0xFF616161),
+                                    color = VirtusColors.onMuted,
                                     fontSize = 12.sp,
                                     modifier = Modifier.padding(vertical = 8.dp),
                                 )
@@ -233,17 +252,19 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         item {
-                            HorizontalDivider(
-                                color = Color(0x33000000),
-                                modifier = Modifier.padding(vertical = 8.dp),
-                            )
+                            Column(Modifier.fillMaxWidth()) {
+                                HorizontalDivider(
+                                    color = VirtusColors.onMuted.copy(alpha = 0.25f),
+                                    modifier = Modifier.padding(vertical = 8.dp),
+                                )
                                 Text(
                                     "Devices (${state.devices.size})",
-                                    color = Color(0xFF1A1A1A),
+                                    color = MaterialTheme.colorScheme.onBackground,
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 14.sp,
                                 )
-                            Spacer(Modifier.height(6.dp))
+                                Spacer(Modifier.height(6.dp))
+                            }
                         }
                         items(state.devices.withIndex().toList()) { (index, row) ->
                             DeviceCardYellow(
@@ -259,7 +280,7 @@ class MainActivity : ComponentActivity() {
                     ModalBottomSheet(
                         onDismissRequest = { vm.clearSelection() },
                         sheetState = sheetState,
-                        containerColor = VirtusColors.panelYellow,
+                        containerColor = VirtusColors.card,
                     ) {
                         DeviceDetailSheet(d, onDismiss = { vm.clearSelection() }) {
                             Column(
@@ -282,27 +303,26 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun VirtusHeader() {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
+        Image(
+            painter = painterResource(id = R.drawable.virtus_gt_sms_logo),
+            contentDescription = null,
             modifier =
                 Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(VirtusColors.orange),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("₹", color = VirtusColors.yellow, fontWeight = FontWeight.Black, fontSize = 22.sp)
-        }
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(10.dp)),
+            contentScale = ContentScale.Crop,
+        )
         Spacer(Modifier.width(12.dp))
         Column {
             Text(
                 "Virtus Panel Viewer Pro",
-                color = Color(0xFF1A1A1A),
+                color = MaterialTheme.colorScheme.onBackground,
                 fontWeight = FontWeight.Bold,
                 fontSize = 18.sp,
             )
             Text(
                 "Firebase + live SMS",
-                color = Color(0xFF5C5C5C),
+                color = VirtusColors.onMuted,
                 fontSize = 12.sp,
             )
         }
@@ -325,8 +345,8 @@ private fun TopActionRow(
     ) {
         VirtusSmallButton(
             onClick = onTxt,
-            container = Color.White.copy(alpha = 0.95f),
-            content = VirtusColors.labelBlue,
+            container = VirtusColors.card,
+            content = VirtusColors.yellow,
             icon = { Icon(Icons.Filled.FolderOpen, null) },
             label = "TXT",
         )
@@ -347,18 +367,28 @@ private fun TopActionRow(
             Spacer(Modifier.width(6.dp))
             Text("Fetch Live", fontWeight = FontWeight.Bold)
         }
-        VirtusSmallButton(
+        OutlinedButton(
             onClick = onExport,
-            container = Color.White.copy(alpha = 0.95f),
-            content = VirtusColors.labelBlue,
             enabled = exportEnabled,
-            icon = { Icon(Icons.Filled.UploadFile, null) },
-            label = "Export",
-        )
+            modifier = Modifier.height(44.dp),
+            shape = RoundedCornerShape(14.dp),
+            border = BorderStroke(1.dp, VirtusColors.yellow),
+            colors =
+                ButtonDefaults.outlinedButtonColors(
+                    containerColor = VirtusColors.card,
+                    contentColor = VirtusColors.yellow,
+                    disabledContentColor = VirtusColors.onMuted,
+                ),
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+        ) {
+            Icon(Icons.Filled.UploadFile, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(4.dp))
+            Text("Export TXT", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+        }
         Text(
-            "$panels",
-            color = Color(0xFF424242),
-            fontSize = 12.sp,
+            "$panels panels",
+            color = VirtusColors.onMuted,
+            fontSize = 11.sp,
             modifier = Modifier.padding(start = 2.dp),
         )
     }
@@ -382,8 +412,8 @@ private fun VirtusSmallButton(
             ButtonDefaults.buttonColors(
                 containerColor = container,
                 contentColor = content,
-                disabledContainerColor = Color.White.copy(alpha = 0.6f),
-                disabledContentColor = Color(0xFF9E9E9E),
+                disabledContainerColor = VirtusColors.card,
+                disabledContentColor = VirtusColors.onMuted,
             ),
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
     ) {
@@ -435,11 +465,11 @@ private fun MetricCard(
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.95f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+        colors = CardDefaults.cardColors(containerColor = VirtusColors.card),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
         Column(Modifier.padding(horizontal = 10.dp, vertical = 10.dp)) {
-            Text(title, color = Color(0xFF616161), fontSize = 10.sp, letterSpacing = 0.5.sp)
+            Text(title, color = VirtusColors.onMuted, fontSize = 10.sp, letterSpacing = 0.5.sp)
             Spacer(Modifier.height(4.dp))
             Text(
                 value,
@@ -454,31 +484,70 @@ private fun MetricCard(
 }
 
 @Composable
-private fun SearchBar(
+private fun SearchBarWithConnection(
     query: String,
     onQueryChange: (String) -> Unit,
+    connection: ConnectionFilter,
+    onConnectionToggle: () -> Unit,
 ) {
-    OutlinedTextField(
-        value = query,
-        onValueChange = onQueryChange,
+    Row(
         modifier = Modifier.fillMaxWidth(),
-        placeholder = { Text("Search Here", color = Color(0xFF9E9E9E)) },
-        leadingIcon = {
-            Icon(Icons.Filled.Search, contentDescription = null, tint = Color(0xFF757575))
-        },
-        singleLine = true,
-        shape = RoundedCornerShape(16.dp),
-        colors =
-            OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = Color.White,
-                unfocusedContainerColor = Color.White.copy(alpha = 0.95f),
-                focusedBorderColor = VirtusColors.labelBlue,
-                unfocusedBorderColor = Color(0xFFBDBDBD),
-                focusedTextColor = Color(0xFF1A1A1A),
-                unfocusedTextColor = Color(0xFF1A1A1A),
-                cursorColor = VirtusColors.labelBlue,
-            ),
-    )
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        OutlinedTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            modifier = Modifier.weight(1f),
+            placeholder = { Text("Search Here", color = VirtusColors.onMuted) },
+            leadingIcon = {
+                Icon(Icons.Filled.Search, contentDescription = null, tint = VirtusColors.onMuted)
+            },
+            singleLine = true,
+            shape = RoundedCornerShape(16.dp),
+            colors =
+                OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = VirtusColors.card,
+                    unfocusedContainerColor = VirtusColors.card,
+                    focusedBorderColor = VirtusColors.orange.copy(alpha = 0.8f),
+                    unfocusedBorderColor = VirtusColors.onMuted.copy(alpha = 0.35f),
+                    focusedTextColor = MaterialTheme.colorScheme.onBackground,
+                    unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
+                    cursorColor = VirtusColors.yellow,
+                ),
+        )
+        val connLabel =
+            when (connection) {
+                ConnectionFilter.ONLINE -> "Online"
+                ConnectionFilter.OFFLINE -> "Offline"
+                ConnectionFilter.BOTH -> "Both"
+            }
+        val connEmoji =
+            when (connection) {
+                ConnectionFilter.ONLINE -> "🟢"
+                ConnectionFilter.OFFLINE -> "⚫"
+                ConnectionFilter.BOTH -> "🔁"
+            }
+        Row(
+            modifier =
+                Modifier
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(VirtusColors.card)
+                    .border(1.dp, VirtusColors.onMuted.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                    .clickable(onClick = onConnectionToggle)
+                    .padding(horizontal = 12.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(connEmoji, fontSize = 12.sp)
+            Spacer(Modifier.width(4.dp))
+            Text(
+                connLabel,
+                color = VirtusColors.green,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 12.sp,
+            )
+        }
+    }
 }
 
 @Composable
@@ -486,8 +555,9 @@ private fun FilterDashboard(
     vm: PanelViewModel,
     cfg: FilterConfig,
 ) {
+    val sectionLabel = VirtusColors.onMuted
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Mode", color = Color(0xFF424242), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        Text("Mode", color = sectionLabel, fontSize = 11.sp, fontWeight = FontWeight.Medium)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -496,29 +566,105 @@ private fun FilterDashboard(
                 selected = cfg.inboxMode == InboxMode.BANK_FILTERED,
                 label = "Bank+Band",
                 emoji = "🏦",
+                lightTheme = false,
                 onClick = { vm.setInboxMode(InboxMode.BANK_FILTERED) },
             )
             VirtusFilterPill(
                 selected = cfg.inboxMode == InboxMode.BANK_ALL,
                 label = "All bank",
                 emoji = "🏛",
+                lightTheme = false,
                 onClick = { vm.setInboxMode(InboxMode.BANK_ALL) },
             )
             VirtusFilterPill(
                 selected = cfg.inboxMode == InboxMode.OTP_AND_ALERTS,
                 label = "OTP",
                 emoji = "📱",
+                lightTheme = false,
                 onClick = { vm.setInboxMode(InboxMode.OTP_AND_ALERTS) },
             )
             VirtusFilterPill(
                 selected = cfg.inboxMode == InboxMode.FULL_INBOX,
                 label = "Full",
                 emoji = "📥",
+                lightTheme = false,
                 onClick = { vm.setInboxMode(InboxMode.FULL_INBOX) },
             )
         }
-        if (cfg.inboxMode == InboxMode.BANK_FILTERED || cfg.inboxMode == InboxMode.BANK_ALL) {
-            Text("Balance band + order", color = Color(0xFF424242), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        if (cfg.inboxMode == InboxMode.BANK_FILTERED) {
+            Text("Tier & sort", color = sectionLabel, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                VirtusFilterPill(
+                    selected =
+                        cfg.balanceTier == BalanceTier.HIGH_1L_20L &&
+                            cfg.sortMode == SortMode.HIGH_TO_LOW,
+                    label = "High 1L-20L",
+                    emoji = "⬇",
+                    lightTheme = false,
+                    onClick = {
+                        vm.updateConfig {
+                            it.copy(
+                                balanceTier = BalanceTier.HIGH_1L_20L,
+                                sortMode = SortMode.HIGH_TO_LOW,
+                            )
+                        }
+                    },
+                )
+                VirtusFilterPill(
+                    selected =
+                        cfg.balanceTier == BalanceTier.BOOM_20L_90L &&
+                            cfg.sortMode == SortMode.HIGH_TO_LOW,
+                    label = "Boom 20L-1Cr",
+                    emoji = "💥",
+                    lightTheme = false,
+                    onClick = {
+                        vm.updateConfig {
+                            it.copy(
+                                balanceTier = BalanceTier.BOOM_20L_90L,
+                                sortMode = SortMode.HIGH_TO_LOW,
+                            )
+                        }
+                    },
+                )
+                VirtusFilterPill(
+                    selected =
+                        cfg.balanceTier == BalanceTier.MEDIUM_5K_1L &&
+                            cfg.sortMode == SortMode.HIGH_TO_LOW,
+                    label = "Medium 5K",
+                    emoji = "💛",
+                    lightTheme = false,
+                    onClick = {
+                        vm.updateConfig {
+                            it.copy(
+                                balanceTier = BalanceTier.MEDIUM_5K_1L,
+                                sortMode = SortMode.HIGH_TO_LOW,
+                            )
+                        }
+                    },
+                )
+                VirtusFilterPill(
+                    selected =
+                        cfg.balanceTier == BalanceTier.LOW_2K_50K &&
+                            cfg.sortMode == SortMode.LOW_TO_HIGH,
+                    label = "Low → High",
+                    emoji = "⬆",
+                    lightTheme = false,
+                    onClick = {
+                        vm.updateConfig {
+                            it.copy(
+                                balanceTier = BalanceTier.LOW_2K_50K,
+                                sortMode = SortMode.LOW_TO_HIGH,
+                            )
+                        }
+                    },
+                )
+            }
+        }
+        if (cfg.inboxMode == InboxMode.BANK_ALL) {
+            Text("Balance band (all bank SMS)", color = sectionLabel, fontSize = 11.sp, fontWeight = FontWeight.Medium)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -527,16 +673,20 @@ private fun FilterDashboard(
                     selected = cfg.sortMode == SortMode.HIGH_TO_LOW,
                     label = "High 50K–90L",
                     emoji = "⬇",
+                    lightTheme = false,
                     onClick = { vm.updateConfig { it.copy(sortMode = SortMode.HIGH_TO_LOW) } },
                 )
                 VirtusFilterPill(
                     selected = cfg.sortMode == SortMode.LOW_TO_HIGH,
                     label = "Low→High 2K–50K",
                     emoji = "⬆",
+                    lightTheme = false,
                     onClick = { vm.updateConfig { it.copy(sortMode = SortMode.LOW_TO_HIGH) } },
                 )
             }
-            Text("Sort list by", color = Color(0xFF424242), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        }
+        if (cfg.inboxMode == InboxMode.BANK_FILTERED || cfg.inboxMode == InboxMode.BANK_ALL) {
+            Text("Sort list by", color = sectionLabel, fontSize = 11.sp, fontWeight = FontWeight.Medium)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -545,16 +695,18 @@ private fun FilterDashboard(
                     selected = !cfg.sortByBattery,
                     label = "₹ Balance",
                     emoji = "💰",
+                    lightTheme = false,
                     onClick = { vm.updateConfig { it.copy(sortByBattery = false) } },
                 )
                 VirtusFilterPill(
                     selected = cfg.sortByBattery,
                     label = "Battery %",
                     emoji = "🔋",
+                    lightTheme = false,
                     onClick = { vm.updateConfig { it.copy(sortByBattery = true) } },
                 )
             }
-            Text("PIN (device)", color = Color(0xFF424242), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+            Text("PIN (device)", color = sectionLabel, fontSize = 11.sp, fontWeight = FontWeight.Medium)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -563,47 +715,26 @@ private fun FilterDashboard(
                     selected = cfg.pinFilter == PinFilter.WITH,
                     label = "PIN",
                     emoji = "🔑",
+                    lightTheme = false,
                     onClick = { vm.updateConfig { it.copy(pinFilter = PinFilter.WITH) } },
                 )
                 VirtusFilterPill(
                     selected = cfg.pinFilter == PinFilter.WITHOUT,
                     label = "No PIN",
                     emoji = "🚫",
+                    lightTheme = false,
                     onClick = { vm.updateConfig { it.copy(pinFilter = PinFilter.WITHOUT) } },
                 )
                 VirtusFilterPill(
                     selected = cfg.pinFilter == PinFilter.BOTH,
                     label = "Both",
                     emoji = "➕",
+                    lightTheme = false,
                     onClick = { vm.updateConfig { it.copy(pinFilter = PinFilter.BOTH) } },
                 )
             }
         }
-        Text("Connection", color = Color(0xFF424242), fontSize = 11.sp, fontWeight = FontWeight.Medium)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            VirtusFilterPill(
-                selected = cfg.connection == ConnectionFilter.ONLINE,
-                label = "Online",
-                emoji = "🟢",
-                onClick = { vm.updateConfig { it.copy(connection = ConnectionFilter.ONLINE) } },
-            )
-            VirtusFilterPill(
-                selected = cfg.connection == ConnectionFilter.OFFLINE,
-                label = "Offline",
-                emoji = "⚪",
-                onClick = { vm.updateConfig { it.copy(connection = ConnectionFilter.OFFLINE) } },
-            )
-            VirtusFilterPill(
-                selected = cfg.connection == ConnectionFilter.BOTH,
-                label = "Both",
-                emoji = "🔁",
-                onClick = { vm.updateConfig { it.copy(connection = ConnectionFilter.BOTH) } },
-            )
-        }
-        Text("SMS age", color = Color(0xFF424242), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        Text("SMS age", color = sectionLabel, fontSize = 11.sp, fontWeight = FontWeight.Medium)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -614,6 +745,7 @@ private fun FilterDashboard(
                     label = "${d}d",
                     emoji = "🕐",
                     compact = true,
+                    lightTheme = false,
                     onClick = { vm.updateConfig { it.copy(days = d) } },
                 )
             }
@@ -622,6 +754,7 @@ private fun FilterDashboard(
                 label = "All",
                 emoji = "∞",
                 compact = true,
+                lightTheme = false,
                 onClick = { vm.updateConfig { it.copy(days = null) } },
             )
         }
@@ -635,27 +768,28 @@ private fun VirtusFilterPill(
     emoji: String,
     onClick: () -> Unit,
     compact: Boolean = false,
-    lightTheme: Boolean = true,
+    lightTheme: Boolean = false,
 ) {
     val bg =
         when {
             selected && lightTheme -> VirtusColors.orange.copy(alpha = 0.45f)
-            selected && !lightTheme -> VirtusColors.orange.copy(alpha = 0.35f)
+            selected && !lightTheme -> VirtusColors.orange.copy(alpha = 0.22f)
             lightTheme -> Color.White.copy(alpha = 0.92f)
             else -> VirtusColors.card
         }
     val border =
         when {
-            selected -> VirtusColors.labelBlue
+            selected && lightTheme -> VirtusColors.labelBlue
+            selected && !lightTheme -> VirtusColors.yellow
             lightTheme -> Color(0xFFCCCCCC)
-            else -> VirtusColors.onMuted.copy(alpha = 0.2f)
+            else -> VirtusColors.onMuted.copy(alpha = 0.25f)
         }
     val textColor =
         when {
             selected && lightTheme -> Color(0xFF0D47A1)
             selected && !lightTheme -> VirtusColors.yellow
             lightTheme -> Color(0xFF212121)
-            else -> Color.White
+            else -> MaterialTheme.colorScheme.onBackground.copy(alpha = 0.92f)
         }
     val padH = if (compact) 8.dp else 10.dp
     Row(
@@ -692,6 +826,16 @@ private fun ActiveStrip(cfg: FilterConfig) {
             InboxMode.FULL_INBOX -> "Full inbox"
         },
     )
+    if (cfg.inboxMode == InboxMode.BANK_FILTERED) {
+        parts.add(
+            when (cfg.balanceTier) {
+                BalanceTier.HIGH_1L_20L -> if (cfg.sortMode == SortMode.HIGH_TO_LOW) "↓ High 1L-20L" else "High tier"
+                BalanceTier.BOOM_20L_90L -> if (cfg.sortMode == SortMode.HIGH_TO_LOW) "💥 Boom 20L-90L" else "Boom"
+                BalanceTier.MEDIUM_5K_1L -> "💛 Medium 5K"
+                BalanceTier.LOW_2K_50K -> "↑ Low→High"
+            },
+        )
+    }
     if (cfg.inboxMode == InboxMode.BANK_FILTERED || cfg.inboxMode == InboxMode.BANK_ALL) {
         parts.add(
             when (cfg.sortMode) {
@@ -710,9 +854,9 @@ private fun ActiveStrip(cfg: FilterConfig) {
     }
     parts.add(
         when (cfg.connection) {
-            ConnectionFilter.ONLINE -> "Online"
-            ConnectionFilter.OFFLINE -> "Offline"
-            ConnectionFilter.BOTH -> "Conn both"
+            ConnectionFilter.ONLINE -> "🟢 Online"
+            ConnectionFilter.OFFLINE -> "⚫ Offline"
+            ConnectionFilter.BOTH -> "Both conn"
         },
     )
     parts.add(
@@ -726,12 +870,12 @@ private fun ActiveStrip(cfg: FilterConfig) {
             Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
-                .background(Color.White.copy(alpha = 0.95f))
-                .border(1.dp, Color(0xFFCCCCCC), RoundedCornerShape(14.dp))
+                .background(VirtusColors.card)
+                .border(1.dp, VirtusColors.onMuted.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
                 .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("ACTIVE", color = Color(0xFF1B5E20), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+        Text("ACTIVE", color = VirtusColors.green, fontWeight = FontWeight.Bold, fontSize = 11.sp)
         Spacer(Modifier.width(10.dp))
         Row(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -742,10 +886,10 @@ private fun ActiveStrip(cfg: FilterConfig) {
                     modifier =
                         Modifier
                             .clip(RoundedCornerShape(12.dp))
-                            .background(VirtusColors.orange.copy(alpha = 0.35f))
+                            .background(VirtusColors.orange.copy(alpha = 0.28f))
                             .padding(horizontal = 8.dp, vertical = 4.dp),
                 ) {
-                    Text(p, color = Color(0xFF0D47A1), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(p, color = VirtusColors.yellow, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
@@ -770,8 +914,8 @@ private fun StartFetchButton(
             ButtonDefaults.buttonColors(
                 containerColor = VirtusColors.green,
                 contentColor = Color(0xFF052E16),
-                disabledContainerColor = Color(0xFFBDBDBD),
-                disabledContentColor = Color(0xFF616161),
+                disabledContainerColor = VirtusColors.card,
+                disabledContentColor = VirtusColors.onMuted,
             ),
     ) {
         if (busy) {
