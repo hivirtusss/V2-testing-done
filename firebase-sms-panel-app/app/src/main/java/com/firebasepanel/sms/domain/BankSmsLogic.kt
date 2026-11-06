@@ -45,13 +45,13 @@ fun parseAmount(s: String): Double? {
     for (p in AVL_PATTERNS) {
         val m = p.matcher(s)
         while (m.find()) {
-            val v = m.group(1).replace(",", "").toDoubleOrNull() ?: continue
+            val v = m.group(1)?.replace(",", "")?.toDoubleOrNull() ?: continue
             best = maxOf(best ?: 0.0, v)
         }
     }
     val m2 = MONEY.matcher(s)
     while (m2.find()) {
-        val v = m2.group(1).replace(",", "").toDoubleOrNull() ?: continue
+        val v = m2.group(1)?.replace(",", "")?.toDoubleOrNull() ?: continue
         if (best == null || v > best) best = v
     }
     return best

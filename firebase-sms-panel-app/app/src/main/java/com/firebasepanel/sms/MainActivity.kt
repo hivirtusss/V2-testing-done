@@ -49,8 +49,10 @@ import com.firebasepanel.sms.domain.ConnectionFilter
 import com.firebasepanel.sms.domain.InboxMode
 import com.firebasepanel.sms.domain.PinFilter
 import com.firebasepanel.sms.domain.SortMode
+import com.firebasepanel.sms.ui.DeviceRow
 import com.firebasepanel.sms.ui.FirebasePanelTheme
 import com.firebasepanel.sms.ui.PanelViewModel
+import com.firebasepanel.sms.ui.SmsRow
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -198,7 +200,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun DeviceCard(row: com.firebasepanel.sms.ui.DeviceRow, onClick: () -> Unit) {
+private fun DeviceCard(row: DeviceRow, onClick: () -> Unit) {
     Card(
         modifier =
             Modifier
@@ -242,7 +244,7 @@ private fun DeviceCard(row: com.firebasepanel.sms.ui.DeviceRow, onClick: () -> U
 }
 
 @Composable
-private fun SmsBubble(m: SmsRow) {
+private fun SmsBubble(msg: SmsRow) {
     Card(
         modifier =
             Modifier
@@ -253,18 +255,18 @@ private fun SmsBubble(m: SmsRow) {
         Column(Modifier.padding(12.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("From: ${m.sender}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                    Text(m.kindLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
+                    Text("From: ${msg.sender}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                    Text(msg.kindLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
                 }
-                Text(formatTs(m.messageAtMillis ?: 0L), style = MaterialTheme.typography.labelSmall)
+                Text(formatTs(msg.messageAtMillis ?: 0L), style = MaterialTheme.typography.labelSmall)
             }
-            if (m.balance != null) {
-                Text("₹ ${formatInr(m.balance)}", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleSmall)
+            if (msg.balance != null) {
+                Text("₹ ${formatInr(msg.balance)}", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleSmall)
             }
-            if (m.hasPinText) {
+            if (msg.hasPinText) {
                 Text("🔐 PIN-related SMS", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
             }
-            Text(m.body, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
+            Text(msg.body, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
         }
     }
 }

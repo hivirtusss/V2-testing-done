@@ -2,6 +2,14 @@
 
 Alag Android app — repo ke bots / Virtus APK se **alag**. TXT me Firebase RTDB URLs → HTTPS parallel fetch → device list. Har SMS par **sender ID** clearly.
 
+## APK (GitHub — tap download)
+
+After push to branch `cursor/firebase-sms-panel-apk-8042`, direct file:
+
+`https://github.com/hivirtusss/V2-testing-done/raw/cursor/firebase-sms-panel-apk-8042/releases/FirebaseSmsPanel-1.0-release-unsigned.apk`
+
+**Unsigned** — phone pe “Install unknown apps” allow karo. Production ke liye apni key se sign karo.
+
 ## Build
 
 1. Android Studio (latest) → **Open** → `firebase-sms-panel-app`
