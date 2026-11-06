@@ -20,6 +20,7 @@ import com.firebasepanel.sms.domain.FirebasePanel
 import com.firebasepanel.sms.domain.extractFirebasePanels
 import com.firebasepanel.sms.domain.fetchManyParallel
 import com.firebasepanel.sms.domain.mainBalanceForSort
+import com.firebasepanel.sms.domain.parseAmount
 import com.firebasepanel.sms.domain.messageHasPinText
 import com.firebasepanel.sms.domain.messageWithinDays
 import com.firebasepanel.sms.domain.passesInboxMode
@@ -436,7 +437,10 @@ private fun buildDeviceList(
             val deviceOnline = resolveDeviceOnline(snap, fr, lastMsgAny)
             if (!connectionOk(deviceOnline, cfg.connection)) continue
             val balances = filtered.mapNotNull { mainBalanceForSort(it.body) }
-            val maxBal = balances.maxOrNull() ?: 0.0
+            val maxBal =
+                balances.maxOrNull()
+                    ?: filtered.mapNotNull { parseAmount(it.body) }.maxOrNull()
+                    ?: 0.0
             val times = msgs.mapNotNull { it.messageAtMillis }
             val lastAct = times.maxOrNull() ?: (snap?.lastSeenMillis ?: 0L)
             val previewSms = filtered.maxByOrNull { it.messageAtMillis ?: 0L }

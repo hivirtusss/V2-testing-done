@@ -6,6 +6,7 @@ import java.util.regex.Pattern
 
 /** Bank SMS + balance — spam/junk ko hatao (standalone; repo ke bots se alag). */
 
+/** Rs.10000 / Rs 10,000 / ₹500 — space optional after Rs. */
 private val MONEY = Pattern.compile("(?:Rs\\.?|INR|₹)\\s*([\\d,]+(?:\\.\\d{1,2})?)", Pattern.CASE_INSENSITIVE)
 private val AVL_PATTERNS = listOf(
     Pattern.compile(
@@ -191,8 +192,8 @@ fun passesInboxMode(body: String, sender: String, cfg: FilterConfig): Boolean {
         InboxMode.BANK_FILTERED -> {
             if (!isBankLikeSms(body, sender)) return false
             val bal = mainBalanceForSort(body)
-            // Tier/PIN devices: amount parse hona chahiye warna galat row sort/filter ho sakta hai
-            if (bal == null) return false
+            // Amount miss hone par bhi bank txn dikhao — tier tab "unknown" treat (list/sort me 0)
+            if (bal == null) return true
             return balanceInRangeForSort(bal, cfg)
         }
         InboxMode.BANK_ALL -> return isBankLikeSms(body, sender)

