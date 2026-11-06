@@ -29,14 +29,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Smartphone
+import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -45,6 +49,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -244,7 +249,7 @@ class MainActivity : ComponentActivity() {
                             DeviceCardYellow(
                                 index = index + 1,
                                 row = row,
-                                onClick = { vm.selectDevice(row) },
+                                onInfoClick = { vm.selectDevice(row) },
                             )
                         }
                     }
@@ -765,8 +770,8 @@ private fun StartFetchButton(
             ButtonDefaults.buttonColors(
                 containerColor = VirtusColors.green,
                 contentColor = Color(0xFF052E16),
-                disabledContainerColor = VirtusColors.card,
-                disabledContentColor = VirtusColors.onMuted,
+                disabledContainerColor = Color(0xFFBDBDBD),
+                disabledContentColor = Color(0xFF616161),
             ),
     ) {
         if (busy) {
@@ -789,14 +794,13 @@ private fun StartFetchButton(
 private fun DeviceCardYellow(
     index: Int,
     row: DeviceRow,
-    onClick: () -> Unit,
+    onInfoClick: () -> Unit,
 ) {
     Card(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(vertical = 6.dp)
-                .clickable(onClick = onClick),
+                .padding(vertical = 6.dp),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = VirtusColors.smsCardWhite),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
@@ -843,9 +847,23 @@ private fun DeviceCardYellow(
                     modifier = Modifier.padding(top = 4.dp),
                 )
             }
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Filled.Delete, contentDescription = null, tint = Color(0xFF9E9E9E), modifier = Modifier.size(22.dp))
-                Icon(Icons.Filled.Delete, contentDescription = null, tint = Color(0xFFBDBDBD), modifier = Modifier.size(18.dp))
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.padding(start = 6.dp),
+            ) {
+                IconButton(
+                    onClick = { /* Approve — panel-only UI */ },
+                    modifier = Modifier.size(40.dp),
+                ) {
+                    Icon(Icons.Filled.ThumbUp, contentDescription = "Approve", tint = Color(0xFF2E7D32), modifier = Modifier.size(22.dp))
+                }
+                IconButton(onClick = onInfoClick, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Filled.Info, contentDescription = "Details", tint = VirtusColors.labelBlue, modifier = Modifier.size(22.dp))
+                }
+                IconButton(onClick = { /* Delete — not wired */ }, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Color(0xFFD32F2F), modifier = Modifier.size(22.dp))
+                }
             }
         }
     }
@@ -896,7 +914,17 @@ private fun LiveSmsCardYellow(row: LiveSmsRow) {
                         .align(Alignment.TopEnd)
                         .size(20.dp),
             )
-            Column {
+            Icon(
+                Icons.Outlined.DeleteOutline,
+                contentDescription = null,
+                tint = Color(0xFF616161),
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(top = 40.dp)
+                        .size(18.dp),
+            )
+            Column(modifier = Modifier.padding(end = 22.dp, bottom = 4.dp)) {
                 Text(
                     "MSG: ${row.body}",
                     color = VirtusColors.msgGreen,
@@ -943,7 +971,17 @@ private fun SmsCardYellow(msg: SmsRow) {
                         .align(Alignment.TopEnd)
                         .size(20.dp),
             )
-            Column {
+            Icon(
+                Icons.Outlined.DeleteOutline,
+                contentDescription = null,
+                tint = Color(0xFF616161),
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(top = 40.dp)
+                        .size(18.dp),
+            )
+            Column(modifier = Modifier.padding(end = 22.dp, bottom = 4.dp)) {
                 Text(
                     "MSG: ${msg.body}",
                     color = VirtusColors.msgGreen,
@@ -1007,7 +1045,9 @@ private fun DeviceDetailSheet(
                     fontWeight = FontWeight.Bold,
                 )
             }
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(4.dp))
+            Icon(Icons.Filled.Phone, contentDescription = null, tint = Color(0xFF1565C0), modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(2.dp))
             Icon(Icons.Filled.Smartphone, contentDescription = null, tint = Color(0xFF1565C0), modifier = Modifier.size(22.dp))
         }
         Spacer(Modifier.height(12.dp))
