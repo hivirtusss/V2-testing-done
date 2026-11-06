@@ -25,6 +25,9 @@ object VirtusColors {
     /** Bright panel background (yellow Virtus reference) */
     val panelYellow = Color(0xFFFFD400)
     val card = Surface2
+    /** Device list cards (Virtus native list reference — white on dark scroll) */
+    val deviceCardWhite = Color(0xFFFFFFFF)
+    val deviceCardBorder = Color(0xFFE0E0E0)
     val smsCardWhite = Color(0xFFF8F8F8)
     val msgGreen = Color(0xFF2E7D32)
     val labelBlue = Color(0xFF1565C0)

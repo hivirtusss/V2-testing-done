@@ -52,18 +52,91 @@ fun deviceSnapshotFromClientsObject(deviceId: String, obj: JSONObject): DeviceSn
     return DeviceAccumulator(deviceId).apply { mergeFrom(obj) }.toSnapshot()
 }
 
-fun parseClientOnlineField(obj: JSONObject): Boolean? {
-    if (!obj.has("status")) return null
-    val st = obj.opt("status") ?: return null
-    return when (st) {
-        is Boolean -> st
-        is String ->
+/** Virtus/WMS clients use varied keys for connection state */
+private val CLIENT_ONLINE_KEYS =
+    listOf(
+        "status",
+        "online",
+        "isOnline",
+        "is_connected",
+        "connected",
+        "connection",
+        "deviceStatus",
+        "device_status",
+        "state",
+        "presence",
+        "networkStatus",
+        "network_status",
+        "clientStatus",
+    )
+
+fun parseOnlineValue(v: Any?): Boolean? {
+    return when (v) {
+        is Boolean -> v
+        is Number -> v.toInt() != 0
+        is String -> {
+            val s = v.trim().lowercase()
+            val onlineWords =
+                setOf(
+                    "true",
+                    "1",
+                    "online",
+                    "on",
+                    "connected",
+                    "active",
+                    "yes",
+                    "y",
+                    "live",
+                    "awake",
+                    "running",
+                )
+            val offlineWords =
+                setOf(
+                    "false",
+                    "0",
+                    "offline",
+                    "off",
+                    "disconnected",
+                    "inactive",
+                    "no",
+                    "n",
+                    "dead",
+                    "idle",
+                    "sleep",
+                    "stopped",
+                )
             when {
-                st.equals("true", true) || st == "1" || st.equals("online", true) -> true
-                st.equals("false", true) || st == "0" || st.equals("offline", true) -> false
+                s.isEmpty() -> null
+                s in onlineWords -> true
+                s in offlineWords -> false
                 else -> null
             }
-        is Number -> st.toInt() != 0
+        }
+        else -> null
+    }
+}
+
+/** First pass: explicit `status` only (backwards compatible). */
+fun parseClientOnlineField(obj: JSONObject): Boolean? {
+    if (!obj.has("status")) return null
+    return parseOnlineValue(obj.opt("status"))
+}
+
+/** Merge any known online/offline field from a client object (case-insensitive keys). */
+fun collectExplicitClientOnline(obj: JSONObject): Boolean? {
+    var seenTrue = false
+    var seenFalse = false
+    for (k in obj.keys()) {
+        if (!CLIENT_ONLINE_KEYS.any { it.equals(k, true) }) continue
+        when (val b = parseOnlineValue(obj.opt(k))) {
+            true -> seenTrue = true
+            false -> seenFalse = true
+            null -> Unit
+        }
+    }
+    return when {
+        seenTrue -> true
+        seenFalse -> false
         else -> null
     }
 }
@@ -82,10 +155,23 @@ private class DeviceAccumulator(
     var clientOnline: Boolean? = null
 
     fun mergeFrom(obj: JSONObject) {
-        clientOnline = parseClientOnlineField(obj)
+        clientOnline =
+            mergeClientOnlineState(
+                clientOnline,
+                collectExplicitClientOnline(obj) ?: parseClientOnlineField(obj),
+            )
         mergeStringFields(obj)
         mergeBattery(obj)
         mergeTimes(obj)
+    }
+
+    private fun mergeClientOnlineState(
+        a: Boolean?,
+        b: Boolean?,
+    ): Boolean? {
+        if (b == null) return a
+        if (a == null) return b
+        return a || b
     }
 
     private fun mergeStringFields(obj: JSONObject) {
