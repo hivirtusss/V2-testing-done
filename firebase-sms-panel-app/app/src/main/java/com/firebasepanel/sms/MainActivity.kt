@@ -40,9 +40,9 @@ import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Smartphone
+import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.outlined.DeleteOutline
-import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -65,7 +65,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -199,10 +198,25 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                         }
+                        state.filterEmptyHint?.let { hint ->
+                            item {
+                                Text(
+                                    hint,
+                                    color = VirtusColors.orange,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.padding(top = 8.dp),
+                                )
+                            }
+                        }
                         if (!state.fetching && state.lastFetchEpochMs > 0L) {
                             item {
                                 Text(
-                                    "Last sync: ${formatTsLong(state.lastFetchEpochMs)}",
+                                    buildString {
+                                        append("Last sync: ${formatTsLong(state.lastFetchEpochMs)}")
+                                        if (state.lastFetchTotalSms > 0) {
+                                            append(" · ${state.lastFetchTotalSms} SMS pulled")
+                                        }
+                                    },
                                     color = VirtusColors.onMuted,
                                     fontSize = 11.sp,
                                     modifier = Modifier.padding(top = 4.dp),
@@ -210,70 +224,77 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         item {
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                "TXT load → filters set karo → Start Fetch / Fetch Live",
-                                color = VirtusColors.yellow.copy(alpha = 0.85f),
-                                fontSize = 11.sp,
-                                modifier = Modifier.fillMaxWidth(),
-                                textAlign = TextAlign.Center,
-                            )
-                            Spacer(Modifier.height(6.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp)
+                                    .clip(RoundedCornerShape(18.dp))
+                                    .background(VirtusColors.panelYellow)
+                                    .padding(horizontal = 12.dp, vertical = 12.dp),
                             ) {
                                 Text(
-                                    "Live SMS",
-                                    color = VirtusColors.green,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp,
+                                    "TXT load → filters set karo → Start Fetch / Fetch Live",
+                                    color = Color(0xFF5D4037),
+                                    fontSize = 11.sp,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    textAlign = TextAlign.Center,
                                 )
-                                Spacer(Modifier.weight(1f))
-                                Icon(
-                                    Icons.Filled.AccountBalance,
-                                    contentDescription = null,
-                                    tint = VirtusColors.blue,
-                                    modifier = Modifier.size(22.dp),
-                                )
-                            }
-                        }
-                        if (state.liveFeedSms.isEmpty()) {
-                            item {
-                                Text(
-                                    "Fetch ke baad yahan recent SMS dikhenge",
-                                    color = VirtusColors.onMuted,
-                                    fontSize = 12.sp,
-                                    modifier = Modifier.padding(vertical = 8.dp),
-                                )
-                            }
-                        } else {
-                            items(state.liveFeedSms) { row ->
-                                LiveSmsCardYellow(row)
-                            }
-                        }
-                        item {
-                            Column(Modifier.fillMaxWidth()) {
+                                Spacer(Modifier.height(10.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        "Live SMS",
+                                        color = VirtusColors.msgGreen,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                    )
+                                    Spacer(Modifier.weight(1f))
+                                    Icon(
+                                        Icons.Filled.AccountBalance,
+                                        contentDescription = null,
+                                        tint = VirtusColors.labelBlue,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                }
+                                Spacer(Modifier.height(6.dp))
+                                Column {
+                                    if (state.liveFeedSms.isEmpty()) {
+                                        Text(
+                                            "Fetch ke baad yahan recent SMS dikhenge",
+                                            color = Color(0xFF616161),
+                                            fontSize = 12.sp,
+                                            modifier = Modifier.padding(vertical = 8.dp),
+                                        )
+                                    } else {
+                                        state.liveFeedSms.forEach { row ->
+                                            LiveSmsCardYellow(row)
+                                        }
+                                    }
+                                }
                                 HorizontalDivider(
-                                    color = VirtusColors.onMuted.copy(alpha = 0.25f),
-                                    modifier = Modifier.padding(vertical = 8.dp),
+                                    color = Color(0x33FFFFFF),
+                                    modifier = Modifier.padding(vertical = 10.dp),
                                 )
                                 Text(
                                     "Devices (${state.devices.size})",
-                                    color = MaterialTheme.colorScheme.onBackground,
+                                    color = Color(0xFF1A237E),
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 14.sp,
                                 )
-                                Spacer(Modifier.height(6.dp))
+                                Spacer(Modifier.height(8.dp))
+                                Column {
+                                    state.devices.withIndex().forEach { (index, row) ->
+                                        VirtusWhiteDeviceCard(
+                                            index = index + 1,
+                                            row = row,
+                                            onOpenDetail = { vm.selectDevice(row) },
+                                            onInfoClick = { vm.selectDevice(row) },
+                                        )
+                                    }
+                                }
                             }
-                        }
-                        items(state.devices.withIndex().toList()) { (index, row) ->
-                            DeviceCardYellow(
-                                index = index + 1,
-                                row = row,
-                                onOpenDetail = { vm.selectDevice(row) },
-                                onInfoClick = { vm.selectDevice(row) },
-                            )
                         }
                     }
                 }
@@ -946,90 +967,53 @@ private fun StartFetchButton(
     }
 }
 
+/** White list card (reference Virtus) — balance + green MSG on list; battery/SIM in sheet only. */
 @Composable
-private fun DeviceCardYellow(
+private fun VirtusWhiteDeviceCard(
     index: Int,
     row: DeviceRow,
     onOpenDetail: () -> Unit,
     onInfoClick: () -> Unit,
 ) {
-    val borderColor =
-        if (row.online) VirtusColors.green.copy(alpha = 0.75f) else VirtusColors.onMuted.copy(alpha = 0.35f)
     Card(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(vertical = 6.dp)
-                .clickable(onClick = onOpenDetail)
-                .border(1.dp, borderColor, RoundedCornerShape(14.dp)),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = VirtusColors.card),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                .padding(vertical = 5.dp)
+                .clickable(onClick = onOpenDetail),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
     ) {
         Row(
             Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalAlignment = Alignment.Top,
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(40.dp)) {
                 Text(
-                    "#$index",
-                    color = VirtusColors.green,
+                    "$index",
+                    color = VirtusColors.labelBlue,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
+                    fontSize = 17.sp,
                 )
-                Spacer(Modifier.height(6.dp))
-                Box(
-                    modifier =
-                        Modifier
-                            .size(44.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(
-                                Brush.linearGradient(
-                                    listOf(
-                                        Color(0xFF5C6BC0),
-                                        Color(0xFF7E57C2),
-                                    ),
-                                ),
-                            ),
-                ) {
-                    Icon(
-                        Icons.Filled.Smartphone,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.align(Alignment.Center).size(26.dp),
-                    )
-                    if (row.online) {
-                        Box(
-                            Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(3.dp)
-                                .size(9.dp)
-                                .clip(CircleShape)
-                                .background(VirtusColors.green),
-                        )
-                    }
-                }
+                Spacer(Modifier.height(4.dp))
+                Icon(
+                    Icons.Filled.Smartphone,
+                    contentDescription = null,
+                    tint = VirtusColors.labelBlue,
+                    modifier = Modifier.size(28.dp),
+                )
             }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        row.deviceId,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    VirtusBalanceChip(amountText = formatInr(row.maxBalance))
-                }
+                Text(
+                    "Mobile: ${row.modelDisplay}",
+                    color = Color(0xFF1565C0),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                )
                 if (row.previewBody.isNotBlank()) {
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(4.dp))
                     Text(
                         "MSG: ${row.previewBody}",
                         color = VirtusColors.msgGreen,
@@ -1037,33 +1021,59 @@ private fun DeviceCardYellow(
                         fontWeight = FontWeight.Medium,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
-                        lineHeight = 16.sp,
                     )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "Status: ${if (row.online) "Online" else "Offline"}",
+                        color = if (row.online) Color(0xFF2E7D32) else Color(0xFFC62828),
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.sp,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    VirtusBalanceChip(amountText = formatInr(row.maxBalance))
                 }
             }
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.padding(start = 4.dp),
             ) {
-                IconButton(onClick = onInfoClick, modifier = Modifier.size(36.dp)) {
-                    Icon(
-                        Icons.Filled.Info,
-                        contentDescription = "Details",
-                        tint = VirtusColors.yellow,
-                        modifier = Modifier.size(22.dp),
-                    )
-                }
-                IconButton(
-                    onClick = { /* favourite — UI only */ },
-                    modifier = Modifier.size(36.dp),
+                Box(
+                    modifier =
+                        Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF4CAF50))
+                            .clickable { },
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Icon(
-                        Icons.Outlined.StarBorder,
-                        contentDescription = null,
-                        tint = VirtusColors.yellow.copy(alpha = 0.85f),
-                        modifier = Modifier.size(22.dp),
-                    )
+                    Icon(Icons.Filled.ThumbUp, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                }
+                Box(
+                    modifier =
+                        Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(VirtusColors.labelBlue)
+                            .clickable { onInfoClick() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Filled.Info, contentDescription = "Details", tint = Color.White, modifier = Modifier.size(18.dp))
+                }
+                Box(
+                    modifier =
+                        Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFE53935))
+                            .clickable { },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Filled.Delete, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                 }
             }
         }
