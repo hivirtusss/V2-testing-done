@@ -539,6 +539,8 @@ def search_devices(db: Session, deviceid: str, limit: int = 10) -> list[Device]:
 
 
 def _meta_from_remote(remote: dict, phone_fallback: str | None = None) -> dict:
+    from app.sim_slots import build_sim_slots_from_record, is_usable_phone
+
     raw = remote.get("raw") or {}
     battery = (
         remote.get("battery")
@@ -546,37 +548,35 @@ def _meta_from_remote(remote: dict, phone_fallback: str | None = None) -> dict:
         or raw.get("battery")
         or raw.get("battery_level")
     )
-    sims = remote.get("sims") or []
-    if not sims:
-        built: list[dict] = []
-        phone1 = (
-            remote.get("phone_number")
-            or raw.get("phone")
-            or raw.get("phone_number")
-            or raw.get("mobile")
-            or raw.get("sim1")
-            or phone_fallback
+    parsed = build_sim_slots_from_record({**raw, **remote, "raw": raw})
+    if not parsed and phone_fallback and is_usable_phone(phone_fallback):
+        remote = {**remote, "phone_number": phone_fallback}
+        parsed = build_sim_slots_from_record({**raw, **remote, "raw": raw})
+
+    def valid_count(items: list) -> int:
+        return sum(
+            1
+            for s in items
+            if isinstance(s, dict) and is_usable_phone(s.get("number"))
         )
-        phone2 = raw.get("phone2") or raw.get("sim2") or raw.get("mobile2")
-        if phone1:
-            built.append(
-                {
-                    "slot": 1,
-                    "index": 0,
-                    "carrier": raw.get("carrier1") or raw.get("carrier") or "SIM 1",
-                    "number": str(phone1),
-                }
-            )
-        if phone2:
-            built.append(
-                {
-                    "slot": 2,
-                    "index": 1,
-                    "carrier": raw.get("carrier2") or "SIM 2",
-                    "number": str(phone2),
-                }
-            )
-        sims = built
+
+    remote_sims = remote.get("sims") or []
+    if not isinstance(remote_sims, list):
+        remote_sims = []
+    if valid_count(parsed) >= valid_count(remote_sims):
+        sims = parsed
+    elif remote_sims:
+        sims = remote_sims
+        if valid_count(parsed) > 0:
+            # fill missing slots from Firebase parse
+            filled = {int(s.get("slot", i + 1)): s for i, s in enumerate(sims) if isinstance(s, dict)}
+            for sim in parsed:
+                slot = int(sim.get("slot", 1))
+                if slot not in filled or not is_usable_phone(filled[slot].get("number")):
+                    filled[slot] = sim
+            sims = [filled[k] for k in sorted(filled.keys())]
+    else:
+        sims = parsed
     meta: dict = {
         "battery": battery,
         "model": remote.get("model") or raw.get("model") or raw.get("device_model") or "Unknown",

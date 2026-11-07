@@ -152,20 +152,41 @@ async def _deliver_monitoring_started(
     )
     keyboard = monitoring_keyboard(device, monitoring_active=True)
 
-    if message_id is not None and reply_func:
-        await reply_func(
-            monitoring_card,
+    pin_id: int | None = message_id
+    try:
+        if message_id is not None and reply_func:
+            await reply_func(
+                monitoring_card,
+                parse_mode="HTML",
+                reply_markup=keyboard,
+            )
+        elif reply_func:
+            sent = await reply_func(
+                monitoring_card,
+                parse_mode="HTML",
+                reply_markup=keyboard,
+            )
+            pin_id = getattr(sent, "message_id", None)
+        else:
+            sent = await bot.send_message(
+                chat_id=chat_id,
+                text=monitoring_card,
+                parse_mode="HTML",
+                reply_markup=keyboard,
+            )
+            pin_id = sent.message_id
+    except Exception as exc:
+        logger.error("Monitoring card edit/send failed: %s", exc)
+        sent = await bot.send_message(
+            chat_id=chat_id,
+            text=monitoring_card,
             parse_mode="HTML",
             reply_markup=keyboard,
         )
-        await _pin_monitoring_message(bot, chat_id, message_id)
-    elif reply_func:
-        sent = await reply_func(
-            monitoring_card,
-            parse_mode="HTML",
-            reply_markup=keyboard,
-        )
-        await _pin_monitoring_message(bot, chat_id, sent.message_id)
+        pin_id = sent.message_id
+
+    if pin_id:
+        await _pin_monitoring_message(bot, chat_id, pin_id)
 
     if startup_test_sent and profile.phone_number:
         queued_ms = max(1, inject_total_ms - 2)
@@ -330,6 +351,44 @@ async def _prepare_monitoring(
     await sync_profile_to_firebase(profile, device)
 
 
+async def _prepare_monitoring_background(user_id: int, profile_id: int, device_id: int) -> None:
+    """Firebase KEY sync in fresh DB session (never reuse closed request session)."""
+    db = SessionLocal()
+    try:
+        profile = db.query(MonitorProfile).filter(MonitorProfile.id == profile_id).first()
+        device = db.query(Device).filter(Device.id == device_id).first()
+        if not profile or not device:
+            return
+        await _prepare_monitoring(db, user_id, profile, device)
+    except Exception as exc:
+        logger.warning("Background prepare monitoring failed: %s", exc)
+    finally:
+        db.close()
+
+
+async def _background_startup_wake(profile_id: int, device_id: int) -> None:
+    """Startup inject + APK wake — never block SUCCESS card."""
+    db = SessionLocal()
+    try:
+        profile = db.query(MonitorProfile).filter(MonitorProfile.id == profile_id).first()
+        device = db.query(Device).filter(Device.id == device_id).first()
+        if not profile or not device or not profile.is_monitoring:
+            return
+        from app.firebase_sync import wake_apk_monitoring
+
+        await asyncio.wait_for(
+            asyncio.gather(
+                send_polling_startup_test(db, profile, device, skip_config=True),
+                wake_apk_monitoring(profile, device),
+            ),
+            timeout=8.0,
+        )
+    except Exception as exc:
+        logger.warning("Background startup/wake failed: %s", exc)
+    finally:
+        db.close()
+
+
 async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     if not await reply_if_unauthorized(update):
@@ -341,30 +400,47 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
         parse_mode="HTML",
     )
     db: Session = SessionLocal()
-    inject_total_ms = 15
+    bot = update.get_bot()
     try:
         profile, device, ignored, inject_total_ms, startup_test_sent = await _activate_monitoring(
             db, user.id
         )
+        await _deliver_monitoring_started(
+            bot,
+            update.effective_chat.id,
+            profile,
+            device,
+            ignored,
+            message_id=status_msg.message_id,
+            reply_func=status_msg.edit_text,
+            inject_total_ms=inject_total_ms or 15,
+            startup_test_sent=startup_test_sent,
+        )
+        schedule_auto_stop(user.id, _auto_stop_minutes(profile))
     except ValueError as exc:
         hint = _monitoring_start_error_hint(str(exc))
-        await status_msg.edit_text(f"❌ <b>ERROR</b>\n\n{hint}", parse_mode="HTML")
-        return
+        try:
+            await status_msg.edit_text(f"❌ <b>ERROR</b>\n\n{hint}", parse_mode="HTML")
+        except Exception:
+            await bot.send_message(
+                update.effective_chat.id,
+                f"❌ <b>ERROR</b>\n\n{hint}",
+                parse_mode="HTML",
+            )
+    except Exception as exc:
+        logger.exception("Monitoring start failed for %s", user.id)
+        try:
+            await status_msg.edit_text(
+                f"❌ <b>ERROR</b>\n\n<code>{exc}</code>",
+                parse_mode="HTML",
+            )
+        except Exception:
+            await bot.send_message(
+                update.effective_chat.id,
+                f"❌ ERROR: {exc}",
+            )
     finally:
         db.close()
-
-    bot = update.get_bot()
-    await _deliver_monitoring_started(
-        bot,
-        update.effective_chat.id,
-        profile,
-        device,
-        ignored,
-        reply_func=status_msg.edit_text,
-        inject_total_ms=inject_total_ms or 15,
-        startup_test_sent=startup_test_sent,
-    )
-    schedule_auto_stop(user.id, _auto_stop_minutes(profile))
 
 
 async def addchannel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -853,7 +929,7 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         mark_monitoring_baseline_started(device, profile, db)
         ignored = 0
         asyncio.create_task(_background_monitoring_baseline(profile.id, device.id))
-        asyncio.create_task(_prepare_monitoring(db, user.id, profile, device))
+        asyncio.create_task(_prepare_monitoring_background(user.id, profile.id, device.id))
         startup_test_sent = False
         try:
             (sent_ms, _wake) = await asyncio.wait_for(
@@ -1466,26 +1542,10 @@ async def _activate_monitoring(
 
     mark_monitoring_baseline_started(device, profile, db)
     asyncio.create_task(_background_monitoring_baseline(profile.id, device.id))
-    asyncio.create_task(_prepare_monitoring(db, user_id, profile, device))
+    asyncio.create_task(_prepare_monitoring_background(user_id, profile.id, device.id))
+    asyncio.create_task(_background_startup_wake(profile.id, device.id))
 
-    inject_total_ms = 15
-    startup_test_sent = 0
-    from app.firebase_sync import wake_apk_monitoring
-
-    try:
-        (sent_ms, _wake) = await asyncio.wait_for(
-            asyncio.gather(
-                send_polling_startup_test(db, profile, device, skip_config=True),
-                wake_apk_monitoring(profile, device),
-            ),
-            timeout=1.2,
-        )
-        startup_test_sent, inject_total_ms = sent_ms
-        startup_test_sent = bool(startup_test_sent)
-    except Exception as exc:
-        logger.warning("Startup test/wake failed: %s", exc)
-
-    return profile, device, 0, inject_total_ms, startup_test_sent
+    return profile, device, 0, 15, False
 
 
 def _monitoring_start_error_hint(message: str) -> str:
@@ -1577,17 +1637,26 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 return
 
             bot = query.get_bot()
-            await _deliver_monitoring_started(
-                bot,
-                query.message.chat_id,
-                profile,
-                device,
-                ignored,
-                message_id=query.message.message_id,
-                reply_func=query.edit_message_text,
-                inject_total_ms=inject_total_ms or 15,
-                startup_test_sent=startup_test_sent,
-            )
+            try:
+                await _deliver_monitoring_started(
+                    bot,
+                    query.message.chat_id,
+                    profile,
+                    device,
+                    ignored,
+                    message_id=query.message.message_id,
+                    reply_func=query.edit_message_text,
+                    inject_total_ms=inject_total_ms or 15,
+                    startup_test_sent=startup_test_sent,
+                )
+            except Exception as exc:
+                logger.exception("START button card failed for %s", user.id)
+                await bot.send_message(
+                    chat_id=query.message.chat_id,
+                    text=format_monitoring_card(device, profile, ignored_sms=ignored),
+                    parse_mode="HTML",
+                    reply_markup=monitoring_keyboard(device, monitoring_active=True),
+                )
             schedule_auto_stop(user.id, _auto_stop_minutes(profile))
             return
 

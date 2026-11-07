@@ -126,10 +126,27 @@ def get_sim_list(device: Device) -> list[dict]:
     if isinstance(sims, list) and sims:
         cleaned = [sim for sim in sims if isinstance(sim, dict)]
         if cleaned:
-            return _ensure_dual_sim_list(_normalize_sim_slots(cleaned))
+            normalized = _ensure_dual_sim_list(_normalize_sim_slots(cleaned))
+            from app.sim_slots import build_sim_slots_from_record, is_usable_phone
+
+            if any(is_usable_phone(s.get("number")) for s in normalized):
+                return normalized
+            rebuilt = build_sim_slots_from_record(meta)
+            if rebuilt:
+                return _ensure_dual_sim_list(rebuilt)
+            return normalized
+
+    from app.sim_slots import build_sim_slots_from_record
+
+    rebuilt = build_sim_slots_from_record(meta)
+    if rebuilt:
+        return _ensure_dual_sim_list(rebuilt)
 
     primary = device.phone_number
-    sim2 = meta.get("sim2") or meta.get("phone2")
+    sim2 = meta.get("sim2") or meta.get("phone2") or meta.get("sim_2")
+    sim1_meta = meta.get("sim1") or meta.get("sim_1")
+    if not primary and sim1_meta:
+        primary = sim1_meta if isinstance(sim1_meta, str) else (sim1_meta.get("number") if isinstance(sim1_meta, dict) else None)
     built: list[dict] = []
     if _is_valid_sim_number(primary):
         built.append({"slot": 1, "index": 0, "carrier": "SIM 1", "number": primary})
