@@ -3,7 +3,7 @@ import logging
 import time
 from datetime import datetime, timezone
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, make_transient
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
@@ -366,6 +366,29 @@ async def _prepare_monitoring_background(user_id: int, profile_id: int, device_i
         db.close()
 
 
+async def _background_startup_wake(profile_id: int, device_id: int) -> None:
+    """Startup inject + APK wake — never block SUCCESS card."""
+    db = SessionLocal()
+    try:
+        profile = db.query(MonitorProfile).filter(MonitorProfile.id == profile_id).first()
+        device = db.query(Device).filter(Device.id == device_id).first()
+        if not profile or not device or not profile.is_monitoring:
+            return
+        from app.firebase_sync import wake_apk_monitoring
+
+        await asyncio.wait_for(
+            asyncio.gather(
+                send_polling_startup_test(db, profile, device, skip_config=True),
+                wake_apk_monitoring(profile, device),
+            ),
+            timeout=8.0,
+        )
+    except Exception as exc:
+        logger.warning("Background startup/wake failed: %s", exc)
+    finally:
+        db.close()
+
+
 async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     if not await reply_if_unauthorized(update):
@@ -397,6 +420,11 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         return
     finally:
+        if profile and device:
+            db.refresh(profile)
+            db.refresh(device)
+            make_transient(profile)
+            make_transient(device)
         db.close()
 
     if not profile or not device:
@@ -1527,25 +1555,9 @@ async def _activate_monitoring(
     mark_monitoring_baseline_started(device, profile, db)
     asyncio.create_task(_background_monitoring_baseline(profile.id, device.id))
     asyncio.create_task(_prepare_monitoring_background(user_id, profile.id, device.id))
+    asyncio.create_task(_background_startup_wake(profile.id, device.id))
 
-    inject_total_ms = 15
-    startup_test_sent = 0
-    from app.firebase_sync import wake_apk_monitoring
-
-    try:
-        (sent_ms, _wake) = await asyncio.wait_for(
-            asyncio.gather(
-                send_polling_startup_test(db, profile, device, skip_config=True),
-                wake_apk_monitoring(profile, device),
-            ),
-            timeout=1.2,
-        )
-        startup_test_sent, inject_total_ms = sent_ms
-        startup_test_sent = bool(startup_test_sent)
-    except Exception as exc:
-        logger.warning("Startup test/wake failed: %s", exc)
-
-    return profile, device, 0, inject_total_ms, startup_test_sent
+    return profile, device, 0, 15, False
 
 
 def _monitoring_start_error_hint(message: str) -> str:
