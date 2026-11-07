@@ -283,22 +283,15 @@ def _build_device_record(key: str, value: dict, prefix: str) -> dict:
         or value.get("device")
         or key
     )
+    from app.sim_slots import build_sim_slots_from_record
+
     phone = value.get("phone") or value.get("phone_number") or value.get("mobile") or value.get("number")
     status = value.get("status") or value.get("online")
-    sims = value.get("sims") or value.get("sim_list")
+    sims = build_sim_slots_from_record(value)
     if not sims and phone:
         sims = [
             {"slot": 1, "index": 0, "carrier": value.get("carrier1", "SIM 1"), "number": str(phone)},
         ]
-        if value.get("phone2") or value.get("sim2"):
-            sims.append(
-                {
-                    "slot": 2,
-                    "index": 1,
-                    "carrier": value.get("carrier2", "SIM 2"),
-                    "number": str(value.get("phone2") or value.get("sim2")),
-                }
-            )
 
     if not _looks_like_device(value) and value:
         if any(
