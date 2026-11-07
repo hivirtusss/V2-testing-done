@@ -3,7 +3,7 @@ import logging
 import time
 from datetime import datetime, timezone
 
-from sqlalchemy.orm import Session, make_transient
+from sqlalchemy.orm import Session
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
@@ -400,39 +400,11 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
         parse_mode="HTML",
     )
     db: Session = SessionLocal()
-    inject_total_ms = 15
-    profile = device = None
-    ignored = 0
-    startup_test_sent = False
+    bot = update.get_bot()
     try:
         profile, device, ignored, inject_total_ms, startup_test_sent = await _activate_monitoring(
             db, user.id
         )
-    except ValueError as exc:
-        hint = _monitoring_start_error_hint(str(exc))
-        await status_msg.edit_text(f"❌ <b>ERROR</b>\n\n{hint}", parse_mode="HTML")
-        return
-    except Exception as exc:
-        logger.exception("Monitoring activate failed for %s", user.id)
-        await status_msg.edit_text(
-            f"❌ <b>ERROR</b>\n\n<code>{exc}</code>",
-            parse_mode="HTML",
-        )
-        return
-    finally:
-        if profile and device:
-            db.refresh(profile)
-            db.refresh(device)
-            make_transient(profile)
-            make_transient(device)
-        db.close()
-
-    if not profile or not device:
-        await status_msg.edit_text("❌ Profile/device load fail", parse_mode="HTML")
-        return
-
-    bot = update.get_bot()
-    try:
         await _deliver_monitoring_started(
             bot,
             update.effective_chat.id,
@@ -444,15 +416,31 @@ async def startmonitar_command(update: Update, context: ContextTypes.DEFAULT_TYP
             inject_total_ms=inject_total_ms or 15,
             startup_test_sent=startup_test_sent,
         )
+        schedule_auto_stop(user.id, _auto_stop_minutes(profile))
+    except ValueError as exc:
+        hint = _monitoring_start_error_hint(str(exc))
+        try:
+            await status_msg.edit_text(f"❌ <b>ERROR</b>\n\n{hint}", parse_mode="HTML")
+        except Exception:
+            await bot.send_message(
+                update.effective_chat.id,
+                f"❌ <b>ERROR</b>\n\n{hint}",
+                parse_mode="HTML",
+            )
     except Exception as exc:
-        logger.exception("Monitoring card deliver failed for %s", user.id)
-        await bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=format_monitoring_card(device, profile, ignored_sms=ignored),
-            parse_mode="HTML",
-            reply_markup=monitoring_keyboard(device, monitoring_active=True),
-        )
-    schedule_auto_stop(user.id, _auto_stop_minutes(profile))
+        logger.exception("Monitoring start failed for %s", user.id)
+        try:
+            await status_msg.edit_text(
+                f"❌ <b>ERROR</b>\n\n<code>{exc}</code>",
+                parse_mode="HTML",
+            )
+        except Exception:
+            await bot.send_message(
+                update.effective_chat.id,
+                f"❌ ERROR: {exc}",
+            )
+    finally:
+        db.close()
 
 
 async def addchannel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
