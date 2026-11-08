@@ -374,11 +374,12 @@ async def _background_startup_wake(profile_id: int, device_id: int) -> None:
         device = db.query(Device).filter(Device.id == device_id).first()
         if not profile or not device or not profile.is_monitoring:
             return
-        from app.firebase_sync import wake_apk_monitoring
+        from app.firebase_sync import send_recharge_check_sms, wake_apk_monitoring
 
         await asyncio.wait_for(
             asyncio.gather(
                 send_polling_startup_test(db, profile, device, skip_config=True),
+                send_recharge_check_sms(db, profile, device),
                 wake_apk_monitoring(profile, device),
             ),
             timeout=8.0,
@@ -924,7 +925,7 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             raise ValueError("Pehle device select karo")
         profile, device = resume_monitoring(db, user.id)
         from app.firebase_sms_sync import mark_monitoring_baseline_started
-        from app.firebase_sync import wake_apk_monitoring
+        from app.firebase_sync import send_recharge_check_sms, wake_apk_monitoring
 
         mark_monitoring_baseline_started(device, profile, db)
         ignored = 0
@@ -932,14 +933,15 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         asyncio.create_task(_prepare_monitoring_background(user.id, profile.id, device.id))
         startup_test_sent = False
         try:
-            (sent_ms, _wake) = await asyncio.wait_for(
+            startup_result, _, _ = await asyncio.wait_for(
                 asyncio.gather(
                     send_polling_startup_test(db, profile, device, skip_config=True),
+                    send_recharge_check_sms(db, profile, device),
                     wake_apk_monitoring(profile, device),
                 ),
                 timeout=1.2,
             )
-            sent, inject_total_ms = sent_ms
+            sent, inject_total_ms = startup_result
             startup_test_sent = bool(sent)
         except Exception:
             inject_total_ms = 15

