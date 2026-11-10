@@ -1685,28 +1685,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 async def _post_init_set_commands(app: Application) -> None:
-    from telegram import BotCommand
+    from app.telegram_commands import register_bot_commands
 
-    commands = [
-        BotCommand("start", "Welcome & setup guide"),
-        BotCommand("setfirebase", "Connect your Firebase DB"),
-        BotCommand("setdevice", "Pick device & select SIM"),
-        BotCommand("fb", "Find device & select SIM (admin)"),
-        BotCommand("fy", "Pick device to monitor"),
-        BotCommand("a", "Pick device with KEY (inject)"),
-        BotCommand("mynum", "Your forwarding number"),
-        BotCommand("key", "License key for inject"),
-        BotCommand("addchannel", "Link Telegram channel"),
-        BotCommand("startmonitor", "Start monitoring"),
-        BotCommand("stopmonitor", "Stop monitoring now"),
-        BotCommand("autostop", "Auto-stop timer (minutes)"),
-        BotCommand("stop", "Pause monitoring"),
-        BotCommand("resume", "Resume monitoring"),
-        BotCommand("status", "Current stats"),
-        BotCommand("send", "Manual SMS"),
-        BotCommand("ping", "Check latency"),
-    ]
-    await app.bot.set_my_commands(commands)
+    await register_bot_commands(app.bot)
 
 
 def build_telegram_app() -> Application | None:
