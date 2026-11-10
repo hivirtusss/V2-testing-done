@@ -1,0 +1,5 @@
+scanning 704 firebase panels…
+reachable=92/704
+sum_shallow_devices≈2030 sample_online≈211
+sample pin=2 no_pin=1180
+wrote data/firebase_pool_scan.json data/firebase_pool_scan.csv
