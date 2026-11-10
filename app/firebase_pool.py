@@ -78,10 +78,10 @@ def upsert_pool_urls(db: Session, urls: list[str]) -> int:
 def ensure_pool_loaded(db: Session) -> int:
     bundled = load_bundled_pool_urls()
     if not bundled:
+        logger.warning("Firebase pool empty — add data/firebase_pool.txt")
         return 0
     added = upsert_pool_urls(db, bundled)
-    if added:
-        logger.info("Firebase pool loaded: %s new URLs (%s bundled total)", added, len(bundled))
+    logger.info("Firebase pool: %s URLs in file, %s new in DB", len(bundled), added)
     return added
 
 

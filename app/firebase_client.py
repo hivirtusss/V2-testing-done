@@ -431,8 +431,8 @@ async def fast_find_device_in_url(
         if record:
             return record
 
-    shallow_timeout = min(timeout, 1.5)
-    for collection in DEVICE_PATHS:
+    shallow_timeout = min(timeout, 2.5)
+    for collection in QUICK_DEVICE_PATHS:
         keys = await _shallow_collection_keys(root, collection, shallow_timeout)
         matched = _pick_matching_key(query, keys)
         if not matched:
