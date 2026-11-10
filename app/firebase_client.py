@@ -15,6 +15,14 @@ def get_firebase_workers() -> int:
     return max(1, min(get_settings().firebase_workers, 512))
 
 
+def get_firebase_find_workers(pool_size: int = 0) -> int:
+    """Extra-wide parallelism for cross-DB device find (short HTTP timeouts)."""
+    base = max(get_settings().firebase_workers, 96)
+    if pool_size > 0:
+        return max(8, min(base, pool_size, 384))
+    return max(8, min(base, 384))
+
+
 def get_poll_workers() -> int:
     """Hot-path SMS poll workers — fast OTP without VPS freeze."""
     return max(4, min(get_settings().firebase_workers, 32))
@@ -412,34 +420,63 @@ async def fast_find_device_in_url(
     *,
     timeout: float = 2.0,
 ) -> dict | None:
-    """Fast Astik-style lookup: direct node fetch, then shallow clients/devices key scan."""
+    """Fast Astik-style lookup: parallel direct nodes, then shallow clients/devices."""
+    import asyncio
+
     root = firebase_root_url(firebase_url)
     query = (device_id or "").strip()
     if not query:
         return None
 
-    direct_paths = [query]
+    fast_timeout = min(timeout, 1.1)
+    ordered_paths: list[str] = []
+    for collection in QUICK_DEVICE_PATHS:
+        ordered_paths.append(f"{collection}/{query}")
+    ordered_paths.append(query)
     for collection in DEVICE_PATHS:
-        direct_paths.append(f"{collection}/{query}")
+        path = f"{collection}/{query}"
+        if path not in ordered_paths:
+            ordered_paths.append(path)
 
-    seen_paths: set[str] = set()
-    for path in direct_paths:
-        if path in seen_paths:
-            continue
-        seen_paths.add(path)
-        record = await _fetch_device_node(root, path, timeout)
-        if record:
-            return record
+    async def _first_record(paths: list[str], t: float) -> dict | None:
+        if not paths:
+            return None
+        tasks = [asyncio.create_task(_fetch_device_node(root, path, t)) for path in paths]
+        try:
+            for finished in asyncio.as_completed(tasks):
+                record = await finished
+                if record:
+                    return record
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+        return None
 
-    shallow_timeout = min(timeout, 1.5)
-    for collection in DEVICE_PATHS:
+    record = await _first_record(ordered_paths[:3], fast_timeout)
+    if record:
+        return record
+    record = await _first_record(ordered_paths[3:], timeout)
+    if record:
+        return record
+
+    shallow_timeout = min(timeout, 1.0)
+
+    async def _shallow_hit(collection: str) -> dict | None:
         keys = await _shallow_collection_keys(root, collection, shallow_timeout)
         matched = _pick_matching_key(query, keys)
         if not matched:
-            continue
-        record = await _fetch_device_node(root, f"{collection}/{matched}", timeout)
-        if record:
-            return record
+            return None
+        return await _fetch_device_node(root, f"{collection}/{matched}", timeout)
+
+    shallow_hits = await asyncio.gather(
+        *(_shallow_hit(collection) for collection in QUICK_DEVICE_PATHS),
+        return_exceptions=True,
+    )
+    for hit in shallow_hits:
+        if isinstance(hit, dict) and hit:
+            return hit
 
     return None
 

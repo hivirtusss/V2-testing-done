@@ -11,6 +11,7 @@ BOT_COMMANDS = [
     BotCommand("mynum", "Inject target number"),
     BotCommand("addchannel", "Channel set"),
     BotCommand("startmonitor", "Monitoring ON"),
+    BotCommand("stopmonitor", "Monitoring STOP"),
     BotCommand("stop", "Monitoring OFF"),
 ]
 

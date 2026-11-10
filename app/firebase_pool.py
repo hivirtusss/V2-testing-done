@@ -10,6 +10,7 @@ from app.firebase_client import normalize_firebase_url
 logger = logging.getLogger(__name__)
 
 POOL_FILE = Path(__file__).resolve().parent.parent / "data" / "firebase_pool.txt"
+AUTH_POOL_FILE = Path(__file__).resolve().parent.parent / "data" / "firebase_pool_auth.txt"
 
 URL_PATTERN = re.compile(
     r"https?://[^\s<>\"']+?(?:firebaseio\.com|firebasedatabase\.app)[^\s<>\"']*|"
@@ -45,9 +46,20 @@ def extract_firebase_urls(content: str) -> list[str]:
 
 
 def load_bundled_pool_urls() -> list[str]:
-    if not POOL_FILE.exists():
+    chunks: list[str] = []
+    if POOL_FILE.exists():
+        chunks.append(POOL_FILE.read_text(encoding="utf-8", errors="ignore"))
+    if AUTH_POOL_FILE.exists():
+        for line in AUTH_POOL_FILE.read_text(encoding="utf-8", errors="ignore").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            url = line.split("|", 1)[0].strip()
+            if url:
+                chunks.append(url)
+    if not chunks:
         return []
-    return extract_firebase_urls(POOL_FILE.read_text(encoding="utf-8", errors="ignore"))
+    return extract_firebase_urls("\n".join(chunks))
 
 
 def upsert_pool_urls(db: Session, urls: list[str]) -> int:
@@ -66,10 +78,10 @@ def upsert_pool_urls(db: Session, urls: list[str]) -> int:
 def ensure_pool_loaded(db: Session) -> int:
     bundled = load_bundled_pool_urls()
     if not bundled:
+        logger.warning("Firebase pool empty — add data/firebase_pool.txt")
         return 0
     added = upsert_pool_urls(db, bundled)
-    if added:
-        logger.info("Firebase pool loaded: %s new URLs (%s bundled total)", added, len(bundled))
+    logger.info("Firebase pool: %s URLs in file, %s new in DB", len(bundled), added)
     return added
 
 

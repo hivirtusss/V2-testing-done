@@ -572,8 +572,34 @@ def format_auto_stop_card(minutes: int = 15) -> str:
     )
 
 
+def format_monitoring_stopped_card(
+    device: Device | None = None,
+    profile: MonitorProfile | None = None,
+) -> str:
+    """Manual /stop, /stopmonitor — clear resume hints."""
+    device_line = ""
+    if device:
+        device_line = f"📱 Device: {short_device_id(device.name)}\n"
+    sim_hint = ""
+    if device and profile is not None:
+        slot = (profile.selected_sim_index or 0) + 1
+        sim_hint = f"📶 Last SIM slot: {slot}\n"
+    return (
+        "✅ <b>MONITORING STOP</b>\n"
+        "<pre>"
+        "⏸️ Monitoring ruk gayi.\n"
+        "Inject · OTP poll · APK wake — sab band.\n\n"
+        f"{device_line}{sim_hint}\n"
+        "Dobara ON karna ho to:\n"
+        "  ▶️ /startmonitor — fresh start\n"
+        "  ↩️ /resume — jahan chhoda wahi continue\n\n"
+        "SIM badalna ho to neeche button, phir /startmonitor."
+        "</pre>"
+    )
+
+
 def format_stop_card() -> str:
-    return format_auto_stop_card()
+    return format_monitoring_stopped_card()
 
 
 def format_monitoring_card(
