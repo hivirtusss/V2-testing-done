@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     virtus_module_db: str = "https://virtus-module-default-rtdb.firebaseio.com"
     # APK bootstrap DB — Astik readConfig polls {apk_config_db}/config/{KEY}.json
     apk_config_db: str = "https://base-e3797-default-rtdb.firebaseio.com"
-    firebase_workers: int = 128
+    firebase_workers: int = 192
     otp_poll_interval_sec: float = 0.10
     otp_poll_timeout_sec: float = 0.38
     channel_firebase_timeout_sec: float = 0.50
