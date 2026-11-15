@@ -788,9 +788,25 @@ def _extract_sms_records(path: str, value: Any) -> list[dict[str, Any]]:
     return records
 
 
+def _is_incoming_firebase_message(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    if _is_inject_queue_entry(value) or _is_channel_outgoing_webhook(value):
+        return False
+    if str(value.get("type") or "").strip().lower() == "outgoing":
+        return False
+    sender = _first_field(value, SENDER_FIELDS) or ""
+    if sender == "__OUT__":
+        return False
+    return bool(_first_field(value, BODY_FIELDS))
+
+
 async def _fetch_messages_high_water(root: str, device_id: str, timeout: float) -> int:
-    """Latest push-id under messages/{device_id} at monitoring start."""
-    url = f"{root}/messages/{device_id}.json?orderBy=%22%24key%22&limitToLast=1"
+    """Max incoming SMS key in tail — ignore __OUT__/inject nodes (bad watermark)."""
+    url = (
+        f"{root}/messages/{device_id}.json"
+        f'?orderBy=%22%24key%22&limitToLast={RECENT_MESSAGES_LIMIT}'
+    )
     try:
         data = await _fetch_json(url, timeout=timeout)
     except httpx.HTTPError:
@@ -798,12 +814,37 @@ async def _fetch_messages_high_water(root: str, device_id: str, timeout: float) 
     if not isinstance(data, dict) or not data:
         return 0
     ids: list[int] = []
-    for key in data.keys():
+    for key, value in data.items():
+        if not _is_incoming_firebase_message(value):
+            continue
         try:
             ids.append(int(key))
         except ValueError:
             continue
     return max(ids) if ids else 0
+
+
+async def _fetch_outgoing_message_keys(
+    root: str, device_id: str, timeout: float,
+) -> set[str]:
+    """Mark inject/out queue keys seen so they never block real OTP delivery."""
+    url = (
+        f"{root}/messages/{device_id}.json"
+        f'?orderBy=%22%24key%22&limitToLast={RECENT_MESSAGES_LIMIT}'
+    )
+    prefix = f"messages/{device_id}"
+    try:
+        data = await _fetch_json(url, timeout=timeout)
+    except httpx.HTTPError:
+        return set()
+    if not isinstance(data, dict):
+        return set()
+    junk: set[str] = set()
+    for key, value in data.items():
+        if _is_incoming_firebase_message(value):
+            continue
+        junk.add(f"{prefix}/{key}")
+    return junk
 
 
 async def _fetch_messages_shallow_keys(root: str, device_id: str, timeout: float) -> set[str]:
@@ -1038,6 +1079,7 @@ async def snapshot_firebase_sms_seen(
             )
             shallow = await _fetch_messages_shallow_keys(root, device_id, SNAPSHOT_TIMEOUT_SEC)
             all_seen |= shallow
+            all_seen |= await _fetch_outgoing_message_keys(root, device_id, SNAPSHOT_TIMEOUT_SEC)
         if all_seen and high_water > 0:
             old_seen = _old_message_keys_for_baseline(all_seen, high_water)
             mark_sms_keys_seen(device, old_seen)
@@ -1208,8 +1250,14 @@ async def _ensure_messages_high_water(
     shallow: set[str] = set()
     try:
         shallow = await _fetch_messages_shallow_keys(root, device_id, fetch_timeout)
+        junk = await _fetch_outgoing_message_keys(root, device_id, fetch_timeout)
         if shallow and high_water > 0:
-            mark_sms_keys_seen(device, _old_message_keys_for_baseline(shallow, high_water))
+            mark_sms_keys_seen(
+                device,
+                _old_message_keys_for_baseline(shallow, high_water) | junk,
+            )
+        elif junk:
+            mark_sms_keys_seen(device, junk)
     except Exception:
         shallow = set()
 
