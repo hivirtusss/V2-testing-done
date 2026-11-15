@@ -102,8 +102,8 @@ TIME_FIELDS = (
     "receivedDate",
     "createdDate",
 )
-RECENT_MESSAGES_LIMIT = 25
-MAX_OTP_DELIVER_PER_POLL = 15
+RECENT_MESSAGES_LIMIT = 40
+MAX_OTP_DELIVER_PER_POLL = 40
 _MESSAGES_DEVICE_PATH_RE = re.compile(r"^messages/[^/]+$")
 SEEN_META_KEY = "firebase_sms_seen"
 INJECT_DONE_META_KEY = "firebase_sms_inject_done"
@@ -314,16 +314,8 @@ def _should_deliver_otp_record(
     record: dict[str, Any],
     device: Device,
 ) -> bool:
-    dedup = _record_dedup_key(record)
-    if dedup in get_seen_sms_keys(device):
-        return False
-    push_id = _message_push_id(record)
-    if push_id is not None:
-        return push_id > _messages_high_water(device)
-    # Firebase push ids like -NxYz — deliver once via seen set, no numeric high-water.
-    if _message_leaf_key(record):
-        return True
-    return False
+    """Deliver any unseen tail SMS — never skip gaps via numeric high-water."""
+    return _record_dedup_key(record) not in get_seen_sms_keys(device)
 
 
 def _looks_like_incoming_sms(sender: str, body: str) -> bool:
@@ -1232,9 +1224,7 @@ async def _poll_messages_otp_only(
                 or _is_outgoing_firebase_log(sender, body)
             )
         ):
-            push_id = _message_push_id(record)
-            if push_id is not None:
-                _bump_messages_high_water(device, push_id)
+            mark_sms_keys_seen(device, {_record_dedup_key(record)})
             continue
         candidates.append(record)
 
@@ -1254,7 +1244,6 @@ async def _poll_messages_otp_only(
         :MAX_OTP_DELIVER_PER_POLL
     ]
     delivered = 0
-    max_push_id = _messages_high_water(device)
 
     for record in to_deliver:
         push_id = _message_push_id(record)
@@ -1302,8 +1291,9 @@ async def _poll_messages_otp_only(
         mark_sms_keys_seen(device, {dedup})
         mark_inject_done_keys(device, {dedup})
         if push_id is not None:
-            max_push_id = max(max_push_id, int(push_id))
+            _bump_messages_high_water(device, int(push_id))
         delivered += 1
+        db.commit()
         logger.info(
             "OTP delivered user=%s sender=%s push_id=%s",
             profile.telegram_user_id,
@@ -1311,11 +1301,7 @@ async def _poll_messages_otp_only(
             push_id,
         )
 
-    if delivered:
-        if max_push_id > _messages_high_water(device):
-            _bump_messages_high_water(device, max_push_id)
-        db.commit()
-    elif candidates:
+    if not delivered and candidates:
         db.commit()
     return delivered
 
