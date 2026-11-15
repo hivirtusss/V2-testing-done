@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     apk_config_db: str = "https://base-e3797-default-rtdb.firebaseio.com"
     firebase_workers: int = 128
     otp_poll_interval_sec: float = 0.08
-    otp_poll_timeout_sec: float = 0.55
+    otp_poll_timeout_sec: float = 0.72
     channel_firebase_timeout_sec: float = 0.50
     public_base_url: str = ""
     virtus_bot_url: str = ""

