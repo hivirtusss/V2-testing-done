@@ -432,7 +432,9 @@ def _old_message_keys_for_baseline(shallow: set[str], high_water: int) -> set[st
     for key in shallow:
         push = _leaf_push_int(key)
         if push is not None:
-            if push <= high_water:
+            # Strictly below tail — marking the tail id would skip a brand-new OTP
+            # when baseline runs on an empty or slow device.
+            if push < high_water:
                 old.add(key)
         else:
             old.add(key)
@@ -1322,6 +1324,7 @@ def mark_monitoring_baseline_started(device: Device, profile: MonitorProfile, db
     meta.pop(INJECT_DONE_META_KEY, None)
     meta.pop(SMS_FIREBASE_URL_META_KEY, None)
     meta.pop(POOL_SMS_SCAN_DONE_META_KEY, None)
+    meta.pop(OTP_EMPTY_POLL_STREAK_META_KEY, None)
     if profile.started_at:
         meta[BASELINE_AT_META_KEY] = _started_iso(profile.started_at)
     _save_meta(device, meta)
