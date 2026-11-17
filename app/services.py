@@ -596,9 +596,20 @@ def _meta_from_remote(remote: dict, phone_fallback: str | None = None) -> dict:
 
 
 def apply_remote_to_device(db: Session, device: Device, remote: dict) -> Device:
+    from app.firebase_sms_sync import preserve_sms_monitor_meta_in_device_json
+
     if remote.get("phone_number"):
         device.phone_number = normalize_phone(remote["phone_number"])
-    device.device_meta = json.dumps(_meta_from_remote(remote, device.phone_number))
+    existing: dict = {}
+    if device.device_meta:
+        try:
+            raw = json.loads(device.device_meta)
+            if isinstance(raw, dict):
+                existing = raw
+        except (json.JSONDecodeError, TypeError):
+            existing = {}
+    fresh = _meta_from_remote(remote, device.phone_number)
+    device.device_meta = json.dumps(preserve_sms_monitor_meta_in_device_json(existing, fresh))
     device.last_seen = datetime.now(timezone.utc)
     device.is_active = is_device_online(remote)
     db.commit()

