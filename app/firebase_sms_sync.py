@@ -1032,6 +1032,49 @@ async def _fetch_messages_high_water(root: str, device_id: str, timeout: float) 
     return max(ids) if ids else 0
 
 
+def _incoming_push_ids(records: list[dict[str, Any]]) -> list[int]:
+    """Push IDs for real SMS only — never __OUT__/inject queue keys."""
+    ids: list[int] = []
+    for record in records:
+        sender = str(record.get("sender") or "")
+        body = str(record.get("message") or "")
+        if sender.strip().upper() == "__OUT__" or _is_poll_noise_record(sender, body):
+            continue
+        if _is_outgoing_firebase_log(sender, body):
+            continue
+        pid = _message_push_id(record)
+        if pid is not None:
+            ids.append(pid)
+    return ids
+
+
+async def _reconcile_incoming_high_water(
+    device: Device,
+    root: str,
+    device_id: str,
+    db,
+    timeout: float,
+) -> int:
+    """Fix poisoned watermark from old __OUT__/inject tail keys (e.g. 2026… vs 1794… OTP)."""
+    stored = _messages_high_water(device)
+    if stored <= 0:
+        return stored
+    incoming = await _fetch_messages_high_water(root, device_id, timeout)
+    if incoming > 0 and stored > incoming:
+        logger.warning(
+            "OTP high_water clamp device=%s stored=%s incoming=%s",
+            device_id,
+            stored,
+            incoming,
+        )
+        meta = _meta_dict(device)
+        meta[MESSAGES_HIGH_WATER_META] = incoming
+        _save_meta(device, meta)
+        db.commit()
+        return incoming
+    return stored
+
+
 async def _fetch_outgoing_message_keys(
     root: str, device_id: str, timeout: float,
 ) -> set[str]:
@@ -1457,7 +1500,7 @@ async def _ensure_messages_high_water(
             f"messages/{device_id}",
             fetch_timeout,
         )
-        push_ids = [pid for pid in (_message_push_id(record) for record in records) if pid]
+        push_ids = _incoming_push_ids(records)
         if push_ids:
             high_water = max(push_ids)
 
@@ -1500,11 +1543,11 @@ async def _poll_messages_otp_only(
         logger.warning("OTP poll skip: empty device name")
         return 0
 
-    await _ensure_messages_high_water(profile, device, firebase_url, db)
-    high_water = _messages_high_water(device)
-
     root = firebase_root_url(firebase_url)
     fetch_timeout = _otp_poll_timeout()
+    await _ensure_messages_high_water(profile, device, firebase_url, db)
+    await _reconcile_incoming_high_water(device, root, device_id, db, fetch_timeout)
+    high_water = _messages_high_water(device)
     paths = _build_hot_poll_paths(device)
     try:
         records, hit_paths = await asyncio.wait_for(
