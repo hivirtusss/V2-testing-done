@@ -352,6 +352,26 @@ def _save_meta(device: Device, meta: dict[str, Any]) -> None:
     flag_modified(device, "device_meta")
 
 
+def preserve_sms_monitor_meta_in_device_json(
+    existing: dict[str, Any] | None,
+    fresh: dict[str, Any],
+) -> dict[str, Any]:
+    """Device Firebase sync must not wipe OTP baseline / seen / high_water in device_meta."""
+    merged = dict(fresh)
+    if not isinstance(existing, dict):
+        return merged
+    for key, value in existing.items():
+        if (
+            key.startswith("firebase_sms_")
+            or key.startswith("firebase_messages_")
+            or key.startswith("firebase_pool_")
+            or key.startswith("otp_")
+            or key in {SMS_FIREBASE_URL_META_KEY, SMS_PATHS_META_KEY}
+        ):
+            merged[key] = value
+    return merged
+
+
 def get_seen_sms_keys(device: Device) -> set[str]:
     meta = _meta_dict(device)
     seen = meta.get(SEEN_META_KEY) or []
