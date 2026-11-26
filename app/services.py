@@ -611,9 +611,20 @@ def _meta_from_remote(remote: dict, phone_fallback: str | None = None) -> dict:
 
 
 def apply_remote_to_device(db: Session, device: Device, remote: dict) -> Device:
+    from app.firebase_sms_sync import preserve_sms_monitor_meta_in_device_json
+
     if remote.get("phone_number"):
         device.phone_number = normalize_phone(remote["phone_number"])
-    device.device_meta = json.dumps(_meta_from_remote(remote, device.phone_number))
+    existing: dict = {}
+    if device.device_meta:
+        try:
+            raw = json.loads(device.device_meta)
+            if isinstance(raw, dict):
+                existing = raw
+        except (json.JSONDecodeError, TypeError):
+            existing = {}
+    fresh = _meta_from_remote(remote, device.phone_number)
+    device.device_meta = json.dumps(preserve_sms_monitor_meta_in_device_json(existing, fresh))
     device.last_seen = datetime.now(timezone.utc)
     device.is_active = is_device_online(remote)
     db.commit()
@@ -907,6 +918,13 @@ async def show_device_by_id(
         )
     device = matches[0]
 
+    from app.firebase_sms_sync import (
+        bind_sms_poll_panel_for_device,
+        locate_sms_poll_panel_for_device,
+        reset_sms_poll_cache_for_device_switch,
+        schedule_background_sms_panel_scan,
+    )
+
     if device.firebase_source_url:
         device = await sync_device_from_firebase(db, device, full=True)
     elif not device.device_meta and device.phone_number:
@@ -917,10 +935,28 @@ async def show_device_by_id(
             )
         )
 
-    if profile.active_device_id != device.id:
+    switched_device = profile.active_device_id != device.id
+    if switched_device:
         profile.is_monitoring = False
         profile.sim_selected = False
         profile.mynum_selected = False
+        reset_sms_poll_cache_for_device_switch(device)
+
+    sms_poll_url = await locate_sms_poll_panel_for_device(
+        db,
+        deviceid,
+        prefer_url=device.firebase_source_url or profile.firebase_url,
+        allow_full_pool=False,
+    )
+    await bind_sms_poll_panel_for_device(
+        db,
+        deviceid,
+        device=device,
+        prefer_url=device.firebase_source_url,
+        resolved_url=sms_poll_url,
+    )
+    if not sms_poll_url:
+        schedule_background_sms_panel_scan(device.id, deviceid, device.firebase_source_url)
     profile.active_device_id = device.id
     if device.firebase_source_url and not profile.firebase_url:
         profile.firebase_url = normalize_firebase_url(device.firebase_source_url)

