@@ -338,6 +338,21 @@ def stop_monitoring(db: Session, telegram_user_id: int) -> MonitorProfile:
     return profile
 
 
+def device_under_firebase_monitor(db: Session, device_id: int | None) -> bool:
+    """True when an active monitor is polling messages/{device} for this row."""
+    if not device_id:
+        return False
+    return (
+        db.query(MonitorProfile)
+        .filter(
+            MonitorProfile.is_monitoring.is_(True),
+            MonitorProfile.active_device_id == device_id,
+        )
+        .first()
+        is not None
+    )
+
+
 def get_monitoring_user_ids(db: Session, sms: SMSMessage) -> set[int]:
     targets: set[int] = set()
 

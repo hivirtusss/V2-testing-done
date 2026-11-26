@@ -1186,6 +1186,19 @@ async def _poll_messages_otp_only(
     sender = str(record.get("sender") or "Unknown")
     body = str(record.get("message") or "")
 
+    from app.incoming_delivery_guard import try_claim_incoming_delivery
+
+    if not try_claim_incoming_delivery(profile.telegram_user_id, sender, body):
+        for item in candidates:
+            mark_sms_keys_seen(
+                device,
+                {_record_dedup_key(item), _content_dedup_key(str(item.get("sender") or ""), str(item.get("message") or ""))},
+            )
+        if push_id is not None:
+            _bump_messages_high_water(device, int(push_id))
+        db.commit()
+        return 0
+
     # Lock before Telegram/inject — fast poll (~0.4s) used to re-deliver same OTP ~10×.
     dedup_keys = {_record_dedup_key(record), _content_dedup_key(sender, body)}
     for item in candidates:

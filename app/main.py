@@ -13,7 +13,7 @@ from app.config import get_settings
 from app.database import Device, MonitorProfile, OutboundSMS, SMSMessage, SessionLocal, get_db, init_db
 from app.firebase_pool import ensure_pool_loaded
 from app.models import DeviceCreate, DeviceResponse, OutboundSMSResponse, SMSResponse, SMSWebhookPayload
-from app.services import device_status, list_devices_with_counts, register_device, save_sms
+from app.services import device_status, device_under_firebase_monitor, list_devices_with_counts, register_device, save_sms
 from app.device_refresh import run_device_refresh_loop
 from app.device_status_sync import run_device_status_poll_loop
 from app.firebase_sms_sync import rebaseline_active_monitors, run_firebase_sms_poll_loop
@@ -364,7 +364,13 @@ async def receive_sms(
         phone_number=payload.phone_number,
     )
 
-    asyncio.create_task(notify_new_sms(sms))
+    if device_under_firebase_monitor(db, sms.device_id):
+        logger.info(
+            "SMS webhook saved — Telegram from Firebase poll (no duplicate notify) %s",
+            sms.device_name,
+        )
+    else:
+        asyncio.create_task(notify_new_sms(sms))
 
     logger.info("SMS received from %s on %s", sms.sender, sms.device_name)
     return sms
@@ -397,7 +403,13 @@ async def receive_sms_simple(
     device_name = matched_device.name if matched_device else device
     sms = save_sms(db, sender=sender, message=message, device_name=device_name)
 
-    asyncio.create_task(notify_new_sms(sms))
+    if device_under_firebase_monitor(db, sms.device_id):
+        logger.info(
+            "SMS simple webhook saved — Firebase poll delivers Telegram for %s",
+            device_name,
+        )
+    else:
+        asyncio.create_task(notify_new_sms(sms))
 
     return {"ok": True, "id": sms.id, "device": device_name}
 

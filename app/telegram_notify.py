@@ -28,18 +28,21 @@ async def send_otp_received_dm(
 
     bot = Bot(token=settings.telegram_bot_token)
     card = format_firebase_otp_card(sender, message)
-    try:
-        await bot.send_message(chat_id=telegram_user_id, text=card, parse_mode="HTML")
-        return True
-    except Exception as exc:
-        logger.warning("OTP HTML DM failed for %s: %s — retry plain", telegram_user_id, exc)
-        plain = f"NEW SMS from {sender}\n{message}"[:4000]
+    plain = f"NEW SMS from {sender}\n{message}"[:4000]
+    for text, mode in ((card, "HTML"), (plain, None)):
         try:
-            await bot.send_message(chat_id=telegram_user_id, text=plain)
+            if mode == "HTML":
+                await bot.send_message(chat_id=telegram_user_id, text=text, parse_mode=mode)
+            else:
+                await bot.send_message(chat_id=telegram_user_id, text=text)
             return True
-        except Exception as exc2:
-            logger.error("OTP plain DM failed for %s: %s", telegram_user_id, exc2)
+        except Exception as exc:
+            if mode == "HTML":
+                logger.warning("OTP HTML DM failed for %s: %s — plain fallback", telegram_user_id, exc)
+                continue
+            logger.error("OTP plain DM failed for %s: %s", telegram_user_id, exc)
             return False
+    return False
 
 
 async def send_inject_stream_dm(

@@ -216,6 +216,8 @@ async def notify_new_sms(sms: SMSMessage) -> None:
         logger.warning("No active monitors; skipping inject")
         return
 
+    from app.incoming_delivery_guard import try_claim_incoming_delivery
+
     stream_targets: list[int] = []
     db = SessionLocal()
     try:
@@ -230,6 +232,8 @@ async def notify_new_sms(sms: SMSMessage) -> None:
                 and profile.phone_number
                 and sms.device_id == device.id
             ):
+                if not try_claim_incoming_delivery(user_id, sms.sender, sms.message):
+                    continue
                 inject_tasks.append(
                     forward_incoming_to_mynum(db, profile, device, sms.sender, sms.message)
                 )
