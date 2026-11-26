@@ -409,6 +409,26 @@ def preserve_sms_monitor_meta_in_device_json(
     return merged
 
 
+def sms_poll_panel_label(device: Device | None, profile: MonitorProfile | None = None) -> str:
+    """Short label for /status — which Firebase SMS poll uses (no manual URL needed)."""
+    from app.firebase_client import normalize_firebase_url
+    from app.firebase_sync import get_profile_firebase_url
+
+    if profile:
+        panel = get_profile_firebase_url(profile)
+        if panel:
+            return normalize_firebase_url(panel).replace("https://", "").split("/")[0]
+    if not device:
+        return "—"
+    meta = _meta_dict(device)
+    cached = meta.get(SMS_FIREBASE_URL_META_KEY)
+    if isinstance(cached, str) and cached.strip():
+        return normalize_firebase_url(cached).replace("https://", "").split("/")[0]
+    if device.firebase_source_url:
+        return normalize_firebase_url(device.firebase_source_url).replace("https://", "").split("/")[0]
+    return "auto (16k pool)"
+
+
 def reset_sms_poll_cache_for_device_switch(device: Device, db=None) -> None:
     """New /a device — do not keep previous panel's SMS poll URL on this device."""
     meta = _meta_dict(device)
