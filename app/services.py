@@ -853,33 +853,34 @@ async def show_device_by_id(
 ) -> tuple[Device, MonitorProfile]:
     import asyncio
 
+    from app.firebase_sms_sync import bind_sms_poll_panel_for_device, locate_sms_poll_panel_for_device
+
     profile = get_or_create_monitor_profile(db, telegram_user_id)
+    query = (deviceid or "").strip()
     matches: list[Device] = []
-    if profile.firebase_url:
-        live = await find_device_in_firebase_url(db, deviceid, profile.firebase_url)
-        if live:
-            matches = [live]
+    pool_find, sms_poll_url = await asyncio.gather(
+        find_device_across_all_databases(
+            db,
+            query,
+            prefer_url=None,
+            scan_seconds=40.0,
+        ),
+        locate_sms_poll_panel_for_device(db, query, prefer_url=None),
+    )
+    if pool_find:
+        matches = [pool_find]
     if not matches:
-        matches = search_devices(db, deviceid, limit=6)
+        matches = search_devices(db, query, limit=6)
     if not matches and profile.firebase_url:
-        try:
-            await asyncio.wait_for(
-                connect_firebase_url(db, telegram_user_id, profile.firebase_url),
-                timeout=5.0,
-            )
-        except Exception:
-            pass
-        matches = search_devices(db, deviceid, limit=6)
-    if not matches and profile.firebase_url:
-        device = await find_device_in_firebase_url(db, deviceid, profile.firebase_url)
+        device = await find_device_in_firebase_url(db, query, profile.firebase_url)
         if device:
             matches = [device]
     if not matches:
         device = await find_device_across_all_databases(
             db,
-            deviceid,
+            query,
             prefer_url=profile.firebase_url,
-            scan_seconds=60.0,
+            scan_seconds=25.0,
         )
         if device:
             matches = [device]
@@ -909,14 +910,6 @@ async def show_device_by_id(
         )
     device = matches[0]
 
-    if profile.firebase_url:
-        from app.firebase_client import normalize_firebase_url
-
-        panel = normalize_firebase_url(profile.firebase_url)
-        if normalize_firebase_url(device.firebase_source_url or "") != panel:
-            device.firebase_source_url = panel
-            db.flush()
-
     if device.firebase_source_url:
         device = await sync_device_from_firebase(db, device, full=True)
     elif not device.device_meta and device.phone_number:
@@ -926,6 +919,29 @@ async def show_device_by_id(
                 device.phone_number,
             )
         )
+
+    await bind_sms_poll_panel_for_device(
+        db,
+        query,
+        device=device,
+        prefer_url=device.firebase_source_url,
+        resolved_url=sms_poll_url,
+    )
+
+    try:
+        meta = json.loads(device.device_meta or "{}")
+    except (json.JSONDecodeError, TypeError):
+        meta = {}
+    if isinstance(meta, dict):
+        raw = meta.get("raw") if isinstance(meta.get("raw"), dict) else {}
+        mon = raw.get("monitoring") if isinstance(raw.get("monitoring"), dict) else None
+        if not mon and isinstance(meta.get("monitoring"), dict):
+            mon = meta.get("monitoring")
+        if isinstance(mon, dict) and mon.get("sim_index") is not None:
+            try:
+                profile.selected_sim_index = int(mon["sim_index"])
+            except (TypeError, ValueError):
+                pass
 
     switched_device = profile.active_device_id != device.id
     if switched_device:

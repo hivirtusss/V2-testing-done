@@ -259,9 +259,18 @@ def _device_phone_display(device: Device) -> str:
 
 
 def _db_label(device: Device, profile: MonitorProfile | None = None) -> str:
-    url = device.firebase_source_url or (profile.firebase_url if profile else None) or ""
+    from app.firebase_sms_sync import SMS_FIREBASE_URL_META_KEY, _meta_dict
+
+    meta = _meta_dict(device)
+    poll = meta.get(SMS_FIREBASE_URL_META_KEY)
+    url = (
+        (poll if isinstance(poll, str) and poll.strip() else None)
+        or device.firebase_source_url
+        or (profile.firebase_url if profile else None)
+        or ""
+    )
     if not url:
-        return "—"
+        return "— (pool scan on /startmonitor)"
     return url.rstrip("/")
 
 
