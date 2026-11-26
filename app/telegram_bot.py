@@ -1540,8 +1540,14 @@ async def _activate_monitoring(
 
     profile, device = start_monitoring(db, user_id)
 
-    from app.firebase_sms_sync import mark_monitoring_baseline_started
+    from app.firebase_sms_sync import bind_sms_poll_panel_for_device, mark_monitoring_baseline_started
 
+    await bind_sms_poll_panel_for_device(
+        db,
+        device.name,
+        device=device,
+        prefer_url=device.firebase_source_url,
+    )
     mark_monitoring_baseline_started(device, profile, db)
     asyncio.create_task(_background_monitoring_baseline(profile.id, device.id))
     asyncio.create_task(_prepare_monitoring_background(user_id, profile.id, device.id))
