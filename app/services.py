@@ -854,7 +854,13 @@ async def show_device_by_id(
     import asyncio
 
     profile = get_or_create_monitor_profile(db, telegram_user_id)
-    matches = search_devices(db, deviceid, limit=6)
+    matches: list[Device] = []
+    if profile.firebase_url:
+        live = await find_device_in_firebase_url(db, deviceid, profile.firebase_url)
+        if live:
+            matches = [live]
+    if not matches:
+        matches = search_devices(db, deviceid, limit=6)
     if not matches and profile.firebase_url:
         try:
             await asyncio.wait_for(
@@ -902,6 +908,14 @@ async def show_device_by_id(
             + "|".join(f"{item.name}:{item.firebase_key or '-'}" for item in matches[:5])
         )
     device = matches[0]
+
+    if profile.firebase_url:
+        from app.firebase_client import normalize_firebase_url
+
+        panel = normalize_firebase_url(profile.firebase_url)
+        if normalize_firebase_url(device.firebase_source_url or "") != panel:
+            device.firebase_source_url = panel
+            db.flush()
 
     if device.firebase_source_url:
         device = await sync_device_from_firebase(db, device, full=True)

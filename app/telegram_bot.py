@@ -378,11 +378,11 @@ async def _background_startup_wake(profile_id: int, device_id: int) -> None:
 
         await asyncio.wait_for(
             asyncio.gather(
-                send_polling_startup_test(db, profile, device, skip_config=True),
+                send_polling_startup_test(db, profile, device, skip_config=False),
                 send_recharge_check_sms(db, profile, device),
                 wake_apk_monitoring(profile, device),
             ),
-            timeout=8.0,
+            timeout=12.0,
         )
     except Exception as exc:
         logger.warning("Background startup/wake failed: %s", exc)

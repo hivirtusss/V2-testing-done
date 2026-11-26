@@ -1,3 +1,3 @@
 """Bump when card/APK deploy changes — check via GET /health deploy_tag."""
 
-DEPLOY_TAG = "firebase-device-home-8042"
+DEPLOY_TAG = "firebase-login-panel-8042"
