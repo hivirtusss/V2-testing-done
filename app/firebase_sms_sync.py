@@ -158,7 +158,10 @@ def _meta_dict(device: Device) -> dict[str, Any]:
 
 
 def _save_meta(device: Device, meta: dict[str, Any]) -> None:
+    from sqlalchemy.orm.attributes import flag_modified
+
     device.device_meta = json.dumps(meta)
+    flag_modified(device, "device_meta")
 
 
 def get_seen_sms_keys(device: Device) -> set[str]:
@@ -284,7 +287,12 @@ def _should_deliver_otp_record(
     record: dict[str, Any],
     device: Device,
 ) -> bool:
-    if _record_dedup_key(record) in get_seen_sms_keys(device):
+    seen = get_seen_sms_keys(device)
+    if _record_dedup_key(record) in seen:
+        return False
+    sender = str(record.get("sender") or "")
+    body = str(record.get("message") or "")
+    if _content_dedup_key(sender, body) in seen:
         return False
     push_id = _message_push_id(record)
     if push_id is None:
@@ -367,6 +375,14 @@ def _record_dedup_key(record: dict[str, Any]) -> str:
         message = str(record.get("message") or "")
         return f"{firebase_key}|{sender}|{message}"
     return firebase_key
+
+
+def _content_dedup_key(sender: str, body: str) -> str:
+    s = (sender or "").strip().upper()
+    text = (body or "").strip()
+    if len(text) > 280:
+        text = text[:280]
+    return f"content|{s}|{text}"
 
 
 def _is_sms_list_path(firebase_key: str) -> bool:
@@ -1170,14 +1186,19 @@ async def _poll_messages_otp_only(
     sender = str(record.get("sender") or "Unknown")
     body = str(record.get("message") or "")
 
+    # Lock before Telegram/inject — fast poll (~0.4s) used to re-deliver same OTP ~10×.
+    dedup_keys = {_record_dedup_key(record), _content_dedup_key(sender, body)}
+    for item in candidates:
+        dedup_keys.add(_record_dedup_key(item))
+    mark_sms_keys_seen(device, dedup_keys)
+    if push_id is not None:
+        _bump_messages_high_water(device, int(push_id))
+    db.commit()
+
     from app.firebase_sync import forward_incoming_to_mynum
 
-    inject_task = asyncio.create_task(
-        forward_incoming_to_mynum(db, profile, device, sender, body)
-    )
-    dm_task = asyncio.create_task(send_otp_received_dm(profile.telegram_user_id, sender, body))
     try:
-        await inject_task
+        await forward_incoming_to_mynum(db, profile, device, sender, body)
     except Exception as exc:
         logger.warning(
             "OTP inject to /mynum failed device=%s sender=%s: %s",
@@ -1186,7 +1207,7 @@ async def _poll_messages_otp_only(
             exc,
         )
 
-    ok = await dm_task
+    ok = await send_otp_received_dm(profile.telegram_user_id, sender, body)
     if not ok:
         logger.error("OTP bot DM failed user=%s sender=%s id=%s", profile.telegram_user_id, sender, push_id)
         return 0
@@ -1198,9 +1219,6 @@ async def _poll_messages_otp_only(
         device_name=device.name,
         received_at=record.get("received_at"),
     )
-    _bump_messages_high_water(device, int(push_id))
-    for skipped in candidates:
-        mark_sms_keys_seen(device, {_record_dedup_key(skipped)})
     db.commit()
     logger.info(
         "OTP delivered to bot user=%s sender=%s push_id=%s (1 per poll)",
