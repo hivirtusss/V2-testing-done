@@ -33,7 +33,7 @@ def resolve_firebase_url(
         return normalize_firebase_url(device.firebase_source_url)
     user_url = get_profile_firebase_url(profile)
     if user_url:
-        return user_url
+        return normalize_firebase_url(user_url)
     license_key = get_license_key(profile)
     if license_key and license_key.upper().startswith("KEY-"):
         return settings.virtus_module_db.rstrip("/")
