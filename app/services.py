@@ -913,10 +913,14 @@ async def show_device_by_id(
             )
         )
 
-    if profile.active_device_id != device.id:
+    switched_device = profile.active_device_id != device.id
+    if switched_device:
         profile.is_monitoring = False
         profile.sim_selected = False
         profile.mynum_selected = False
+        from app.firebase_sms_sync import reset_sms_poll_cache_for_device_switch
+
+        reset_sms_poll_cache_for_device_switch(device)
     profile.active_device_id = device.id
     if device.firebase_source_url and not profile.firebase_url:
         profile.firebase_url = normalize_firebase_url(device.firebase_source_url)

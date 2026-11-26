@@ -146,28 +146,29 @@ def _device_ids(device: Device) -> list[str]:
 
 
 def _firebase_url_candidates(profile: MonitorProfile, device: Device) -> list[str]:
+    """Home panel from /a find first — not stale /setfirebase or old poll cache."""
     from app.firebase_client import normalize_firebase_url
     from app.firebase_sync import get_profile_firebase_url, resolve_firebase_url
 
-    ordered: list[str] = []
     meta = _meta_dict(device)
-    cached = meta.get(SMS_FIREBASE_URL_META_KEY)
-    if isinstance(cached, str) and cached.strip():
-        ordered.append(normalize_firebase_url(cached))
-    if device.firebase_source_url:
-        ordered.append(normalize_firebase_url(device.firebase_source_url))
-    primary = resolve_firebase_url(profile, device)
-    if primary:
-        ordered.append(normalize_firebase_url(primary))
-    profile_url = get_profile_firebase_url(profile)
-    if profile_url:
-        ordered.append(normalize_firebase_url(profile_url))
     seen: set[str] = set()
     out: list[str] = []
-    for url in ordered:
-        if url and url not in seen:
-            seen.add(url)
-            out.append(url)
+
+    def add(url: str | None) -> None:
+        if not url:
+            return
+        norm = normalize_firebase_url(url)
+        if norm not in seen:
+            seen.add(norm)
+            out.append(norm)
+
+    add(device.firebase_source_url)
+    cached = meta.get(SMS_FIREBASE_URL_META_KEY)
+    if isinstance(cached, str) and cached.strip():
+        add(cached)
+    add(resolve_firebase_url(profile, device))
+    if not device.firebase_source_url:
+        add(get_profile_firebase_url(profile))
     return out
 
 
@@ -268,10 +269,25 @@ async def resolve_firebase_url_for_otp_poll(
     candidates = _firebase_url_candidates(profile, device)
     meta = _meta_dict(device)
 
+    home = (
+        normalize_firebase_url(device.firebase_source_url)
+        if device.firebase_source_url
+        else None
+    )
+    if home and await _messages_path_exists(home, device_id, timeout=timeout):
+        meta[SMS_FIREBASE_URL_META_KEY] = home
+        meta[OTP_EMPTY_POLL_STREAK_META_KEY] = 0
+        _save_meta(device, meta)
+        db.commit()
+        return home
+
     cached = meta.get(SMS_FIREBASE_URL_META_KEY)
     if isinstance(cached, str) and cached.strip() and not force_pool_scan:
-        if await _messages_path_exists(cached, device_id, timeout=timeout):
-            return normalize_firebase_url(cached)
+        cached_norm = normalize_firebase_url(cached)
+        if cached_norm != home and await _messages_path_exists(
+            cached_norm, device_id, timeout=timeout
+        ):
+            return cached_norm
         meta.pop(SMS_FIREBASE_URL_META_KEY, None)
 
     for url in candidates:
@@ -373,6 +389,17 @@ def preserve_sms_monitor_meta_in_device_json(
         ):
             merged[key] = value
     return merged
+
+
+def reset_sms_poll_cache_for_device_switch(device: Device, db=None) -> None:
+    """New /a device — do not keep previous panel's SMS poll URL on this device."""
+    meta = _meta_dict(device)
+    meta.pop(SMS_FIREBASE_URL_META_KEY, None)
+    meta.pop(POOL_SMS_SCAN_DONE_META_KEY, None)
+    meta.pop(OTP_EMPTY_POLL_STREAK_META_KEY, None)
+    _save_meta(device, meta)
+    if db is not None:
+        db.commit()
 
 
 def get_seen_sms_keys(device: Device) -> set[str]:
