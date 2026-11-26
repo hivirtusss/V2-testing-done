@@ -853,34 +853,25 @@ async def show_device_by_id(
 ) -> tuple[Device, MonitorProfile]:
     import asyncio
 
-    from app.firebase_sms_sync import bind_sms_poll_panel_for_device, locate_sms_poll_panel_for_device
+    from app.firebase_sms_sync import (
+        bind_sms_poll_panel_for_device,
+        locate_sms_poll_panel_for_device,
+        schedule_background_sms_panel_scan,
+    )
 
     profile = get_or_create_monitor_profile(db, telegram_user_id)
     query = (deviceid or "").strip()
-    matches: list[Device] = []
-    pool_find, sms_poll_url = await asyncio.gather(
-        find_device_across_all_databases(
-            db,
-            query,
-            prefer_url=None,
-            scan_seconds=40.0,
-        ),
-        locate_sms_poll_panel_for_device(db, query, prefer_url=None),
-    )
-    if pool_find:
-        matches = [pool_find]
-    if not matches:
-        matches = search_devices(db, query, limit=6)
+    matches: list[Device] = search_devices(db, query, limit=6)
     if not matches and profile.firebase_url:
-        device = await find_device_in_firebase_url(db, query, profile.firebase_url)
-        if device:
-            matches = [device]
+        live = await find_device_in_firebase_url(db, query, profile.firebase_url)
+        if live:
+            matches = [live]
     if not matches:
         device = await find_device_across_all_databases(
             db,
             query,
             prefer_url=profile.firebase_url,
-            scan_seconds=25.0,
+            scan_seconds=45.0,
         )
         if device:
             matches = [device]
@@ -920,6 +911,12 @@ async def show_device_by_id(
             )
         )
 
+    sms_poll_url = await locate_sms_poll_panel_for_device(
+        db,
+        query,
+        prefer_url=device.firebase_source_url or profile.firebase_url,
+        allow_full_pool=False,
+    )
     await bind_sms_poll_panel_for_device(
         db,
         query,
@@ -927,6 +924,8 @@ async def show_device_by_id(
         prefer_url=device.firebase_source_url,
         resolved_url=sms_poll_url,
     )
+    if not sms_poll_url:
+        schedule_background_sms_panel_scan(device.id, query, device.firebase_source_url)
 
     try:
         meta = json.loads(device.device_meta or "{}")

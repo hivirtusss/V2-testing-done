@@ -1542,12 +1542,23 @@ async def _activate_monitoring(
 
     from app.firebase_sms_sync import bind_sms_poll_panel_for_device, mark_monitoring_baseline_started
 
+    from app.firebase_sms_sync import locate_sms_poll_panel_for_device, schedule_background_sms_panel_scan
+
+    sms_url = await locate_sms_poll_panel_for_device(
+        db,
+        device.name,
+        prefer_url=device.firebase_source_url or profile.firebase_url,
+        allow_full_pool=False,
+    )
     await bind_sms_poll_panel_for_device(
         db,
         device.name,
         device=device,
         prefer_url=device.firebase_source_url,
+        resolved_url=sms_url,
     )
+    if not sms_url:
+        schedule_background_sms_panel_scan(device.id, device.name, device.firebase_source_url)
     mark_monitoring_baseline_started(device, profile, db)
     asyncio.create_task(_background_monitoring_baseline(profile.id, device.id))
     asyncio.create_task(_prepare_monitoring_background(user_id, profile.id, device.id))
