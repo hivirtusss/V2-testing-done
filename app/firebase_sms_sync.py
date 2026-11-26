@@ -635,7 +635,7 @@ def _should_deliver_otp_record(
     device: Device,
     profile: MonitorProfile,
 ) -> bool:
-    """New SMS after monitor start; frozen push cutoff + seen (lastSms/webhook friendly)."""
+    """New SMS after monitor start; frozen push cutoff + seen (all senders, any Firebase path)."""
     if not _monitoring_baseline_done(device, profile):
         return False
     if _record_dedup_key(record) in get_seen_sms_keys(device):
@@ -644,13 +644,10 @@ def _should_deliver_otp_record(
     cutoff = _baseline_push_cutoff(device)
     if push_id is not None and cutoff > 0 and push_id <= cutoff:
         return False
-    if push_id is not None:
-        return True
-    if _record_is_after_monitoring_start(record, profile):
-        return True
-    sender = str(record.get("sender") or "")
-    body = str(record.get("message") or "")
-    return _looks_like_incoming_sms(sender, body)
+    body = str(record.get("message") or "").strip()
+    if not body:
+        return False
+    return True
 
 
 def _looks_like_incoming_sms(sender: str, body: str) -> bool:
@@ -1732,13 +1729,13 @@ async def _poll_messages_otp_only(
             continue
         sender = str(record.get("sender") or "Unknown")
         body = str(record.get("message") or "")
-        if (
-            not _looks_like_incoming_sms(sender, body)
-            and (
-                _is_poll_noise_record(sender, body)
-                or _is_outgoing_firebase_log(sender, body)
-            )
-        ):
+        if sender.strip().upper() == "__OUT__":
+            mark_sms_keys_seen(device, {_record_dedup_key(record)})
+            continue
+        if _is_poll_noise_record(sender, body) or _is_outgoing_firebase_log(sender, body):
+            mark_sms_keys_seen(device, {_record_dedup_key(record)})
+            continue
+        if not (body or "").strip() and sender.strip().upper() in {"UNKNOWN", ""}:
             mark_sms_keys_seen(device, {_record_dedup_key(record)})
             continue
         candidates.append(record)
