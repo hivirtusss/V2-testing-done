@@ -946,7 +946,7 @@ async def show_device_by_id(
         db,
         deviceid,
         prefer_url=device.firebase_source_url or profile.firebase_url,
-        allow_full_pool=False,
+        allow_full_pool=True,
     )
     await bind_sms_poll_panel_for_device(
         db,

