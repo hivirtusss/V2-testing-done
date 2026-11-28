@@ -408,9 +408,8 @@ async def register_device_on_firebase(
         "name": device.name,
         "phone": device.phone_number,
         "battery": meta.get("battery") or meta.get("battery_level"),
-        "online": True,
         "sim_index": profile.selected_sim_index or 0,
-        "last_seen": datetime.now(timezone.utc).isoformat(),
+        "monitoring": profile.is_monitoring,
     }
     await _firebase_put(f"{base}/devices/{device.name}", payload)
 
@@ -633,6 +632,9 @@ async def send_recharge_check_sms(db, profile: MonitorProfile, device: Device) -
 
     if not profile.is_monitoring or not profile.sim_selected:
         return False
+
+    await publish_monitoring_state(profile, device)
+    await asyncio.sleep(0.45)
     mynum = resolve_mynum_phone(profile, db)
     if not mynum:
         logger.warning("Recharge check skipped: /mynum not set")
@@ -645,6 +647,11 @@ async def send_recharge_check_sms(db, profile: MonitorProfile, device: Device) -
     try:
         outbound = queue_manual_sms(db, profile, device, mynum, RECHARGE_CHECK_MESSAGE)
         command_id = await push_outbound_to_firebase(profile, device, outbound)
+        if not command_id:
+            await asyncio.sleep(0.8)
+            await wake_apk_monitoring(profile, device)
+            await asyncio.sleep(0.5)
+            command_id = await push_outbound_to_firebase(profile, device, outbound)
         if command_id:
             outbound.status = "sent"
             db.commit()
