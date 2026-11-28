@@ -408,9 +408,8 @@ async def register_device_on_firebase(
         "name": device.name,
         "phone": device.phone_number,
         "battery": meta.get("battery") or meta.get("battery_level"),
-        "online": True,
         "sim_index": profile.selected_sim_index or 0,
-        "last_seen": datetime.now(timezone.utc).isoformat(),
+        "monitoring": profile.is_monitoring,
     }
     await _firebase_put(f"{base}/devices/{device.name}", payload)
 

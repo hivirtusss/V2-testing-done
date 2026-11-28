@@ -614,7 +614,12 @@ def apply_remote_to_device(db: Session, device: Device, remote: dict) -> Device:
     if remote.get("phone_number"):
         device.phone_number = normalize_phone(remote["phone_number"])
     device.device_meta = json.dumps(_meta_from_remote(remote, device.phone_number))
-    device.last_seen = datetime.now(timezone.utc)
+    from app.firebase_client import _parse_last_seen_ms
+
+    raw = remote.get("raw") if isinstance(remote.get("raw"), dict) else remote
+    ts = _parse_last_seen_ms(raw if isinstance(raw, dict) else remote)
+    if ts is not None:
+        device.last_seen = datetime.fromtimestamp(ts, tz=timezone.utc)
     device.is_active = is_device_online(remote)
     db.commit()
     db.refresh(device)
@@ -1083,22 +1088,16 @@ async def resync_firebase_devices(db: Session, telegram_user_id: int) -> list[De
 
 
 def device_status(device: Device) -> str:
+    """Firebase truth only — no fake online from bot sync time."""
     if device.device_meta:
         try:
             meta = json.loads(device.device_meta)
-            if meta.get("online") is True:
+            if meta.get("online") is True and device.is_active:
                 return "online"
-            if meta.get("online") is False:
+            if meta.get("online") is False or not device.is_active:
                 return "offline"
         except (json.JSONDecodeError, TypeError):
             pass
-    if not device.is_active:
-        return "inactive"
-    if not device.last_seen:
-        return "unknown"
-    age = datetime.now(timezone.utc) - device.last_seen.astimezone(timezone.utc)
-    if age.total_seconds() < 300:
+    if device.is_active:
         return "online"
-    if age.total_seconds() < 3600:
-        return "idle"
     return "offline"
