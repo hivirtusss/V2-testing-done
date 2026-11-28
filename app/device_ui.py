@@ -7,7 +7,7 @@ from app.database import Device, MonitorProfile
 
 STARTUP_TEST_SENDER = "BABY"
 STARTUP_TEST_MESSAGE = "ASTIK TEST OK — module alive"
-RECHARGE_CHECK_MESSAGE = "CHACHA JI"
+RECHARGE_CHECK_MESSAGE = "Chacha Ji Pani Pila Do"
 BRAND_NAME = "Virtus Auto Token Sender"
 ASTIK_BRAND_LINE = f"──✦ <b>{BRAND_NAME}</b> ✦──"
 

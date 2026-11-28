@@ -243,27 +243,32 @@ def _parse_last_seen_ms(raw: dict) -> float | None:
     return None
 
 
-def is_device_online(device: dict, *, max_age_sec: float = 120.0) -> bool:
-    raw = device.get("raw") or {}
-    online = raw.get("online")
-    if online is None:
-        online = device.get("online")
-    if online in (True, "true", "True", 1, "1"):
-        return True
+def is_device_online(device: dict, *, max_age_sec: float = 90.0) -> bool:
+    """True only when panel says online AND heartbeat is fresh (no stale online:true)."""
+    raw = device.get("raw") if isinstance(device.get("raw"), dict) else {}
+    merged = {**device, **raw}
+
+    online = merged.get("online")
     if online in (False, "false", "False", 0, "0"):
         return False
 
-    status = str(device.get("status") or raw.get("status") or "").lower()
-    if status in {"online", "true", "1", "connected", "active"}:
-        return True
+    status = str(merged.get("status") or "").lower()
     if status in {"offline", "false", "0", "inactive", "disconnected"}:
         return False
 
-    last_seen = _parse_last_seen_ms(raw)
-    if last_seen is not None:
-        import time
+    import time
 
-        return (time.time() - last_seen) <= max_age_sec
+    last_seen = _parse_last_seen_ms(merged if raw else device)
+    if last_seen is None:
+        last_seen = _parse_last_seen_ms(device)
+    fresh = last_seen is not None and (time.time() - last_seen) <= max_age_sec
+
+    if online in (True, "true", "True", 1, "1"):
+        return fresh if last_seen is not None else True
+    if status in {"online", "true", "1", "connected", "active"}:
+        return fresh if last_seen is not None else True
+    if last_seen is not None:
+        return fresh
     return False
 
 
@@ -282,21 +287,32 @@ def _leaf_device_id(name: str | None, firebase_key: str | None = None) -> str | 
 
 
 def _merge_device_records(device_id: str, *records: dict | None) -> dict | None:
-    merged: dict[str, Any] = {}
-    for record in records:
-        if not record:
-            continue
-        raw = record.get("raw")
-        if isinstance(raw, dict):
-            merged.update(raw)
-        for field in ("battery", "battery_level", "status", "online", "model", "phone_number"):
-            if record.get(field) is not None:
-                merged[field] = record.get(field)
-    if not any(records):
+    present = [r for r in records if r]
+    if not present:
         return None
+
+    merged: dict[str, Any] = {}
+    newest_ts: float | None = None
+    for record in present:
+        raw = record.get("raw") if isinstance(record.get("raw"), dict) else {}
+        block = {**raw, **{k: v for k, v in record.items() if k != "raw"}}
+        ts = _parse_last_seen_ms(block)
+        if ts is not None and (newest_ts is None or ts > newest_ts):
+            newest_ts = ts
+        merged.update(block)
+
     if not merged:
         return None
-    return _build_device_record(device_id, merged, prefix="")
+
+    online_vals = [is_device_online({**merged, **(r.get("raw") or {}), **r}) for r in present]
+    merged["online"] = any(online_vals)
+    if newest_ts is not None:
+        merged["last_seen"] = int(newest_ts * 1000) if newest_ts > 1e12 else newest_ts
+
+    built = _build_device_record(device_id, merged, prefix="")
+    if built:
+        built["online"] = merged.get("online")
+    return built
 
 
 def _build_device_record(key: str, value: dict, prefix: str) -> dict:

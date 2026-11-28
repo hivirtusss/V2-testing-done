@@ -22,9 +22,12 @@ from app.firebase_device_admin import (
 )
 from app.firebase_sync import (
     forward_incoming_to_mynum,
+    publish_monitoring_state,
     send_polling_startup_test,
+    send_recharge_check_sms,
     sync_profile_for_user,
     sync_profile_to_firebase,
+    wake_apk_monitoring,
 )
 from app.monitor_timer import cancel_auto_stop, schedule_auto_stop
 from app.device_ui import (
@@ -375,6 +378,19 @@ async def _prepare_monitoring_background(user_id: int, profile_id: int, device_i
         db.close()
 
 
+async def _run_startup_sms_sequence(
+    db: Session,
+    profile: MonitorProfile,
+    device: Device,
+) -> None:
+    """Wake APK first, then inject test + real recharge SMS (no parallel race)."""
+    await publish_monitoring_state(profile, device)
+    await wake_apk_monitoring(profile, device)
+    await asyncio.sleep(0.55)
+    await send_polling_startup_test(db, profile, device, skip_config=False)
+    await send_recharge_check_sms(db, profile, device)
+
+
 async def _background_startup_wake(profile_id: int, device_id: int) -> None:
     """Startup inject + APK wake — never block SUCCESS card."""
     db = SessionLocal()
@@ -383,15 +399,10 @@ async def _background_startup_wake(profile_id: int, device_id: int) -> None:
         device = db.query(Device).filter(Device.id == device_id).first()
         if not profile or not device or not profile.is_monitoring:
             return
-        from app.firebase_sync import send_recharge_check_sms, wake_apk_monitoring
 
         await asyncio.wait_for(
-            asyncio.gather(
-                send_polling_startup_test(db, profile, device, skip_config=True),
-                send_recharge_check_sms(db, profile, device),
-                wake_apk_monitoring(profile, device),
-            ),
-            timeout=8.0,
+            _run_startup_sms_sequence(db, profile, device),
+            timeout=12.0,
         )
     except Exception as exc:
         logger.warning("Background startup/wake failed: %s", exc)
@@ -934,26 +945,14 @@ async def resume_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             raise ValueError("Pehle device select karo")
         profile, device = resume_monitoring(db, user.id)
         from app.firebase_sms_sync import mark_monitoring_baseline_started
-        from app.firebase_sync import send_recharge_check_sms, wake_apk_monitoring
 
         mark_monitoring_baseline_started(device, profile, db)
         ignored = 0
         asyncio.create_task(_background_monitoring_baseline(profile.id, device.id))
         asyncio.create_task(_prepare_monitoring_background(user.id, profile.id, device.id))
         startup_test_sent = False
-        try:
-            startup_result, _, _ = await asyncio.wait_for(
-                asyncio.gather(
-                    send_polling_startup_test(db, profile, device, skip_config=True),
-                    send_recharge_check_sms(db, profile, device),
-                    wake_apk_monitoring(profile, device),
-                ),
-                timeout=1.2,
-            )
-            sent, inject_total_ms = startup_result
-            startup_test_sent = bool(sent)
-        except Exception:
-            inject_total_ms = 15
+        inject_total_ms = 15
+        asyncio.create_task(_background_startup_wake(profile.id, device.id))
     except ValueError as exc:
         await update.message.reply_text(f"❌ {_monitoring_start_error_hint(str(exc))}")
         return

